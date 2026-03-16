@@ -105,6 +105,7 @@ export interface RichTextChild {
   url?: string;
   type?: string;
   children?: RichTextChild[];
+  variableId?: string;
 }
 
 export interface ImageBubbleBlock extends BaseBlock {
