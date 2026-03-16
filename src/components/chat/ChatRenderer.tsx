@@ -182,7 +182,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
 
       {/* Chat area with wallpaper */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto wa-wallpaper px-3 py-4">
-        <div className="max-w-[600px] mx-auto space-y-1.5">
+        <div className="max-w-[600px] mx-auto space-y-[3px]">
           {/* Date chip */}
           <div className="flex justify-center mb-3">
             <span className="text-[11px] px-3 py-1 rounded-lg shadow-sm" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))', color: 'hsl(var(--wa-time))' }}>
@@ -193,7 +193,13 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
           {displayItems.map((item, i) => {
             if (item.type === 'typing') return <TypingIndicator key={`typing-${i}`} />;
             if (item.type === 'user') return <UserBubble key={`user-${i}`} content={item.content} />;
-            if (item.type === 'bot') return <BotBubble key={item.message.id} message={item.message} botAvatar={botAvatar} botName={name} />;
+            if (item.type === 'bot') {
+              const prev = displayItems[i - 1];
+              const next = displayItems[i + 1];
+              const isFirst = !prev || prev.type !== 'bot';
+              const isLast = !next || next.type !== 'bot';
+              return <BotBubble key={item.message.id} message={item.message} botAvatar={botAvatar} botName={name} isFirst={isFirst} isLast={isLast} />;
+            }
             return null;
           })}
 
