@@ -142,11 +142,28 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   }, [processEvents]);
 
   useEffect(() => {
-    const engine = new TypebotEngine(flow);
+    const engine = new TypebotEngine(sessionFlow);
     engineRef.current = engine;
+
+    // Hard reset only when changing to a new flow session
+    eventQueueRef.current = [];
+    processingRef.current = false;
+    setDisplayItems([]);
+    setInputBlock(null);
+    setChoiceBlock(null);
+    setIsTyping(false);
+    setProgress(0);
+    setEnded(false);
+    setIsComposerFocused(false);
+
     collectEvents(engine.start());
-    return () => { engineRef.current = null; eventQueueRef.current = []; };
-  }, [flow, collectEvents]);
+
+    return () => {
+      engineRef.current = null;
+      eventQueueRef.current = [];
+      processingRef.current = false;
+    };
+  }, [sessionFlow, collectEvents]);
 
   useEffect(() => {
     if (!window.visualViewport) return;
