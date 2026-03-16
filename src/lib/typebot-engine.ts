@@ -319,11 +319,11 @@ export class TypebotEngine {
 
         case 'wait': {
           const waitBlock = block as WaitBlock;
-          const raw = waitBlock.content?.secondsToWaitFor;
-          if (raw !== undefined && raw !== null) {
-            const seconds = Number(this.replaceVariables(String(raw)));
-            yield { type: 'wait', seconds: isNaN(seconds) ? 1 : seconds };
-          }
+          const raw = waitBlock.content?.secondsToWaitFor ?? (waitBlock.content as any)?.seconds ?? (waitBlock.content as any)?.delay;
+          const seconds = raw !== undefined && raw !== null
+            ? Number(this.replaceVariables(String(raw)))
+            : 1;
+          yield { type: 'wait', seconds: isNaN(seconds) || seconds <= 0 ? 1 : seconds };
           return 'continue';
         }
 
