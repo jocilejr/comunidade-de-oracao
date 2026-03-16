@@ -217,10 +217,21 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
         </div>
       </div>
 
-      {/* Input area */}
+      {/* Input area — always visible when there's an active input block */}
       {inputBlock && !ended && (
         <div className="shrink-0">
           <ChatInput block={inputBlock} onSubmit={handleInputSubmit} />
+        </div>
+      )}
+
+      {/* Show a disabled input bar when waiting (no active input) */}
+      {!inputBlock && !choiceBlock && !ended && (
+        <div className="shrink-0 px-2 py-2" style={{ backgroundColor: 'hsl(var(--wa-input-bar))' }}>
+          <div className="flex items-center gap-2 max-w-[600px] mx-auto">
+            <div className="flex-1 rounded-3xl px-4 py-2.5 opacity-50" style={{ backgroundColor: 'hsl(var(--wa-input-bg))' }}>
+              <span className="text-sm" style={{ color: 'hsl(var(--wa-time))' }}>Mensagem</span>
+            </div>
+          </div>
         </div>
       )}
     </div>
