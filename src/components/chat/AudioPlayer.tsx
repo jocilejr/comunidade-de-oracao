@@ -5,6 +5,7 @@ interface AudioPlayerProps {
   src: string;
   avatarUrl?: string;
   avatarFallback?: string;
+  time?: string;
 }
 
 // Generate random waveform data that looks like real WhatsApp
@@ -20,7 +21,7 @@ const generateWaveform = (count: number): number[] => {
 
 const BARS = generateWaveform(46);
 
-const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?' }: AudioPlayerProps) => {
+const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?', time }: AudioPlayerProps) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -121,9 +122,16 @@ const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?' }: AudioPlayerProps)
             );
           })}
         </div>
-        <span className="text-[11px] leading-[15px]" style={{ color: 'hsl(var(--wa-time))' }}>
-          {playing ? fmt(currentTime) : fmt(duration)}
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] leading-[15px]" style={{ color: 'hsl(var(--wa-time))' }}>
+            {playing ? fmt(currentTime) : fmt(duration)}
+          </span>
+          {time && (
+            <span className="text-[11px] leading-[15px]" style={{ color: 'hsl(var(--wa-time))' }}>
+              {time}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Avatar */}

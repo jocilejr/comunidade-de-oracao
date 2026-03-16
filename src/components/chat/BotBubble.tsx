@@ -66,11 +66,8 @@ const BotBubble = ({ message, botAvatar, botName }: BotBubbleProps) => {
             src={message.mediaUrl}
             avatarUrl={botAvatar}
             avatarFallback={(botName || 'B').charAt(0).toUpperCase()}
+            time={time}
           />
-          {/* Time on the left, same row as duration */}
-          <div className="flex justify-start mt-[1px] ml-[40px]">
-            <span className="text-[11px] leading-[15px]" style={{ color: 'hsl(var(--wa-time))' }}>{time}</span>
-          </div>
         </div>
       </div>
     );
