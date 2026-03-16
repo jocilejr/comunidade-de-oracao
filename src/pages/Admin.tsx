@@ -1,20 +1,26 @@
 import { useState, useRef, useCallback } from 'react';
 import { getAllFunnels, saveFunnel, deleteFunnel, updateFunnelSlug, validateTypebotJson, slugify } from '@/lib/funnel-storage';
 import { StoredFunnel } from '@/lib/typebot-types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Upload, Trash2, ExternalLink, Pencil, Check, X } from 'lucide-react';
+import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme-context';
+import ChatRenderer from '@/components/chat/ChatRenderer';
 
 const Admin = () => {
   const [funnels, setFunnels] = useState<StoredFunnel[]>(getAllFunnels());
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [newSlug, setNewSlug] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [previewFunnel, setPreviewFunnel] = useState<StoredFunnel | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   const refresh = () => setFunnels(getAllFunnels());
 
@@ -64,6 +70,25 @@ const Admin = () => {
     }
   };
 
+  // Preview mode
+  if (previewFunnel) {
+    return (
+      <div className="relative h-screen">
+        <div className="absolute top-3 right-3 z-50 flex gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="rounded-xl shadow-lg"
+            onClick={() => setPreviewFunnel(null)}
+          >
+            <X className="w-4 h-4 mr-1" /> Fechar preview
+          </Button>
+        </div>
+        <ChatRenderer key={previewFunnel.slug + '-' + Date.now()} flow={previewFunnel.flow} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
@@ -72,9 +97,17 @@ const Admin = () => {
             <h1 className="text-xl font-bold text-foreground">Painel de Funis</h1>
             <p className="text-sm text-muted-foreground">Gerencie seus funis do Typebot</p>
           </div>
-          <Link to="/">
-            <Button variant="ghost" size="sm">← Início</Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-9 w-9">
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+            <Link to="/">
+              <Button variant="ghost" size="sm">← Início</Button>
+            </Link>
+            <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive">
+              <LogOut className="w-4 h-4 mr-1" /> Sair
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -155,8 +188,17 @@ const Admin = () => {
                   </div>
 
                   <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setPreviewFunnel(funnel)}
+                      title="Simular funil"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
                     <Link to={`/f/${funnel.slug}`} target="_blank">
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir em nova aba">
                         <ExternalLink className="w-4 h-4" />
                       </Button>
                     </Link>
