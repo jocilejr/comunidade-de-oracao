@@ -144,12 +144,63 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
     engineRef.current = engine;
     collectEvents(engine.start());
     return () => { engineRef.current = null; eventQueueRef.current = []; };
-  }, [flow]);
+  }, [flow, collectEvents]);
+
+  useEffect(() => {
+    if (!window.visualViewport) return;
+
+    const visualViewport = window.visualViewport;
+    baseViewportHeightRef.current = window.innerHeight;
+
+    const updateKeyboardOffset = () => {
+      const baseHeight = baseViewportHeightRef.current || window.innerHeight;
+      const nextOffset = Math.max(0, Math.round(baseHeight - visualViewport.height - visualViewport.offsetTop));
+      setKeyboardOffset(nextOffset > 80 ? nextOffset : 0);
+    };
+
+    const handleOrientationChange = () => {
+      baseViewportHeightRef.current = window.innerHeight;
+      updateKeyboardOffset();
+    };
+
+    updateKeyboardOffset();
+    visualViewport.addEventListener('resize', updateKeyboardOffset);
+    visualViewport.addEventListener('scroll', updateKeyboardOffset);
+    window.addEventListener('orientationchange', handleOrientationChange);
+
+    return () => {
+      visualViewport.removeEventListener('resize', updateKeyboardOffset);
+      visualViewport.removeEventListener('scroll', updateKeyboardOffset);
+      window.removeEventListener('orientationchange', handleOrientationChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isComposerFocused) scrollToBottom();
+  }, [isComposerFocused, composerLift, scrollToBottom]);
+
+  const handleComposerFocusCapture = useCallback((event: FocusEvent<HTMLDivElement>) => {
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+      setIsComposerFocused(true);
+      scrollToBottom();
+    }
+  }, [scrollToBottom]);
+
+  const handleComposerBlurCapture = useCallback((event: FocusEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) return;
+
+    setTimeout(() => {
+      const active = document.activeElement;
+      const stillTyping = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+      if (!stillTyping) setIsComposerFocused(false);
+    }, 0);
+  }, []);
 
   const handleInputSubmit = useCallback((value: string) => {
     if (!engineRef.current || !inputBlock) return;
     setDisplayItems(prev => [...prev, { type: 'user', content: value }]);
     setInputBlock(null);
+    setIsComposerFocused(false);
     scrollToBottom();
     collectEvents(engineRef.current.continueAfterInput(inputBlock, value));
   }, [inputBlock, collectEvents, scrollToBottom]);
@@ -158,6 +209,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
     if (!engineRef.current || !choiceBlock) return;
     setDisplayItems(prev => [...prev, { type: 'user', content: value }]);
     setChoiceBlock(null);
+    setIsComposerFocused(false);
     scrollToBottom();
     collectEvents(engineRef.current.continueAfterChoice(choiceBlock, itemId, value));
   }, [choiceBlock, collectEvents, scrollToBottom]);
