@@ -85,7 +85,7 @@ const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?' }: AudioPlayerProps)
     <div className="flex items-center gap-[6px]">
       <audio ref={audioRef} src={src} preload="metadata" />
 
-      {/* Play/Pause - WhatsApp style circle */}
+      {/* Play/Pause */}
       <button
         onClick={toggle}
         className="w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-colors"
@@ -94,11 +94,11 @@ const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?' }: AudioPlayerProps)
         {playing ? <Pause className="w-[15px] h-[15px]" /> : <Play className="w-[15px] h-[15px] ml-[2px]" />}
       </button>
 
-      {/* Waveform - seekable */}
-      <div className="flex-1 flex flex-col gap-[3px] min-w-0">
+      {/* Waveform + duration row */}
+      <div className="flex-1 flex flex-col gap-[2px] min-w-0">
         <div
           ref={waveformRef}
-          className="flex items-center gap-[1.5px] h-[28px] cursor-pointer select-none"
+          className="flex items-center gap-[1.5px] h-[26px] cursor-pointer select-none"
           onClick={handleSeekStart}
           onMouseUp={handleSeekEnd}
         >
