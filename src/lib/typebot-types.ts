@@ -333,6 +333,8 @@ export interface StoredFunnel {
   name: string;
   uploadedAt: string;
   flow: TypebotFlow;
+  botName?: string;
+  botAvatar?: string;
 }
 
 // Chat message for rendering
