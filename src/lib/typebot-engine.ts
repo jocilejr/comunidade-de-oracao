@@ -534,8 +534,8 @@ export class TypebotEngine {
     if (t.includes('text') && (t.includes('bubble') || !t.includes('input'))) return 'text';
     if (t.includes('image') && t.includes('bubble')) return 'image';
     if (t.includes('image') && !t.includes('input')) return 'image';
-    if (t.includes('video')) return 'video';
-    if (t.includes('audio') && t.includes('bubble')) return 'audio';
+    if (t.includes('video') && !t.includes('input')) return 'video';
+    if (t.includes('audio') && !t.includes('input')) return 'audio';
     if (t.includes('embed')) return 'embed';
     if (t.includes('choice') && t.includes('picture')) return 'picturechoice';
     if (t.includes('choice') || t.includes('button')) return 'choice';
