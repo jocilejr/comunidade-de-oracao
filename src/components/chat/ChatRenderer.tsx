@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type FocusEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type FocusEvent } from 'react';
 import { TypebotFlow, ChatMessage, TypebotBlock, ChoiceInputBlock } from '@/lib/typebot-types';
 import { TypebotEngine, EngineEvent } from '@/lib/typebot-engine';
 import BotBubble from './BotBubble';

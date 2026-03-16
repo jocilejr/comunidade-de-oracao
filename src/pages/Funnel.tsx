@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { getFunnelBySlug } from '@/lib/funnel-storage';
 import ChatRenderer from '@/components/chat/ChatRenderer';
@@ -5,7 +6,7 @@ import { Link } from 'react-router-dom';
 
 const Funnel = () => {
   const { slug } = useParams<{ slug: string }>();
-  const funnel = slug ? getFunnelBySlug(slug) : undefined;
+  const funnel = useMemo(() => (slug ? getFunnelBySlug(slug) : undefined), [slug]);
 
   if (!funnel) {
     return (

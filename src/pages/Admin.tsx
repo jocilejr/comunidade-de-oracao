@@ -143,7 +143,7 @@ const Admin = () => {
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-foreground/80 rounded-b-2xl z-50" />
             <div className="h-full">
               <ChatRenderer
-                key={pf.slug + '-' + Date.now()}
+                key={pf.slug}
                 flow={pf.flow}
                 botName={pf.botName || undefined}
                 botAvatar={pf.botAvatar || undefined}
