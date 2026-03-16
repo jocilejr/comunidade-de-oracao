@@ -14,6 +14,7 @@ const AVATAR_GAP = 6;
 const AVATAR_SPACE = AVATAR_SIZE + AVATAR_GAP;
 
 const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true }: BotBubbleProps) => {
+  if (!message.mediaType && !message.content) return null;
   const time = new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   // Avatar only on last message of group, positioned at bottom
