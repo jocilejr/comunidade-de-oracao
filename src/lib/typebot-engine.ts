@@ -553,7 +553,7 @@ export class TypebotEngine {
     if (t === 'redirect') return 'redirect';
     if (t.includes('webhook')) return 'webhook';
     if (t === 'script') return 'script';
-    if (t === 'wait') return 'wait';
+    if (t === 'wait' || t.includes('wait')) return 'wait';
     if (t.includes('ab test')) return 'abtest';
     if (t === 'jump') return 'jump';
     if (t.includes('typebot link')) return 'typebotlink';
