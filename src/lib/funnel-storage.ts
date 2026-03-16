@@ -1,15 +1,69 @@
 import { StoredFunnel, TypebotFlow } from './typebot-types';
 
 const STORAGE_KEY = 'typebot-funnels';
+const STORAGE_BACKUP_KEY = `${STORAGE_KEY}-backup`;
 const GALLERY_KEY = 'avatar-gallery';
 
-export function getAllFunnels(): StoredFunnel[] {
+function parseStoredFunnels(raw: string | null): StoredFunnel[] | null {
+  if (raw === null) return [];
+
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (Array.isArray(parsed)) {
+      return parsed as StoredFunnel[];
+    }
+
+    // Compatibilidade com formatos antigos: { funnels: [...] }
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'funnels' in parsed &&
+      Array.isArray((parsed as { funnels: unknown }).funnels)
+    ) {
+      return (parsed as { funnels: StoredFunnel[] }).funnels;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function persistFunnels(funnels: StoredFunnel[]): void {
+  const payload = JSON.stringify(funnels);
+  localStorage.setItem(STORAGE_KEY, payload);
+  localStorage.setItem(STORAGE_BACKUP_KEY, payload);
+}
+
+function readFunnels(): StoredFunnel[] {
+  try {
+    const primaryRaw = localStorage.getItem(STORAGE_KEY);
+    const primary = parseStoredFunnels(primaryRaw);
+
+    if (primary !== null) {
+      if (primaryRaw !== null) {
+        localStorage.setItem(STORAGE_BACKUP_KEY, JSON.stringify(primary));
+      }
+      return primary;
+    }
+
+    const backupRaw = localStorage.getItem(STORAGE_BACKUP_KEY);
+    const backup = parseStoredFunnels(backupRaw);
+
+    if (backup !== null) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(backup));
+      return backup;
+    }
+
+    return [];
   } catch {
     return [];
   }
+}
+
+export function getAllFunnels(): StoredFunnel[] {
+  return readFunnels();
 }
 
 export function getFunnelBySlug(slug: string): StoredFunnel | undefined {
@@ -18,11 +72,12 @@ export function getFunnelBySlug(slug: string): StoredFunnel | undefined {
 
 export function saveFunnel(name: string, slug: string, flow: TypebotFlow): StoredFunnel {
   const funnels = getAllFunnels();
-  const existing = funnels.findIndex(f => f.slug === slug);
-  
+  const sanitizedSlug = slugify(slug) || `funil-${Date.now()}`;
+  const existing = funnels.findIndex(f => f.slug === sanitizedSlug);
+
   const funnel: StoredFunnel = {
     id: flow.id || crypto.randomUUID(),
-    slug: slugify(slug),
+    slug: sanitizedSlug,
     name,
     uploadedAt: new Date().toISOString(),
     flow,
@@ -34,36 +89,64 @@ export function saveFunnel(name: string, slug: string, flow: TypebotFlow): Store
     funnels.push(funnel);
   }
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(funnels));
+  try {
+    persistFunnels(funnels);
+  } catch {
+    throw new Error('Não foi possível salvar o funil no navegador.');
+  }
+
   return funnel;
 }
 
-export function deleteFunnel(slug: string): void {
-  const funnels = getAllFunnels().filter(f => f.slug !== slug);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(funnels));
+export function deleteFunnel(slug: string): boolean {
+  const funnels = getAllFunnels();
+  const nextFunnels = funnels.filter(f => f.slug !== slug);
+
+  if (nextFunnels.length === funnels.length) return false;
+
+  try {
+    persistFunnels(nextFunnels);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function updateFunnelSlug(oldSlug: string, newSlug: string): boolean {
   const funnels = getAllFunnels();
   const sanitized = slugify(newSlug);
-  if (funnels.some(f => f.slug === sanitized && f.slug !== oldSlug)) return false;
-  
+
+  if (!sanitized) return false;
+  if (sanitized !== oldSlug && funnels.some(f => f.slug === sanitized)) return false;
+
   const funnel = funnels.find(f => f.slug === oldSlug);
   if (!funnel) return false;
-  
+
   funnel.slug = sanitized;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(funnels));
-  return true;
+
+  try {
+    persistFunnels(funnels);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function updateFunnelProfile(slug: string, botName?: string, botAvatar?: string): boolean {
   const funnels = getAllFunnels();
   const funnel = funnels.find(f => f.slug === slug);
+
   if (!funnel) return false;
+
   funnel.botName = botName || '';
   funnel.botAvatar = botAvatar || '';
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(funnels));
-  return true;
+
+  try {
+    persistFunnels(funnels);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Avatar gallery
@@ -82,14 +165,25 @@ export function addToAvatarGallery(dataUrl: string): string[] {
     gallery.unshift(dataUrl);
     // Keep max 20 images
     if (gallery.length > 20) gallery.pop();
-    localStorage.setItem(GALLERY_KEY, JSON.stringify(gallery));
+
+    try {
+      localStorage.setItem(GALLERY_KEY, JSON.stringify(gallery));
+    } catch {
+      return gallery;
+    }
   }
   return gallery;
 }
 
 export function removeFromAvatarGallery(dataUrl: string): string[] {
   const gallery = getAvatarGallery().filter(g => g !== dataUrl);
-  localStorage.setItem(GALLERY_KEY, JSON.stringify(gallery));
+
+  try {
+    localStorage.setItem(GALLERY_KEY, JSON.stringify(gallery));
+  } catch {
+    return gallery;
+  }
+
   return gallery;
 }
 
@@ -105,9 +199,9 @@ export function slugify(text: string): string {
 export function validateTypebotJson(json: unknown): { valid: boolean; flow?: TypebotFlow; error?: string } {
   try {
     const obj = json as Record<string, unknown>;
-    
+
     let flow: TypebotFlow;
-    
+
     if (obj.groups && obj.edges) {
       flow = obj as unknown as TypebotFlow;
     } else if (obj.typebot && typeof obj.typebot === 'object') {

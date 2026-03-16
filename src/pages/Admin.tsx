@@ -49,8 +49,9 @@ const Admin = () => {
       saveFunnel(name, slug, result.flow);
       refresh();
       toast({ title: 'Funil adicionado!', description: `"${name}" disponível em /f/${slug}` });
-    } catch {
-      toast({ title: 'Erro', description: 'Arquivo JSON inválido.', variant: 'destructive' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Arquivo JSON inválido.';
+      toast({ title: 'Erro', description: message, variant: 'destructive' });
     }
   }, [toast]);
 
@@ -62,7 +63,12 @@ const Admin = () => {
   }, [handleFile]);
 
   const handleDelete = (slug: string, name: string) => {
-    deleteFunnel(slug);
+    const success = deleteFunnel(slug);
+    if (!success) {
+      toast({ title: 'Erro', description: 'Não foi possível remover o funil.', variant: 'destructive' });
+      return;
+    }
+
     refresh();
     if (previewFunnel?.slug === slug) setPreviewFunnel(null);
     toast({ title: 'Excluído', description: `"${name}" foi removido.` });
@@ -76,7 +82,7 @@ const Admin = () => {
       refresh();
       toast({ title: 'Slug atualizado!' });
     } else {
-      toast({ title: 'Erro', description: 'Slug já existe.', variant: 'destructive' });
+      toast({ title: 'Erro', description: 'Slug inválido ou já existe.', variant: 'destructive' });
     }
   };
 
@@ -88,11 +94,18 @@ const Admin = () => {
 
   const handleProfileSave = () => {
     if (!profileDialog) return;
-    updateFunnelProfile(profileDialog.slug, editName, editAvatar);
+
+    const success = updateFunnelProfile(profileDialog.slug, editName, editAvatar);
+    if (!success) {
+      toast({ title: 'Erro', description: 'Não foi possível salvar o perfil do funil.', variant: 'destructive' });
+      return;
+    }
+
     // Add to gallery if it's a data URL
     if (editAvatar && editAvatar.startsWith('data:')) {
       setGallery(addToAvatarGallery(editAvatar));
     }
+
     refresh();
     setProfileDialog(null);
     toast({ title: 'Perfil do funil salvo!' });
