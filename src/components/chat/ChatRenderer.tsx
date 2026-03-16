@@ -20,8 +20,15 @@ type DisplayItem =
   | { type: 'user'; content: string }
   | { type: 'typing' };
 
-const TYPING_DELAY = 600;
-const MESSAGE_DELAY = 400;
+const MIN_TYPING = 400;
+const MAX_TYPING = 2000;
+const MESSAGE_DELAY = 300;
+
+/** Typing delay proportional to text length, like real WhatsApp */
+function typingDelay(content: string): number {
+  const len = content.replace(/<[^>]*>/g, '').length;
+  return Math.min(MAX_TYPING, Math.max(MIN_TYPING, len * 15));
+}
 
 const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
@@ -56,7 +63,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
             setIsTyping(true);
             setDisplayItems(prev => [...prev, { type: 'typing' }]);
             scrollToBottom();
-            await delay(TYPING_DELAY);
+            await delay(typingDelay(msg.content || ''));
 
             setDisplayItems(prev => {
               const items = prev.filter(i => i.type !== 'typing');
@@ -105,7 +112,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
             message: {
               id: crypto.randomUUID(),
               type: 'bot',
-              content: `<p style="color: hsl(var(--destructive))">${event.message}</p>`,
+              content: `<p style=\"color: hsl(var(--destructive))\">${event.message}</p>`,
               timestamp: Date.now(),
             },
           }]);
@@ -160,9 +167,9 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
       {/* WhatsApp Header */}
       <header className="shrink-0 flex items-center gap-3 px-4 py-2 shadow-sm" style={{ backgroundColor: 'hsl(var(--wa-header))' }}>
         <ArrowLeft className="w-5 h-5 cursor-pointer" style={{ color: 'hsl(var(--wa-header-foreground))' }} />
-        <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ backgroundColor: 'hsl(var(--wa-header-foreground) / 0.2)', color: 'hsl(var(--wa-header-foreground))' }}>
+        <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 overflow-hidden" style={{ backgroundColor: 'hsl(var(--wa-header-foreground) / 0.2)', color: 'hsl(var(--wa-header-foreground))' }}>
           {botAvatar ? (
-            <img src={botAvatar} alt={name} className="w-full h-full rounded-full object-cover" />
+            <img src={botAvatar} alt={name} className="w-full h-full object-cover" />
           ) : (
             name.charAt(0).toUpperCase()
           )}
@@ -180,60 +187,62 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
         </div>
       </header>
 
-      {/* Chat area with wallpaper */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto wa-wallpaper px-3 py-4">
-        <div className="max-w-[600px] mx-auto space-y-[3px]">
-          {/* Date chip */}
-          <div className="flex justify-center mb-3">
-            <span className="text-[11px] px-3 py-1 rounded-lg shadow-sm" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))', color: 'hsl(var(--wa-time))' }}>
-              HOJE
-            </span>
-          </div>
-
-          {displayItems.map((item, i) => {
-            if (item.type === 'typing') return <TypingIndicator key={`typing-${i}`} />;
-            if (item.type === 'user') return <UserBubble key={`user-${i}`} content={item.content} />;
-            if (item.type === 'bot') {
-              const prev = displayItems[i - 1];
-              const next = displayItems[i + 1];
-              const isFirst = !prev || prev.type !== 'bot';
-              const isLast = !next || next.type !== 'bot';
-              return <BotBubble key={item.message.id} message={item.message} botAvatar={botAvatar} botName={name} isFirst={isFirst} isLast={isLast} />;
-            }
-            return null;
-          })}
-
-          {choiceBlock && (
-            <ChoiceButtons block={choiceBlock} onSelect={handleChoiceSelect} />
-          )}
-
-          {ended && (
-            <div className="flex justify-center py-3">
+      {/* Chat area — messages flow naturally, scroll when overflow */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto wa-wallpaper">
+        <div className="min-h-full flex flex-col justify-end px-3 py-3">
+          <div className="max-w-[600px] w-full mx-auto space-y-[3px]">
+            {/* Date chip */}
+            <div className="flex justify-center mb-2">
               <span className="text-[11px] px-3 py-1 rounded-lg shadow-sm" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))', color: 'hsl(var(--wa-time))' }}>
-                Conversa finalizada ✓
+                HOJE
               </span>
             </div>
-          )}
+
+            {displayItems.map((item, i) => {
+              if (item.type === 'typing') return <TypingIndicator key={`typing-${i}`} />;
+              if (item.type === 'user') return <UserBubble key={`user-${i}`} content={item.content} />;
+              if (item.type === 'bot') {
+                const prev = displayItems[i - 1];
+                const next = displayItems[i + 1];
+                const isFirst = !prev || prev.type !== 'bot';
+                const isLast = !next || next.type !== 'bot';
+                return <BotBubble key={item.message.id} message={item.message} botAvatar={botAvatar} botName={name} isFirst={isFirst} isLast={isLast} />;
+              }
+              return null;
+            })}
+
+            {choiceBlock && (
+              <ChoiceButtons block={choiceBlock} onSelect={handleChoiceSelect} />
+            )}
+
+            {ended && (
+              <div className="flex justify-center py-2">
+                <span className="text-[11px] px-3 py-1 rounded-lg shadow-sm" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))', color: 'hsl(var(--wa-time))' }}>
+                  Conversa finalizada ✓
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Input area — always visible when there's an active input block */}
-      {inputBlock && !ended && (
-        <div className="shrink-0">
+      {/* Input bar — always visible */}
+      <div className="shrink-0">
+        {inputBlock && !ended ? (
           <ChatInput block={inputBlock} onSubmit={handleInputSubmit} />
-        </div>
-      )}
-
-      {/* Show a disabled input bar when waiting (no active input) */}
-      {!inputBlock && !choiceBlock && !ended && (
-        <div className="shrink-0 px-2 py-2" style={{ backgroundColor: 'hsl(var(--wa-input-bar))' }}>
-          <div className="flex items-center gap-2 max-w-[600px] mx-auto">
-            <div className="flex-1 rounded-3xl px-4 py-2.5 opacity-50" style={{ backgroundColor: 'hsl(var(--wa-input-bg))' }}>
-              <span className="text-sm" style={{ color: 'hsl(var(--wa-time))' }}>Mensagem</span>
+        ) : (
+          <div className="px-2 py-2" style={{ backgroundColor: 'hsl(var(--wa-input-bar))' }}>
+            <div className="flex items-center gap-2 max-w-[600px] mx-auto">
+              <div className="flex-1 rounded-3xl px-4 py-2.5" style={{ backgroundColor: 'hsl(var(--wa-input-bg))', opacity: 0.5 }}>
+                <span className="text-sm" style={{ color: 'hsl(var(--wa-time))' }}>Mensagem</span>
+              </div>
+              <div className="shrink-0 h-10 w-10 rounded-full flex items-center justify-center opacity-50" style={{ backgroundColor: 'hsl(var(--wa-send))' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
