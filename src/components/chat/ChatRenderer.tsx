@@ -239,8 +239,8 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
         ref={scrollRef}
         className="flex-1 overflow-y-auto wa-wallpaper"
       >
-        <div className="min-h-full px-3 py-3 flex">
-          <div className="max-w-[600px] w-full mx-auto space-y-[3px] mt-auto">
+        <div className={`min-h-full px-3 py-3 flex${inputBlock ? '' : ' flex-col'}`}>
+          <div className={`max-w-[600px] w-full mx-auto space-y-[3px]${inputBlock ? ' mt-auto' : ''}`}>
             {/* Date chip */}
             <div className="flex justify-center mb-2">
               <span className="text-[11px] px-3 py-1 rounded-lg shadow-sm" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))', color: 'hsl(var(--wa-time))' }}>
