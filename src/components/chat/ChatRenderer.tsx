@@ -164,34 +164,6 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
     };
   }, [sessionFlow, collectEvents]);
 
-  useEffect(() => {
-    if (!window.visualViewport) return;
-
-    const visualViewport = window.visualViewport;
-    baseViewportHeightRef.current = window.innerHeight;
-
-    const updateKeyboardOffset = () => {
-      const baseHeight = baseViewportHeightRef.current || window.innerHeight;
-      const nextOffset = Math.max(0, Math.round(baseHeight - visualViewport.height - visualViewport.offsetTop));
-      setKeyboardOffset(nextOffset > 80 ? nextOffset : 0);
-    };
-
-    const handleOrientationChange = () => {
-      baseViewportHeightRef.current = window.innerHeight;
-      updateKeyboardOffset();
-    };
-
-    updateKeyboardOffset();
-    visualViewport.addEventListener('resize', updateKeyboardOffset);
-    visualViewport.addEventListener('scroll', updateKeyboardOffset);
-    window.addEventListener('orientationchange', handleOrientationChange);
-
-    return () => {
-      visualViewport.removeEventListener('resize', updateKeyboardOffset);
-      visualViewport.removeEventListener('scroll', updateKeyboardOffset);
-      window.removeEventListener('orientationchange', handleOrientationChange);
-    };
-  }, []);
 
   useEffect(() => {
     if (isComposerFocused) scrollToBottom();
