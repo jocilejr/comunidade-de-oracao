@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { StoredFunnel, TypebotFlow } from './typebot-types';
 
 // ---- Funnel CRUD (Supabase) ----
