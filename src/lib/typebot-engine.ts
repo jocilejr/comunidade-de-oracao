@@ -657,7 +657,7 @@ export class TypebotEngine {
   private richTextChildToHtml(child: RichTextChild): string {
     if (child.type === 'a' && child.url) {
       const inner = child.children?.map(c => this.richTextChildToHtml(c)).join('') || '';
-      return `<a href="${child.url}" target="_blank" rel="noopener" class="underline text-primary">${inner}</a>`;
+      return `<a href="${child.url}" target="_blank" rel="noopener" style="text-decoration:underline">${inner}</a>`;
     }
 
     if (child.children) {
