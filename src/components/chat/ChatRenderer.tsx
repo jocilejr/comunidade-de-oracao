@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type FocusEvent } from 'react';
 import { TypebotFlow, ChatMessage, TypebotBlock, ChoiceInputBlock } from '@/lib/typebot-types';
 import { TypebotEngine, EngineEvent } from '@/lib/typebot-engine';
 import BotBubble from './BotBubble';
@@ -37,10 +37,13 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   const [isTyping, setIsTyping] = useState(false);
   const [progress, setProgress] = useState(0);
   const [ended, setEnded] = useState(false);
+  const [isComposerFocused, setIsComposerFocused] = useState(false);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
   const engineRef = useRef<TypebotEngine | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const eventQueueRef = useRef<EngineEvent[]>([]);
   const processingRef = useRef(false);
+  const baseViewportHeightRef = useRef(0);
 
   const name = botName || flow.name || 'Assistente';
 
@@ -49,6 +52,8 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     }, 50);
   }, []);
+
+  const composerLift = isComposerFocused ? keyboardOffset : 0;
 
   const processEvents = useCallback(async () => {
     if (processingRef.current) return;
