@@ -26,7 +26,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated]);
 
   const login = (email: string, password: string): boolean => {
-    if (email === VALID_EMAIL && password === VALID_PASSWORD) {
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPassword = password.trim();
+    console.log('Login attempt:', { email: trimmedEmail, passwordLength: trimmedPassword.length });
+    if (trimmedEmail === VALID_EMAIL && trimmedPassword === VALID_PASSWORD) {
       setIsAuthenticated(true);
       return true;
     }
