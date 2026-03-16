@@ -132,19 +132,6 @@ const AudioPlayer = ({ src, time }: AudioPlayerProps) => {
         </div>
       </div>
 
-      {/* Avatar */}
-      <div
-        className="w-[40px] h-[40px] rounded-full overflow-hidden shrink-0"
-        style={{ backgroundColor: 'hsl(var(--wa-time) / 0.3)' }}
-      >
-        {avatarUrl ? (
-          <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs font-bold" style={{ color: 'hsl(var(--wa-bot-foreground))' }}>
-            {avatarFallback}
-          </div>
-        )}
-      </div>
     </div>
   );
 };
