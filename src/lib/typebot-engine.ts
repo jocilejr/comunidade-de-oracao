@@ -319,11 +319,11 @@ export class TypebotEngine {
 
         case 'wait': {
           const waitBlock = block as WaitBlock;
-          const raw = waitBlock.content?.secondsToWaitFor;
-          if (raw !== undefined && raw !== null) {
-            const seconds = Number(this.replaceVariables(String(raw)));
-            yield { type: 'wait', seconds: isNaN(seconds) ? 1 : seconds };
-          }
+          const raw = waitBlock.content?.secondsToWaitFor ?? (waitBlock.content as any)?.seconds ?? (waitBlock.content as any)?.delay;
+          const seconds = raw !== undefined && raw !== null
+            ? Number(this.replaceVariables(String(raw)))
+            : 1;
+          yield { type: 'wait', seconds: isNaN(seconds) || seconds <= 0 ? 1 : seconds };
           return 'continue';
         }
 
@@ -553,7 +553,7 @@ export class TypebotEngine {
     if (t === 'redirect') return 'redirect';
     if (t.includes('webhook')) return 'webhook';
     if (t === 'script') return 'script';
-    if (t === 'wait') return 'wait';
+    if (t === 'wait' || t.includes('wait')) return 'wait';
     if (t.includes('ab test')) return 'abtest';
     if (t === 'jump') return 'jump';
     if (t.includes('typebot link')) return 'typebotlink';
