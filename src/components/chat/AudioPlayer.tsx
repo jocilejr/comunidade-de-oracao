@@ -5,6 +5,7 @@ interface AudioPlayerProps {
   src: string;
   avatarUrl?: string;
   avatarFallback?: string;
+  time?: string;
 }
 
 // Generate random waveform data that looks like real WhatsApp
