@@ -38,7 +38,6 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   const [progress, setProgress] = useState(0);
   const [ended, setEnded] = useState(false);
   const [isComposerFocused, setIsComposerFocused] = useState(false);
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
   const engineRef = useRef<TypebotEngine | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const eventQueueRef = useRef<EngineEvent[]>([]);
