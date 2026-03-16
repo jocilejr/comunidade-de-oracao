@@ -655,6 +655,10 @@ export class TypebotEngine {
   }
 
   private richTextChildToHtml(child: RichTextChild): string {
+    if (child.type === 'inline-variable' && child.variableId) {
+      return this.getVariableValue(child.variableId);
+    }
+
     if (child.type === 'a' && child.url) {
       const inner = child.children?.map(c => this.richTextChildToHtml(c)).join('') || '';
       return `<a href="${child.url}" target="_blank" rel="noopener" style="text-decoration:underline">${inner}</a>`;
