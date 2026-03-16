@@ -54,16 +54,18 @@ export async function saveFunnel(name: string, slug: string, flow: TypebotFlow):
 
   const sanitizedSlug = slugify(slug) || `funil-${Date.now()}`;
 
+  const payload = {
+    user_id: user.id,
+    slug: sanitizedSlug,
+    name,
+    flow: flow as unknown as Json,
+    bot_name: '',
+    bot_avatar: '',
+  };
+
   const { data, error } = await supabase
     .from('funnels')
-    .upsert({
-      user_id: user.id,
-      slug: sanitizedSlug,
-      name,
-      flow: flow as unknown as Record<string, unknown>,
-      bot_name: '',
-      bot_avatar: '',
-    }, { onConflict: 'user_id,slug' })
+    .upsert(payload, { onConflict: 'user_id,slug' })
     .select()
     .single();
 
