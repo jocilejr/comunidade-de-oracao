@@ -278,11 +278,11 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
 
       {/* Input bar — always visible */}
       <div
-        className="shrink-0 transition-transform duration-300 ease-out"
-        style={{
-          transform: composerLift ? `translateY(-${composerLift}px)` : 'translateY(0)',
-          paddingBottom: 'env(safe-area-inset-bottom)',
-        }}
+        className="shrink-0"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        onFocusCapture={handleComposerFocusCapture}
+        onBlurCapture={handleComposerBlurCapture}
+      >
         onFocusCapture={handleComposerFocusCapture}
         onBlurCapture={handleComposerBlurCapture}
       >
