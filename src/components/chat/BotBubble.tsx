@@ -91,8 +91,6 @@ const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true 
         <div className="relative rounded-[7.5px] shadow-sm px-[8px] py-[8px]" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
           <AudioPlayer
             src={message.mediaUrl}
-            avatarUrl={botAvatar}
-            avatarFallback={(botName || 'B').charAt(0).toUpperCase()}
             time={time}
           />
         </div>

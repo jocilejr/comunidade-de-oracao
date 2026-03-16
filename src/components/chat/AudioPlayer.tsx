@@ -3,8 +3,6 @@ import { Play, Pause } from 'lucide-react';
 
 interface AudioPlayerProps {
   src: string;
-  avatarUrl?: string;
-  avatarFallback?: string;
   time?: string;
 }
 
@@ -21,7 +19,7 @@ const generateWaveform = (count: number): number[] => {
 
 const BARS = generateWaveform(46);
 
-const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?', time }: AudioPlayerProps) => {
+const AudioPlayer = ({ src, time }: AudioPlayerProps) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -134,19 +132,6 @@ const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?', time }: AudioPlayer
         </div>
       </div>
 
-      {/* Avatar */}
-      <div
-        className="w-[40px] h-[40px] rounded-full overflow-hidden shrink-0"
-        style={{ backgroundColor: 'hsl(var(--wa-time) / 0.3)' }}
-      >
-        {avatarUrl ? (
-          <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs font-bold" style={{ color: 'hsl(var(--wa-bot-foreground))' }}>
-            {avatarFallback}
-          </div>
-        )}
-      </div>
     </div>
   );
 };
