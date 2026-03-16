@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Play, Pause } from 'lucide-react';
 
 interface AudioPlayerProps {
@@ -7,19 +7,32 @@ interface AudioPlayerProps {
   avatarFallback?: string;
 }
 
-const BARS = [4, 7, 5, 9, 3, 8, 6, 10, 4, 7, 11, 5, 8, 3, 9, 6, 10, 4, 7, 5, 8, 11, 6, 3, 9, 7, 5, 10];
+// Generate random waveform data that looks like real WhatsApp
+const generateWaveform = (count: number): number[] => {
+  const bars: number[] = [];
+  for (let i = 0; i < count; i++) {
+    // Natural looking variation
+    const base = 0.15 + Math.random() * 0.7;
+    bars.push(base);
+  }
+  return bars;
+};
+
+const BARS = generateWaveform(46);
 
 const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?' }: AudioPlayerProps) => {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const waveformRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [seeking, setSeeking] = useState(false);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     const onMeta = () => setDuration(audio.duration);
-    const onTime = () => setCurrent(audio.currentTime);
+    const onTime = () => { if (!seeking) setCurrent(audio.currentTime); };
     const onEnd = () => setPlaying(false);
     audio.addEventListener('loadedmetadata', onMeta);
     audio.addEventListener('timeupdate', onTime);
@@ -29,7 +42,7 @@ const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?' }: AudioPlayerProps)
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('ended', onEnd);
     };
-  }, []);
+  }, [seeking]);
 
   const toggle = () => {
     const audio = audioRef.current;
@@ -37,6 +50,26 @@ const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?' }: AudioPlayerProps)
     if (playing) audio.pause();
     else audio.play();
     setPlaying(!playing);
+  };
+
+  const seek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const audio = audioRef.current;
+    const container = waveformRef.current;
+    if (!audio || !container || !duration) return;
+    const rect = container.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const pct = x / rect.width;
+    audio.currentTime = pct * duration;
+    setCurrent(audio.currentTime);
+  }, [duration]);
+
+  const handleSeekStart = (e: React.MouseEvent<HTMLDivElement>) => {
+    setSeeking(true);
+    seek(e);
+  };
+
+  const handleSeekEnd = () => {
+    setSeeking(false);
   };
 
   const fmt = (s: number) => {
@@ -49,48 +82,59 @@ const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?' }: AudioPlayerProps)
   const progress = duration > 0 ? currentTime / duration : 0;
 
   return (
-    <div className="flex items-center gap-2 min-w-[260px]">
+    <div className="flex items-center gap-[6px]">
       <audio ref={audioRef} src={src} preload="metadata" />
 
-      {/* Play/Pause */}
+      {/* Play/Pause - WhatsApp style circle */}
       <button
         onClick={toggle}
-        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-        style={{ backgroundColor: 'hsl(var(--wa-send))', color: 'hsl(var(--wa-header-foreground))' }}
+        className="w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 transition-colors"
+        style={{ backgroundColor: 'hsl(var(--wa-send))', color: '#fff' }}
       >
-        {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+        {playing ? <Pause className="w-[15px] h-[15px]" /> : <Play className="w-[15px] h-[15px] ml-[2px]" />}
       </button>
 
-      {/* Waveform */}
-      <div className="flex-1 flex flex-col gap-1">
-        <div className="flex items-end gap-[2px] h-6">
+      {/* Waveform - seekable */}
+      <div className="flex-1 flex flex-col gap-[3px] min-w-0">
+        <div
+          ref={waveformRef}
+          className="flex items-center gap-[1.5px] h-[28px] cursor-pointer select-none"
+          onClick={handleSeekStart}
+          onMouseUp={handleSeekEnd}
+        >
           {BARS.map((h, i) => {
             const barProgress = i / BARS.length;
             const isActive = barProgress <= progress;
             return (
               <div
                 key={i}
-                className={`waveform-bar ${playing ? 'playing' : ''}`}
+                className="rounded-full shrink-0"
                 style={{
-                  height: `${h * 10}%`,
-                  backgroundColor: isActive ? 'hsl(var(--wa-send))' : 'hsl(var(--wa-time))',
-                  animationDelay: playing ? `${i * 0.05}s` : undefined,
+                  width: '2.5px',
+                  height: `${Math.max(12, h * 100)}%`,
+                  backgroundColor: isActive
+                    ? 'hsl(var(--wa-send))'
+                    : 'hsl(var(--wa-time) / 0.5)',
+                  transition: 'background-color 0.1s',
                 }}
               />
             );
           })}
         </div>
-        <span className="text-[10px]" style={{ color: 'hsl(var(--wa-time))' }}>
+        <span className="text-[11px] leading-[15px]" style={{ color: 'hsl(var(--wa-time))' }}>
           {playing ? fmt(currentTime) : fmt(duration)}
         </span>
       </div>
 
       {/* Avatar */}
-      <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border-2" style={{ borderColor: 'hsl(var(--wa-send))' }}>
+      <div
+        className="w-[40px] h-[40px] rounded-full overflow-hidden shrink-0"
+        style={{ backgroundColor: 'hsl(var(--wa-time) / 0.3)' }}
+      >
         {avatarUrl ? (
           <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: 'hsl(var(--wa-time))', color: 'hsl(var(--wa-bot-foreground))' }}>
+          <div className="w-full h-full flex items-center justify-center text-xs font-bold" style={{ color: 'hsl(var(--wa-bot-foreground))' }}>
             {avatarFallback}
           </div>
         )}
