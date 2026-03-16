@@ -189,7 +189,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
 
       {/* Chat area — messages flow naturally, scroll when overflow */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto wa-wallpaper">
-        <div className="min-h-full flex flex-col justify-end px-3 py-3">
+        <div className="px-3 py-3">
           <div className="max-w-[600px] w-full mx-auto space-y-[3px]">
             {/* Date chip */}
             <div className="flex justify-center mb-2">
