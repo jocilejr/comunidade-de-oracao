@@ -1,12 +1,26 @@
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getFunnelBySlug } from '@/lib/funnel-storage';
+import { StoredFunnel } from '@/lib/typebot-types';
 import ChatRenderer from '@/components/chat/ChatRenderer';
 import { Link } from 'react-router-dom';
 
 const Funnel = () => {
   const { slug } = useParams<{ slug: string }>();
-  const funnel = useMemo(() => (slug ? getFunnelBySlug(slug) : undefined), [slug]);
+  const [funnel, setFunnel] = useState<StoredFunnel | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!slug) { setFunnel(null); return; }
+    getFunnelBySlug(slug).then(f => setFunnel(f ?? null));
+  }, [slug]);
+
+  if (funnel === undefined) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-muted-foreground text-sm">Carregando...</p>
+      </div>
+    );
+  }
 
   if (!funnel) {
     return (

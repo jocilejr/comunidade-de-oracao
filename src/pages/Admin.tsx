@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { getAllFunnels, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify } from '@/lib/funnel-storage';
 import { StoredFunnel } from '@/lib/typebot-types';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,24 +14,38 @@ import ChatRenderer from '@/components/chat/ChatRenderer';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const Admin = () => {
-  const [funnels, setFunnels] = useState<StoredFunnel[]>(getAllFunnels());
+  const [funnels, setFunnels] = useState<StoredFunnel[]>([]);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [newSlug, setNewSlug] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [previewFunnel, setPreviewFunnel] = useState<StoredFunnel | null>(null);
   const [activeTab, setActiveTab] = useState('funnels');
-  // Per-funnel profile editing
   const [profileDialog, setProfileDialog] = useState<StoredFunnel | null>(null);
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
-  const [gallery, setGallery] = useState<string[]>(getAvatarGallery());
+  const [gallery, setGallery] = useState<string[]>([]);
+  const [loadingFunnels, setLoadingFunnels] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
-  const refresh = () => setFunnels(getAllFunnels());
+  const refresh = useCallback(async () => {
+    const data = await getAllFunnels();
+    setFunnels(data);
+  }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoadingFunnels(true);
+      const [funnelData, galleryData] = await Promise.all([getAllFunnels(), getAvatarGallery()]);
+      setFunnels(funnelData);
+      setGallery(galleryData);
+      setLoadingFunnels(false);
+    };
+    load();
+  }, []);
 
   const handleFile = useCallback(async (file: File) => {
     try {
@@ -46,14 +60,14 @@ const Admin = () => {
 
       const name = result.flow.name || file.name.replace('.json', '');
       const slug = slugify(name) || 'funil-' + Date.now();
-      saveFunnel(name, slug, result.flow);
-      refresh();
+      await saveFunnel(name, slug, result.flow);
+      await refresh();
       toast({ title: 'Funil adicionado!', description: `"${name}" disponível em /f/${slug}` });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Arquivo JSON inválido.';
       toast({ title: 'Erro', description: message, variant: 'destructive' });
     }
-  }, [toast]);
+  }, [toast, refresh]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -62,24 +76,24 @@ const Admin = () => {
     if (file?.name.endsWith('.json')) handleFile(file);
   }, [handleFile]);
 
-  const handleDelete = (slug: string, name: string) => {
-    const success = deleteFunnel(slug);
+  const handleDelete = async (slug: string, name: string) => {
+    const success = await deleteFunnel(slug);
     if (!success) {
       toast({ title: 'Erro', description: 'Não foi possível remover o funil.', variant: 'destructive' });
       return;
     }
 
-    refresh();
+    await refresh();
     if (previewFunnel?.slug === slug) setPreviewFunnel(null);
     toast({ title: 'Excluído', description: `"${name}" foi removido.` });
   };
 
-  const handleSlugSave = (oldSlug: string) => {
+  const handleSlugSave = async (oldSlug: string) => {
     if (!newSlug.trim()) return;
-    const success = updateFunnelSlug(oldSlug, newSlug);
+    const success = await updateFunnelSlug(oldSlug, newSlug);
     if (success) {
       setEditingSlug(null);
-      refresh();
+      await refresh();
       toast({ title: 'Slug atualizado!' });
     } else {
       toast({ title: 'Erro', description: 'Slug inválido ou já existe.', variant: 'destructive' });
@@ -92,26 +106,26 @@ const Admin = () => {
     setEditAvatar(funnel.botAvatar || '');
   };
 
-  const handleProfileSave = () => {
+  const handleProfileSave = async () => {
     if (!profileDialog) return;
 
-    const success = updateFunnelProfile(profileDialog.slug, editName, editAvatar);
+    const success = await updateFunnelProfile(profileDialog.slug, editName, editAvatar);
     if (!success) {
       toast({ title: 'Erro', description: 'Não foi possível salvar o perfil do funil.', variant: 'destructive' });
       return;
     }
 
-    // Add to gallery if it's a data URL
     if (editAvatar && editAvatar.startsWith('data:')) {
-      setGallery(addToAvatarGallery(editAvatar));
+      const updated = await addToAvatarGallery(editAvatar);
+      setGallery(updated);
     }
 
-    refresh();
+    await refresh();
     setProfileDialog(null);
     toast({ title: 'Perfil do funil salvo!' });
   };
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -123,17 +137,19 @@ const Admin = () => {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const dataUrl = reader.result as string;
       setEditAvatar(dataUrl);
-      setGallery(addToAvatarGallery(dataUrl));
+      const updated = await addToAvatarGallery(dataUrl);
+      setGallery(updated);
     };
     reader.readAsDataURL(file);
     e.target.value = '';
   };
 
-  const handleGalleryRemove = (url: string) => {
-    setGallery(removeFromAvatarGallery(url));
+  const handleGalleryRemove = async (url: string) => {
+    const updated = await removeFromAvatarGallery(url);
+    setGallery(updated);
     if (editAvatar === url) setEditAvatar('');
   };
 
@@ -220,7 +236,7 @@ const Admin = () => {
               {theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
             </button>
             <button
-              onClick={logout}
+              onClick={() => logout()}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
             >
               <LogOut className="w-4 h-4" />
@@ -288,7 +304,11 @@ const Admin = () => {
                 />
 
                 {/* Funnel list */}
-                {funnels.length === 0 ? (
+                {loadingFunnels ? (
+                  <div className="text-center py-20">
+                    <p className="text-muted-foreground text-sm">Carregando funis...</p>
+                  </div>
+                ) : funnels.length === 0 ? (
                   <div className="text-center py-20">
                     <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                       <FolderOpen className="w-8 h-8 text-muted-foreground" />
