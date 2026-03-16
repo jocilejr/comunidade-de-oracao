@@ -45,7 +45,9 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   const processingRef = useRef(false);
   const baseViewportHeightRef = useRef(0);
 
-  const name = botName || flow.name || 'Assistente';
+  const flowSessionKey = `${flow.id || flow.name || 'flow'}-${flow.groups.length}-${flow.edges.length}`;
+  const sessionFlow = useMemo(() => flow, [flowSessionKey]);
+  const name = botName || sessionFlow.name || 'Assistente';
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
