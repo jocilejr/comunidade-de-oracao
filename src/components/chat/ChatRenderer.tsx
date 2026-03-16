@@ -42,7 +42,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const eventQueueRef = useRef<EngineEvent[]>([]);
   const processingRef = useRef(false);
-  const baseViewportHeightRef = useRef(0);
+  
 
   const flowSessionKey = `${flow.id || flow.name || 'flow'}-${flow.groups.length}-${flow.edges.length}`;
   const sessionFlow = useMemo(() => flow, [flowSessionKey]);
