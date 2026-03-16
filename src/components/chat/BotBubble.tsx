@@ -11,13 +11,13 @@ interface BotBubbleProps {
 
 const AVATAR_SIZE = 28;
 const AVATAR_GAP = 6;
-const AVATAR_SPACE = AVATAR_SIZE + AVATAR_GAP; // 34px indent for non-first messages
+const AVATAR_SPACE = AVATAR_SIZE + AVATAR_GAP;
 
 const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true }: BotBubbleProps) => {
   const time = new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  const bubbleRadius = isFirst ? 'rounded-[7.5px] rounded-tl-none' : 'rounded-[7.5px]';
 
-  const avatar = isFirst ? (
+  // Avatar only on last message of group, positioned at bottom
+  const avatar = isLast ? (
     <div
       className="shrink-0 rounded-full overflow-hidden self-end"
       style={{ width: AVATAR_SIZE, height: AVATAR_SIZE, marginRight: AVATAR_GAP }}
@@ -35,14 +35,13 @@ const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true 
     </div>
   ) : null;
 
-  const indent = !isFirst ? { marginLeft: `${AVATAR_SPACE}px` } : undefined;
+  const indent = !isLast ? { marginLeft: `${AVATAR_SPACE}px` } : undefined;
 
   if (message.mediaType === 'image' && message.mediaUrl) {
     return (
       <div className="flex items-end animate-in fade-in slide-in-from-bottom-2 duration-200 max-w-[85%]" style={indent}>
         {avatar}
-        <div className={`relative ${bubbleRadius} overflow-hidden shadow-sm`} style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
-          {isFirst && <BotTail />}
+        <div className="relative rounded-[7.5px] overflow-hidden shadow-sm" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
           <div className="p-[3px]">
             <img
               src={message.mediaUrl}
@@ -66,8 +65,7 @@ const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true 
     return (
       <div className="flex items-end animate-in fade-in slide-in-from-bottom-2 duration-200 max-w-[85%]" style={indent}>
         {avatar}
-        <div className={`relative ${bubbleRadius} overflow-hidden shadow-sm w-full`} style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
-          {isFirst && <BotTail />}
+        <div className="relative rounded-[7.5px] overflow-hidden shadow-sm w-full" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
           <div className="p-[3px]">
             {isYoutube ? (
               <iframe
@@ -90,8 +88,7 @@ const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true 
     return (
       <div className="flex items-end animate-in fade-in slide-in-from-bottom-2 duration-200 max-w-[75%]" style={indent}>
         {avatar}
-        <div className={`relative ${bubbleRadius} shadow-sm px-[8px] py-[8px]`} style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
-          {isFirst && <BotTail />}
+        <div className="relative rounded-[7.5px] shadow-sm px-[8px] py-[8px]" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
           <AudioPlayer
             src={message.mediaUrl}
             avatarUrl={botAvatar}
@@ -107,8 +104,7 @@ const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true 
     return (
       <div className="flex items-end animate-in fade-in slide-in-from-bottom-2 duration-200 max-w-[85%]" style={indent}>
         {avatar}
-        <div className={`relative ${bubbleRadius} overflow-hidden shadow-sm w-full`} style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
-          {isFirst && <BotTail />}
+        <div className="relative rounded-[7.5px] overflow-hidden shadow-sm w-full" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
           <div className="p-[3px]">
             <iframe src={message.mediaUrl} className="w-full h-52 rounded-[4.5px]" />
           </div>
@@ -122,8 +118,7 @@ const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true 
   return (
     <div className="flex items-end animate-in fade-in slide-in-from-bottom-2 duration-200 max-w-[85%]" style={indent}>
       {avatar}
-      <div className={`relative ${bubbleRadius} px-[9px] pt-[6px] pb-[8px] shadow-sm`} style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
-        {isFirst && <BotTail />}
+      <div className="relative rounded-[7.5px] px-[9px] pt-[6px] pb-[8px] shadow-sm" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
         {isFirst && botName && (
           <p className="text-[12.5px] font-medium mb-[2px]" style={{ color: 'hsl(var(--wa-send))' }}>
             {botName}
@@ -139,22 +134,6 @@ const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true 
     </div>
   );
 };
-
-/** WhatsApp incoming message tail (left side) */
-const BotTail = () => (
-  <svg
-    viewBox="0 0 8 13"
-    height="13"
-    width="8"
-    className="absolute -left-[8px] top-0"
-    style={{ color: 'hsl(var(--wa-bot-bubble))' }}
-  >
-    <path
-      d="M5 0h3v1H4c-.2 0-.4.1-.6.2L1 3.3C.2 4.1 0 5 0 6v7L3 7c.5-1.3 1.2-3 1.5-4 .2-.8.5-1.5.5-2V0z"
-      fill="currentColor"
-    />
-  </svg>
-);
 
 const TimeStamp = ({ time }: { time: string }) => (
   <div className="flex justify-end mt-[2px]">
