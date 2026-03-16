@@ -167,7 +167,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
 
   useEffect(() => {
     if (isComposerFocused) scrollToBottom();
-  }, [isComposerFocused, composerLift, scrollToBottom]);
+  }, [isComposerFocused, scrollToBottom]);
 
   const handleComposerFocusCapture = useCallback((event: FocusEvent<HTMLDivElement>) => {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
