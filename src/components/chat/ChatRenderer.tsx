@@ -20,8 +20,15 @@ type DisplayItem =
   | { type: 'user'; content: string }
   | { type: 'typing' };
 
-const TYPING_DELAY = 600;
-const MESSAGE_DELAY = 400;
+const MIN_TYPING = 400;
+const MAX_TYPING = 2000;
+const MESSAGE_DELAY = 300;
+
+/** Typing delay proportional to text length, like real WhatsApp */
+function typingDelay(content: string): number {
+  const len = content.replace(/<[^>]*>/g, '').length;
+  return Math.min(MAX_TYPING, Math.max(MIN_TYPING, len * 15));
+}
 
 const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
