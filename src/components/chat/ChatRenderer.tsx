@@ -237,8 +237,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
       {/* Chat area — messages flow naturally, scroll when overflow */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto wa-wallpaper transition-[padding-bottom] duration-300"
-        style={{ paddingBottom: composerLift ? `${composerLift}px` : undefined }}
+        className="flex-1 overflow-y-auto wa-wallpaper"
       >
         <div className="px-3 py-3">
           <div className="max-w-[600px] w-full mx-auto space-y-[3px]">
