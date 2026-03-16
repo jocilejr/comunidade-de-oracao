@@ -283,9 +283,6 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
         onFocusCapture={handleComposerFocusCapture}
         onBlurCapture={handleComposerBlurCapture}
       >
-        onFocusCapture={handleComposerFocusCapture}
-        onBlurCapture={handleComposerBlurCapture}
-      >
         {inputBlock && !ended ? (
           <ChatInput block={inputBlock} onSubmit={handleInputSubmit} />
         ) : (
