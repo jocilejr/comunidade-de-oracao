@@ -122,9 +122,16 @@ const AudioPlayer = ({ src, avatarUrl, avatarFallback = '?', time }: AudioPlayer
             );
           })}
         </div>
-        <span className="text-[11px] leading-[15px]" style={{ color: 'hsl(var(--wa-time))' }}>
-          {playing ? fmt(currentTime) : fmt(duration)}
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] leading-[15px]" style={{ color: 'hsl(var(--wa-time))' }}>
+            {playing ? fmt(currentTime) : fmt(duration)}
+          </span>
+          {time && (
+            <span className="text-[11px] leading-[15px]" style={{ color: 'hsl(var(--wa-time))' }}>
+              {time}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Avatar */}
