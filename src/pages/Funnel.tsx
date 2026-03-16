@@ -21,7 +21,7 @@ const Funnel = () => {
     );
   }
 
-  return <ChatRenderer flow={funnel.flow} />;
+  return <ChatRenderer flow={funnel.flow} botName={funnel.botName} botAvatar={funnel.botAvatar} />;
 };
 
 export default Funnel;

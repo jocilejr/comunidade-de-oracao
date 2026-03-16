@@ -1,6 +1,7 @@
 import { StoredFunnel, TypebotFlow } from './typebot-types';
 
 const STORAGE_KEY = 'typebot-funnels';
+const GALLERY_KEY = 'avatar-gallery';
 
 export function getAllFunnels(): StoredFunnel[] {
   try {
@@ -55,6 +56,43 @@ export function updateFunnelSlug(oldSlug: string, newSlug: string): boolean {
   return true;
 }
 
+export function updateFunnelProfile(slug: string, botName?: string, botAvatar?: string): boolean {
+  const funnels = getAllFunnels();
+  const funnel = funnels.find(f => f.slug === slug);
+  if (!funnel) return false;
+  funnel.botName = botName || '';
+  funnel.botAvatar = botAvatar || '';
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(funnels));
+  return true;
+}
+
+// Avatar gallery
+export function getAvatarGallery(): string[] {
+  try {
+    const data = localStorage.getItem(GALLERY_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addToAvatarGallery(dataUrl: string): string[] {
+  const gallery = getAvatarGallery();
+  if (!gallery.includes(dataUrl)) {
+    gallery.unshift(dataUrl);
+    // Keep max 20 images
+    if (gallery.length > 20) gallery.pop();
+    localStorage.setItem(GALLERY_KEY, JSON.stringify(gallery));
+  }
+  return gallery;
+}
+
+export function removeFromAvatarGallery(dataUrl: string): string[] {
+  const gallery = getAvatarGallery().filter(g => g !== dataUrl);
+  localStorage.setItem(GALLERY_KEY, JSON.stringify(gallery));
+  return gallery;
+}
+
 export function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -68,7 +106,6 @@ export function validateTypebotJson(json: unknown): { valid: boolean; flow?: Typ
   try {
     const obj = json as Record<string, unknown>;
     
-    // Typebot exports can have the flow at root or nested
     let flow: TypebotFlow;
     
     if (obj.groups && obj.edges) {
