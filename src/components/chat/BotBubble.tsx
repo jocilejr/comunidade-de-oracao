@@ -1,4 +1,5 @@
 import { ChatMessage } from '@/lib/typebot-types';
+import AudioPlayer from './AudioPlayer';
 
 interface BotBubbleProps {
   message: ChatMessage;
