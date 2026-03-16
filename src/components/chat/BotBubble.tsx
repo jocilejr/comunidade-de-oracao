@@ -1,10 +1,13 @@
 import { ChatMessage } from '@/lib/typebot-types';
+import AudioPlayer from './AudioPlayer';
 
 interface BotBubbleProps {
   message: ChatMessage;
+  botAvatar?: string;
+  botName?: string;
 }
 
-const BotBubble = ({ message }: BotBubbleProps) => {
+const BotBubble = ({ message, botAvatar, botName }: BotBubbleProps) => {
   const time = new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   if (message.mediaType === 'image' && message.mediaUrl) {
@@ -56,7 +59,11 @@ const BotBubble = ({ message }: BotBubbleProps) => {
     return (
       <div className="flex items-start animate-in fade-in slide-in-from-bottom-2 duration-200 max-w-[85%]">
         <div className="relative rounded-lg shadow-sm px-3 py-2" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
-          <audio src={message.mediaUrl} controls className="w-full min-w-[240px]" />
+          <AudioPlayer
+            src={message.mediaUrl}
+            avatarUrl={botAvatar}
+            avatarFallback={(botName || 'B').charAt(0).toUpperCase()}
+          />
           <TimeStamp time={time} />
         </div>
       </div>
