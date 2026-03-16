@@ -10,16 +10,33 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { login, isAuthenticated } = useAuth();
+  const [isSignup, setIsSignup] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { login, signup, isAuthenticated, loading: authLoading } = useAuth();
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-muted-foreground text-sm">Carregando...</p>
+      </div>
+    );
+  }
 
   if (isAuthenticated) return <Navigate to="/admin" replace />;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const success = login(email, password);
-    if (!success) {
-      setError('Email ou senha incorretos.');
+    setLoading(true);
+
+    const result = isSignup
+      ? await signup(email, password)
+      : await login(email, password);
+
+    setLoading(false);
+
+    if (!result.success) {
+      setError(result.error || (isSignup ? 'Erro ao criar conta.' : 'Email ou senha incorretos.'));
     }
   };
 
@@ -30,8 +47,10 @@ const Login = () => {
           <div className="mx-auto inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10">
             <Lock className="w-6 h-6 text-primary" />
           </div>
-          <CardTitle className="text-xl">Acesso Admin</CardTitle>
-          <p className="text-sm text-muted-foreground">Faça login para gerenciar seus funis</p>
+          <CardTitle className="text-xl">{isSignup ? 'Criar conta' : 'Acesso Admin'}</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {isSignup ? 'Crie sua conta para gerenciar funis' : 'Faça login para gerenciar seus funis'}
+          </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -53,10 +72,17 @@ const Login = () => {
               />
             </div>
             {error && <p className="text-destructive text-sm text-center">{error}</p>}
-            <Button type="submit" className="w-full rounded-xl font-semibold">
-              Entrar
+            <Button type="submit" className="w-full rounded-xl font-semibold" disabled={loading}>
+              {loading ? 'Aguarde...' : isSignup ? 'Criar conta' : 'Entrar'}
             </Button>
           </form>
+          <button
+            type="button"
+            onClick={() => { setIsSignup(!isSignup); setError(''); }}
+            className="w-full text-center text-sm text-muted-foreground hover:text-foreground mt-4 transition-colors"
+          >
+            {isSignup ? 'Já tem conta? Faça login' : 'Não tem conta? Criar agora'}
+          </button>
         </CardContent>
       </Card>
     </div>

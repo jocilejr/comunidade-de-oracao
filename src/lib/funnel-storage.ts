@@ -1,191 +1,160 @@
+import { supabase } from '@/integrations/supabase/client';
 import { StoredFunnel, TypebotFlow } from './typebot-types';
 
-const STORAGE_KEY = 'typebot-funnels';
-const STORAGE_BACKUP_KEY = `${STORAGE_KEY}-backup`;
-const GALLERY_KEY = 'avatar-gallery';
+// ---- Funnel CRUD (Supabase) ----
 
-function parseStoredFunnels(raw: string | null): StoredFunnel[] | null {
-  if (raw === null) return [];
+export async function getAllFunnels(): Promise<StoredFunnel[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
 
-  try {
-    const parsed = JSON.parse(raw) as unknown;
+  const { data, error } = await supabase
+    .from('funnels')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
 
-    if (Array.isArray(parsed)) {
-      return parsed as StoredFunnel[];
-    }
+  if (error || !data) return [];
 
-    // Compatibilidade com formatos antigos: { funnels: [...] }
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      'funnels' in parsed &&
-      Array.isArray((parsed as { funnels: unknown }).funnels)
-    ) {
-      return (parsed as { funnels: StoredFunnel[] }).funnels;
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
+  return data.map(row => ({
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    uploadedAt: row.created_at,
+    flow: row.flow as unknown as TypebotFlow,
+    botName: row.bot_name || '',
+    botAvatar: row.bot_avatar || '',
+  }));
 }
 
-function persistFunnels(funnels: StoredFunnel[]): void {
-  const payload = JSON.stringify(funnels);
-  localStorage.setItem(STORAGE_KEY, payload);
-  localStorage.setItem(STORAGE_BACKUP_KEY, payload);
-}
+export async function getFunnelBySlug(slug: string): Promise<StoredFunnel | undefined> {
+  const { data, error } = await supabase
+    .from('funnels')
+    .select('*')
+    .eq('slug', slug)
+    .limit(1)
+    .maybeSingle();
 
-function readFunnels(): StoredFunnel[] {
-  try {
-    const primaryRaw = localStorage.getItem(STORAGE_KEY);
-    const primary = parseStoredFunnels(primaryRaw);
+  if (error || !data) return undefined;
 
-    if (primary !== null) {
-      if (primaryRaw !== null) {
-        localStorage.setItem(STORAGE_BACKUP_KEY, JSON.stringify(primary));
-      }
-      return primary;
-    }
-
-    const backupRaw = localStorage.getItem(STORAGE_BACKUP_KEY);
-    const backup = parseStoredFunnels(backupRaw);
-
-    if (backup !== null) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(backup));
-      return backup;
-    }
-
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-export function getAllFunnels(): StoredFunnel[] {
-  return readFunnels();
-}
-
-export function getFunnelBySlug(slug: string): StoredFunnel | undefined {
-  return getAllFunnels().find(f => f.slug === slug);
-}
-
-export function saveFunnel(name: string, slug: string, flow: TypebotFlow): StoredFunnel {
-  const funnels = getAllFunnels();
-  const sanitizedSlug = slugify(slug) || `funil-${Date.now()}`;
-  const existing = funnels.findIndex(f => f.slug === sanitizedSlug);
-
-  const funnel: StoredFunnel = {
-    id: flow.id || crypto.randomUUID(),
-    slug: sanitizedSlug,
-    name,
-    uploadedAt: new Date().toISOString(),
-    flow,
+  return {
+    id: data.id,
+    slug: data.slug,
+    name: data.name,
+    uploadedAt: data.created_at,
+    flow: data.flow as unknown as TypebotFlow,
+    botName: data.bot_name || '',
+    botAvatar: data.bot_avatar || '',
   };
-
-  if (existing >= 0) {
-    funnels[existing] = funnel;
-  } else {
-    funnels.push(funnel);
-  }
-
-  try {
-    persistFunnels(funnels);
-  } catch {
-    throw new Error('Não foi possível salvar o funil no navegador.');
-  }
-
-  return funnel;
 }
 
-export function deleteFunnel(slug: string): boolean {
-  const funnels = getAllFunnels();
-  const nextFunnels = funnels.filter(f => f.slug !== slug);
+export async function saveFunnel(name: string, slug: string, flow: TypebotFlow): Promise<StoredFunnel> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Não autenticado.');
 
-  if (nextFunnels.length === funnels.length) return false;
+  const sanitizedSlug = slugify(slug) || `funil-${Date.now()}`;
 
-  try {
-    persistFunnels(nextFunnels);
-    return true;
-  } catch {
-    return false;
-  }
+  const { data, error } = await supabase
+    .from('funnels')
+    .upsert({
+      user_id: user.id,
+      slug: sanitizedSlug,
+      name,
+      flow: flow as unknown as Record<string, unknown>,
+      bot_name: '',
+      bot_avatar: '',
+    }, { onConflict: 'user_id,slug' })
+    .select()
+    .single();
+
+  if (error || !data) throw new Error('Não foi possível salvar o funil.');
+
+  return {
+    id: data.id,
+    slug: data.slug,
+    name: data.name,
+    uploadedAt: data.created_at,
+    flow: data.flow as unknown as TypebotFlow,
+    botName: data.bot_name || '',
+    botAvatar: data.bot_avatar || '',
+  };
 }
 
-export function updateFunnelSlug(oldSlug: string, newSlug: string): boolean {
-  const funnels = getAllFunnels();
+export async function deleteFunnel(slug: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { error } = await supabase
+    .from('funnels')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('slug', slug);
+
+  return !error;
+}
+
+export async function updateFunnelSlug(oldSlug: string, newSlug: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+
   const sanitized = slugify(newSlug);
-
   if (!sanitized) return false;
-  if (sanitized !== oldSlug && funnels.some(f => f.slug === sanitized)) return false;
 
-  const funnel = funnels.find(f => f.slug === oldSlug);
-  if (!funnel) return false;
+  const { error } = await supabase
+    .from('funnels')
+    .update({ slug: sanitized })
+    .eq('user_id', user.id)
+    .eq('slug', oldSlug);
 
-  funnel.slug = sanitized;
-
-  try {
-    persistFunnels(funnels);
-    return true;
-  } catch {
-    return false;
-  }
+  return !error;
 }
 
-export function updateFunnelProfile(slug: string, botName?: string, botAvatar?: string): boolean {
-  const funnels = getAllFunnels();
-  const funnel = funnels.find(f => f.slug === slug);
+export async function updateFunnelProfile(slug: string, botName?: string, botAvatar?: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
 
-  if (!funnel) return false;
+  const { error } = await supabase
+    .from('funnels')
+    .update({ bot_name: botName || '', bot_avatar: botAvatar || '' })
+    .eq('user_id', user.id)
+    .eq('slug', slug);
 
-  funnel.botName = botName || '';
-  funnel.botAvatar = botAvatar || '';
-
-  try {
-    persistFunnels(funnels);
-    return true;
-  } catch {
-    return false;
-  }
+  return !error;
 }
 
-// Avatar gallery
-export function getAvatarGallery(): string[] {
-  try {
-    const data = localStorage.getItem(GALLERY_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
+// ---- Avatar Gallery (Supabase) ----
+
+export async function getAvatarGallery(): Promise<string[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from('avatar_gallery')
+    .select('data_url')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (error || !data) return [];
+  return data.map(r => r.data_url);
 }
 
-export function addToAvatarGallery(dataUrl: string): string[] {
-  const gallery = getAvatarGallery();
-  if (!gallery.includes(dataUrl)) {
-    gallery.unshift(dataUrl);
-    // Keep max 20 images
-    if (gallery.length > 20) gallery.pop();
+export async function addToAvatarGallery(dataUrl: string): Promise<string[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
 
-    try {
-      localStorage.setItem(GALLERY_KEY, JSON.stringify(gallery));
-    } catch {
-      return gallery;
-    }
-  }
-  return gallery;
+  await supabase.from('avatar_gallery').insert({ user_id: user.id, data_url: dataUrl });
+  return getAvatarGallery();
 }
 
-export function removeFromAvatarGallery(dataUrl: string): string[] {
-  const gallery = getAvatarGallery().filter(g => g !== dataUrl);
+export async function removeFromAvatarGallery(dataUrl: string): Promise<string[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
 
-  try {
-    localStorage.setItem(GALLERY_KEY, JSON.stringify(gallery));
-  } catch {
-    return gallery;
-  }
-
-  return gallery;
+  await supabase.from('avatar_gallery').delete().eq('user_id', user.id).eq('data_url', dataUrl);
+  return getAvatarGallery();
 }
+
+// ---- Utilities ----
 
 export function slugify(text: string): string {
   return text
@@ -199,7 +168,6 @@ export function slugify(text: string): string {
 export function validateTypebotJson(json: unknown): { valid: boolean; flow?: TypebotFlow; error?: string } {
   try {
     const obj = json as Record<string, unknown>;
-
     let flow: TypebotFlow;
 
     if (obj.groups && obj.edges) {
