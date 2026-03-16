@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type FocusEvent } from 'react';
 import { TypebotFlow, ChatMessage, TypebotBlock, ChoiceInputBlock } from '@/lib/typebot-types';
 import { TypebotEngine, EngineEvent } from '@/lib/typebot-engine';
 import BotBubble from './BotBubble';
@@ -37,10 +37,13 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   const [isTyping, setIsTyping] = useState(false);
   const [progress, setProgress] = useState(0);
   const [ended, setEnded] = useState(false);
+  const [isComposerFocused, setIsComposerFocused] = useState(false);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
   const engineRef = useRef<TypebotEngine | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const eventQueueRef = useRef<EngineEvent[]>([]);
   const processingRef = useRef(false);
+  const baseViewportHeightRef = useRef(0);
 
   const name = botName || flow.name || 'Assistente';
 
@@ -49,6 +52,8 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     }, 50);
   }, []);
+
+  const composerLift = isComposerFocused ? keyboardOffset : 0;
 
   const processEvents = useCallback(async () => {
     if (processingRef.current) return;
@@ -139,12 +144,63 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
     engineRef.current = engine;
     collectEvents(engine.start());
     return () => { engineRef.current = null; eventQueueRef.current = []; };
-  }, [flow]);
+  }, [flow, collectEvents]);
+
+  useEffect(() => {
+    if (!window.visualViewport) return;
+
+    const visualViewport = window.visualViewport;
+    baseViewportHeightRef.current = window.innerHeight;
+
+    const updateKeyboardOffset = () => {
+      const baseHeight = baseViewportHeightRef.current || window.innerHeight;
+      const nextOffset = Math.max(0, Math.round(baseHeight - visualViewport.height - visualViewport.offsetTop));
+      setKeyboardOffset(nextOffset > 80 ? nextOffset : 0);
+    };
+
+    const handleOrientationChange = () => {
+      baseViewportHeightRef.current = window.innerHeight;
+      updateKeyboardOffset();
+    };
+
+    updateKeyboardOffset();
+    visualViewport.addEventListener('resize', updateKeyboardOffset);
+    visualViewport.addEventListener('scroll', updateKeyboardOffset);
+    window.addEventListener('orientationchange', handleOrientationChange);
+
+    return () => {
+      visualViewport.removeEventListener('resize', updateKeyboardOffset);
+      visualViewport.removeEventListener('scroll', updateKeyboardOffset);
+      window.removeEventListener('orientationchange', handleOrientationChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isComposerFocused) scrollToBottom();
+  }, [isComposerFocused, composerLift, scrollToBottom]);
+
+  const handleComposerFocusCapture = useCallback((event: FocusEvent<HTMLDivElement>) => {
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+      setIsComposerFocused(true);
+      scrollToBottom();
+    }
+  }, [scrollToBottom]);
+
+  const handleComposerBlurCapture = useCallback((event: FocusEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) return;
+
+    setTimeout(() => {
+      const active = document.activeElement;
+      const stillTyping = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+      if (!stillTyping) setIsComposerFocused(false);
+    }, 0);
+  }, []);
 
   const handleInputSubmit = useCallback((value: string) => {
     if (!engineRef.current || !inputBlock) return;
     setDisplayItems(prev => [...prev, { type: 'user', content: value }]);
     setInputBlock(null);
+    setIsComposerFocused(false);
     scrollToBottom();
     collectEvents(engineRef.current.continueAfterInput(inputBlock, value));
   }, [inputBlock, collectEvents, scrollToBottom]);
@@ -153,12 +209,13 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
     if (!engineRef.current || !choiceBlock) return;
     setDisplayItems(prev => [...prev, { type: 'user', content: value }]);
     setChoiceBlock(null);
+    setIsComposerFocused(false);
     scrollToBottom();
     collectEvents(engineRef.current.continueAfterChoice(choiceBlock, itemId, value));
   }, [choiceBlock, collectEvents, scrollToBottom]);
 
   return (
-    <div className="flex flex-col h-screen max-h-screen">
+    <div className="flex flex-col h-[100dvh] max-h-[100dvh] overflow-hidden">
       {/* Progress */}
       <div className="shrink-0">
         <Progress value={progress} className="h-0.5 rounded-none [&>div]:bg-[hsl(var(--wa-progress))]" />
@@ -188,7 +245,11 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
       </header>
 
       {/* Chat area — messages flow naturally, scroll when overflow */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto wa-wallpaper">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto wa-wallpaper transition-[padding-bottom] duration-300"
+        style={{ paddingBottom: composerLift ? `${composerLift}px` : undefined }}
+      >
         <div className="px-3 py-3">
           <div className="max-w-[600px] w-full mx-auto space-y-[3px]">
             {/* Date chip */}
@@ -227,7 +288,15 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
       </div>
 
       {/* Input bar — always visible */}
-      <div className="shrink-0">
+      <div
+        className="shrink-0 transition-transform duration-300 ease-out"
+        style={{
+          transform: composerLift ? `translateY(-${composerLift}px)` : 'translateY(0)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}
+        onFocusCapture={handleComposerFocusCapture}
+        onBlurCapture={handleComposerBlurCapture}
+      >
         {inputBlock && !ended ? (
           <ChatInput block={inputBlock} onSubmit={handleInputSubmit} />
         ) : (
