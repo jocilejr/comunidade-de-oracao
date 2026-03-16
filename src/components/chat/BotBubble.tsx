@@ -3,6 +3,8 @@ import AudioPlayer from './AudioPlayer';
 
 interface BotBubbleProps {
   message: ChatMessage;
+  botAvatar?: string;
+  botName?: string;
 }
 
 const BotBubble = ({ message }: BotBubbleProps) => {
