@@ -54,7 +54,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
     }, 50);
   }, []);
 
-  const composerLift = isComposerFocused ? keyboardOffset : 0;
+  
 
   const processEvents = useCallback(async () => {
     if (processingRef.current) return;
