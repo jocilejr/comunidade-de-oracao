@@ -132,18 +132,11 @@
   background-size: 300px 300px;
 }
 
-/* Waveform bars */
-@keyframes waveform-play {
-  0%, 100% { height: 30%; }
-  50% { height: 100%; }
+/* Smooth scrollbar for chat */
+.wa-wallpaper::-webkit-scrollbar {
+  width: 6px;
 }
-
-.waveform-bar {
-  @apply bg-[hsl(var(--wa-time))] rounded-full;
-  width: 3px;
-  transition: height 0.2s ease;
-}
-
-.waveform-bar.playing {
-  animation: waveform-play 0.8s ease-in-out infinite;
+.wa-wallpaper::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--wa-time) / 0.3);
+  border-radius: 3px;
 }
