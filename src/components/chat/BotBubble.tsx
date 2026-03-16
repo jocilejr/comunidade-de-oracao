@@ -60,15 +60,15 @@ const BotBubble = ({ message, botAvatar, botName }: BotBubbleProps) => {
   if (message.mediaType === 'audio' && message.mediaUrl) {
     return (
       <div className="flex items-start animate-in fade-in slide-in-from-bottom-2 duration-200 max-w-[75%]">
-        <div className="relative rounded-[7.5px] shadow-sm px-[6px] py-[5px]" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
+        <div className="relative rounded-[7.5px] shadow-sm px-[8px] py-[8px]" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
           <BotTail />
           <AudioPlayer
             src={message.mediaUrl}
             avatarUrl={botAvatar}
             avatarFallback={(botName || 'B').charAt(0).toUpperCase()}
           />
-          {/* Time aligned to bottom-right, same line as audio duration */}
-          <div className="flex justify-end -mt-[14px] mr-[2px]">
+          {/* Time on the left, same row as duration */}
+          <div className="flex justify-start mt-[1px] ml-[40px]">
             <span className="text-[11px] leading-[15px]" style={{ color: 'hsl(var(--wa-time))' }}>{time}</span>
           </div>
         </div>
