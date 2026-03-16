@@ -1,30 +1,17 @@
 import { useState, useRef, useCallback } from 'react';
-import { getAllFunnels, saveFunnel, deleteFunnel, updateFunnelSlug, validateTypebotJson, slugify } from '@/lib/funnel-storage';
+import { getAllFunnels, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify } from '@/lib/funnel-storage';
 import { StoredFunnel } from '@/lib/typebot-types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, User, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone } from 'lucide-react';
+import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, User, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import ChatRenderer from '@/components/chat/ChatRenderer';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
-interface BotProfile {
-  name: string;
-  avatarUrl: string;
-}
-
-const loadBotProfile = (): BotProfile => {
-  try {
-    const raw = localStorage.getItem('bot-profile');
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return { name: '', avatarUrl: '' };
-};
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const Admin = () => {
   const [funnels, setFunnels] = useState<StoredFunnel[]>(getAllFunnels());
@@ -32,8 +19,12 @@ const Admin = () => {
   const [newSlug, setNewSlug] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [previewFunnel, setPreviewFunnel] = useState<StoredFunnel | null>(null);
-  const [botProfile, setBotProfile] = useState<BotProfile>(loadBotProfile);
   const [activeTab, setActiveTab] = useState('funnels');
+  // Per-funnel profile editing
+  const [profileDialog, setProfileDialog] = useState<StoredFunnel | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editAvatar, setEditAvatar] = useState('');
+  const [gallery, setGallery] = useState<string[]>(getAvatarGallery());
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -73,6 +64,7 @@ const Admin = () => {
   const handleDelete = (slug: string, name: string) => {
     deleteFunnel(slug);
     refresh();
+    if (previewFunnel?.slug === slug) setPreviewFunnel(null);
     toast({ title: 'Excluído', description: `"${name}" foi removido.` });
   };
 
@@ -88,9 +80,22 @@ const Admin = () => {
     }
   };
 
+  const openProfileDialog = (funnel: StoredFunnel) => {
+    setProfileDialog(funnel);
+    setEditName(funnel.botName || '');
+    setEditAvatar(funnel.botAvatar || '');
+  };
+
   const handleProfileSave = () => {
-    localStorage.setItem('bot-profile', JSON.stringify(botProfile));
-    toast({ title: 'Perfil salvo!' });
+    if (!profileDialog) return;
+    updateFunnelProfile(profileDialog.slug, editName, editAvatar);
+    // Add to gallery if it's a data URL
+    if (editAvatar && editAvatar.startsWith('data:')) {
+      setGallery(addToAvatarGallery(editAvatar));
+    }
+    refresh();
+    setProfileDialog(null);
+    toast({ title: 'Perfil do funil salvo!' });
   };
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,37 +112,41 @@ const Admin = () => {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      setBotProfile(p => ({ ...p, avatarUrl: dataUrl }));
+      setEditAvatar(dataUrl);
+      setGallery(addToAvatarGallery(dataUrl));
     };
     reader.readAsDataURL(file);
     e.target.value = '';
   };
 
+  const handleGalleryRemove = (url: string) => {
+    setGallery(removeFromAvatarGallery(url));
+    if (editAvatar === url) setEditAvatar('');
+  };
+
   // Preview mode — mobile frame
   if (previewFunnel) {
+    const pf = funnels.find(f => f.slug === previewFunnel.slug) || previewFunnel;
     return (
       <div className="flex items-center justify-center h-screen bg-muted/50">
         <div className="relative">
-          {/* Close button */}
           <div className="absolute -top-14 left-0 right-0 flex items-center justify-between z-50">
             <div className="flex items-center gap-2">
               <Smartphone className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">{previewFunnel.name}</span>
+              <span className="text-sm font-medium text-foreground">{pf.name}</span>
             </div>
             <Button variant="secondary" size="sm" className="rounded-xl shadow-lg" onClick={() => setPreviewFunnel(null)}>
               <X className="w-4 h-4 mr-1" /> Fechar
             </Button>
           </div>
-          {/* Phone frame */}
           <div className="w-[375px] h-[667px] rounded-[2.5rem] border-[6px] border-foreground/80 overflow-hidden shadow-2xl bg-background relative">
-            {/* Notch */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-foreground/80 rounded-b-2xl z-50" />
             <div className="h-full">
               <ChatRenderer
-                key={previewFunnel.slug + '-' + Date.now()}
-                flow={previewFunnel.flow}
-                botName={botProfile.name || undefined}
-                botAvatar={botProfile.avatarUrl || undefined}
+                key={pf.slug + '-' + Date.now()}
+                flow={pf.flow}
+                botName={pf.botName || undefined}
+                botAvatar={pf.botAvatar || undefined}
               />
             </div>
           </div>
@@ -148,11 +157,9 @@ const Admin = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sidebar + Main Layout */}
       <div className="flex h-screen">
         {/* Sidebar */}
         <aside className="w-64 border-r border-border bg-card flex flex-col shrink-0">
-          {/* Logo area */}
           <div className="px-5 py-5 border-b border-border">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary text-primary-foreground font-bold text-sm">
@@ -165,65 +172,33 @@ const Admin = () => {
             </div>
           </div>
 
-          {/* Navigation */}
           <nav className="flex-1 px-3 py-4 space-y-1">
-            <button
-              onClick={() => setActiveTab('funnels')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === 'funnels'
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              <FolderOpen className="w-4 h-4" />
-              Funis
-              {funnels.length > 0 && (
-                <span className="ml-auto text-[11px] font-semibold bg-primary/15 text-primary px-2 py-0.5 rounded-full">
-                  {funnels.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === 'settings'
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              <Settings className="w-4 h-4" />
-              Configurações
-            </button>
-            <button
-              onClick={() => setActiveTab('stats')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === 'stats'
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              Estatísticas
-            </button>
+            {[
+              { id: 'funnels', label: 'Funis', icon: FolderOpen, badge: funnels.length > 0 ? funnels.length : undefined },
+              { id: 'gallery', label: 'Galeria de Avatares', icon: ImagePlus, badge: gallery.length > 0 ? gallery.length : undefined },
+              { id: 'stats', label: 'Estatísticas', icon: BarChart3 },
+            ].map(item => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === item.id
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <item.icon className="w-4 h-4" />
+                {item.label}
+                {item.badge !== undefined && (
+                  <span className="ml-auto text-[11px] font-semibold bg-primary/15 text-primary px-2 py-0.5 rounded-full">
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            ))}
           </nav>
 
-          {/* Bottom actions */}
           <div className="px-3 py-4 border-t border-border space-y-1">
-            <div className="flex items-center gap-2 px-3 py-2">
-              <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-primary shrink-0">
-                {botProfile.avatarUrl ? (
-                  <img src={botProfile.avatarUrl} alt="Bot" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-muted">
-                    <User className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-foreground truncate">{botProfile.name || 'Bot'}</p>
-                <p className="text-[10px] text-muted-foreground">Chatbot</p>
-              </div>
-            </div>
             <button
               onClick={toggleTheme}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -243,18 +218,17 @@ const Admin = () => {
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto">
-          {/* Top bar */}
           <header className="sticky top-0 z-10 border-b border-border bg-card/80 backdrop-blur-sm px-8 py-4">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-foreground">
                   {activeTab === 'funnels' && 'Funis'}
-                  {activeTab === 'settings' && 'Configurações do Bot'}
+                  {activeTab === 'gallery' && 'Galeria de Avatares'}
                   {activeTab === 'stats' && 'Estatísticas'}
                 </h2>
                 <p className="text-sm text-muted-foreground">
                   {activeTab === 'funnels' && 'Gerencie seus funis de conversação'}
-                  {activeTab === 'settings' && 'Personalize nome, avatar e aparência'}
+                  {activeTab === 'gallery' && 'Fotos de perfil importadas para reutilizar nos funis'}
                   {activeTab === 'stats' && 'Acompanhe o desempenho dos funis'}
                 </p>
               </div>
@@ -311,21 +285,36 @@ const Admin = () => {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                        Todos os funis
-                      </h3>
-                    </div>
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                      Todos os funis
+                    </h3>
                     {funnels.map(funnel => (
                       <Card key={funnel.slug} className="group hover:shadow-md transition-all hover:border-primary/20">
                         <CardContent className="flex items-center gap-4 py-4 px-5">
-                          {/* Icon */}
-                          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                            <Bot className="w-5 h-5 text-primary" />
+                          {/* Funnel avatar */}
+                          <div
+                            className="w-11 h-11 rounded-full overflow-hidden border-2 border-primary/20 shrink-0 cursor-pointer hover:border-primary/50 transition-colors"
+                            onClick={() => openProfileDialog(funnel)}
+                            title="Configurar perfil do bot"
+                          >
+                            {funnel.botAvatar ? (
+                              <img src={funnel.botAvatar} alt={funnel.botName || funnel.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-primary/10">
+                                <CircleUser className="w-6 h-6 text-primary/50" />
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-foreground truncate">{funnel.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-foreground truncate">{funnel.name}</p>
+                              {funnel.botName && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                                  Bot: {funnel.botName}
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-1 mt-0.5">
                               {editingSlug === funnel.slug ? (
                                 <div className="flex items-center gap-1">
@@ -363,6 +352,9 @@ const Admin = () => {
                           </div>
 
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => openProfileDialog(funnel)} title="Perfil do bot">
+                              <CircleUser className="w-4 h-4" />
+                            </Button>
                             <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setPreviewFunnel(funnel)} title="Simular funil">
                               <Eye className="w-4 h-4" />
                             </Button>
@@ -388,80 +380,39 @@ const Admin = () => {
               </div>
             )}
 
-            {/* ===== SETTINGS TAB ===== */}
-            {activeTab === 'settings' && (
-              <div className="max-w-2xl space-y-6">
-                {/* Avatar section */}
-                <Card>
-                  <CardContent className="p-6">
-                    <h3 className="text-sm font-semibold text-foreground mb-4">Foto de perfil do bot</h3>
-                    <div className="flex items-center gap-6">
-                      <div
-                        className="w-20 h-20 rounded-full overflow-hidden border-4 border-primary/20 shrink-0 cursor-pointer hover:border-primary/50 transition-colors relative group"
-                        onClick={() => avatarRef.current?.click()}
-                      >
-                        {botProfile.avatarUrl ? (
-                          <>
-                            <img src={botProfile.avatarUrl} alt="Bot" className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
-                              <Image className="w-5 h-5 text-white" />
-                            </div>
-                          </>
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-muted group-hover:bg-muted/80 transition-colors">
-                            <Image className="w-8 h-8 text-muted-foreground" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="space-y-2">
-                        <Button variant="outline" size="sm" onClick={() => avatarRef.current?.click()}>
-                          <Upload className="w-4 h-4 mr-2" /> Fazer upload
-                        </Button>
-                        {botProfile.avatarUrl && (
-                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setBotProfile(p => ({ ...p, avatarUrl: '' }))}>
-                            Remover foto
-                          </Button>
-                        )}
-                        <p className="text-[11px] text-muted-foreground">JPG, PNG ou WebP. Máx 2MB.</p>
-                      </div>
-                    </div>
-                    <input
-                      ref={avatarRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleAvatarUpload}
-                    />
-                  </CardContent>
-                </Card>
+            {/* ===== GALLERY TAB ===== */}
+            {activeTab === 'gallery' && (
+              <div className="max-w-4xl space-y-6">
+                <div className="flex items-center gap-3">
+                  <Button variant="outline" onClick={() => avatarRef.current?.click()}>
+                    <Upload className="w-4 h-4 mr-2" /> Importar nova foto
+                  </Button>
+                  <p className="text-xs text-muted-foreground">JPG, PNG ou WebP. Máx 2MB. As fotos ficam salvas para reutilizar em qualquer funil.</p>
+                </div>
 
-                {/* Name + URL section */}
-                <Card>
-                  <CardContent className="p-6 space-y-4">
-                    <h3 className="text-sm font-semibold text-foreground">Informações do bot</h3>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="bot-name" className="text-xs text-muted-foreground">Nome exibido no chat</Label>
-                      <Input
-                        id="bot-name"
-                        placeholder="Ex: Assistente Virtual"
-                        value={botProfile.name}
-                        onChange={e => setBotProfile(p => ({ ...p, name: e.target.value }))}
-                      />
+                {gallery.length === 0 ? (
+                  <div className="text-center py-20">
+                    <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                      <ImagePlus className="w-8 h-8 text-muted-foreground" />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="bot-avatar-url" className="text-xs text-muted-foreground">Ou cole a URL da foto</Label>
-                      <Input
-                        id="bot-avatar-url"
-                        placeholder="https://exemplo.com/avatar.png"
-                        value={botProfile.avatarUrl.startsWith('data:') ? '' : botProfile.avatarUrl}
-                        onChange={e => setBotProfile(p => ({ ...p, avatarUrl: e.target.value }))}
-                      />
-                    </div>
-                    <Button onClick={handleProfileSave} className="mt-2">
-                      <Save className="w-4 h-4 mr-2" /> Salvar configurações
-                    </Button>
-                  </CardContent>
-                </Card>
+                    <p className="text-muted-foreground text-sm font-medium">Nenhuma foto na galeria</p>
+                    <p className="text-muted-foreground text-xs mt-1">Importe fotos aqui ou durante a configuração do perfil de um funil.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+                    {gallery.map((url, i) => (
+                      <div key={i} className="relative group aspect-square rounded-xl overflow-hidden border-2 border-border hover:border-primary/40 transition-colors">
+                        <img src={url} alt={`Avatar ${i + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => handleGalleryRemove(url)}
+                          className="absolute top-1 right-1 w-6 h-6 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -510,7 +461,18 @@ const Admin = () => {
                         <tbody>
                           {funnels.map(f => (
                             <tr key={f.slug} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                              <td className="px-5 py-3 font-medium text-foreground">{f.name}</td>
+                              <td className="px-5 py-3 font-medium text-foreground">
+                                <div className="flex items-center gap-2">
+                                  {f.botAvatar ? (
+                                    <img src={f.botAvatar} className="w-6 h-6 rounded-full object-cover" />
+                                  ) : (
+                                    <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+                                      <CircleUser className="w-3.5 h-3.5 text-muted-foreground" />
+                                    </div>
+                                  )}
+                                  {f.name}
+                                </div>
+                              </td>
                               <td className="px-5 py-3 font-mono text-muted-foreground text-xs">/f/{f.slug}</td>
                               <td className="px-5 py-3 text-muted-foreground">{f.flow.groups.length}</td>
                               <td className="px-5 py-3 text-muted-foreground">{f.flow.groups.reduce((s, g) => s + g.blocks.length, 0)}</td>
@@ -527,6 +489,104 @@ const Admin = () => {
           </div>
         </main>
       </div>
+
+      {/* Hidden file input for gallery uploads */}
+      <input
+        ref={avatarRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleAvatarUpload}
+      />
+
+      {/* Per-funnel profile dialog */}
+      <Dialog open={!!profileDialog} onOpenChange={open => { if (!open) setProfileDialog(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CircleUser className="w-5 h-5" />
+              Perfil do Bot — {profileDialog?.name}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 pt-2">
+            {/* Current avatar preview */}
+            <div className="flex items-center gap-4">
+              <div
+                className="w-16 h-16 rounded-full overflow-hidden border-2 border-primary/20 shrink-0 cursor-pointer hover:border-primary/50 transition-colors relative group"
+                onClick={() => avatarRef.current?.click()}
+              >
+                {editAvatar ? (
+                  <>
+                    <img src={editAvatar} alt="Avatar" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
+                      <Image className="w-4 h-4 text-white" />
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-muted group-hover:bg-muted/80 transition-colors">
+                    <Image className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Button variant="outline" size="sm" onClick={() => avatarRef.current?.click()}>
+                  <Upload className="w-3.5 h-3.5 mr-1.5" /> Upload
+                </Button>
+                {editAvatar && (
+                  <Button variant="ghost" size="sm" className="text-destructive text-xs" onClick={() => setEditAvatar('')}>
+                    Remover
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Gallery picker */}
+            {gallery.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Ou selecione da galeria</Label>
+                <div className="grid grid-cols-6 gap-2 max-h-32 overflow-y-auto">
+                  {gallery.map((url, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setEditAvatar(url)}
+                      className={`aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                        editAvatar === url ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:border-primary/40'
+                      }`}
+                    >
+                      <img src={url} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* URL input */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Ou cole a URL da foto</Label>
+              <Input
+                placeholder="https://exemplo.com/avatar.png"
+                value={editAvatar.startsWith('data:') ? '' : editAvatar}
+                onChange={e => setEditAvatar(e.target.value)}
+              />
+            </div>
+
+            {/* Bot name */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Nome exibido no chat</Label>
+              <Input
+                placeholder="Ex: Assistente Virtual"
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+              />
+            </div>
+
+            <Button onClick={handleProfileSave} className="w-full">
+              <Save className="w-4 h-4 mr-2" /> Salvar perfil
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
