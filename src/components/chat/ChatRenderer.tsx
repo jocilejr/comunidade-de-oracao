@@ -205,7 +205,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   }, [choiceBlock, collectEvents, scrollToBottom]);
 
   return (
-    <div className="flex flex-col h-[100dvh] max-h-[100dvh] overflow-hidden">
+    <div className="flex flex-col h-full max-h-full min-h-0 overflow-hidden">
       {/* Progress */}
       <div className="shrink-0">
         <Progress value={progress} className="h-0.5 rounded-none [&>div]:bg-[hsl(var(--wa-progress))]" />

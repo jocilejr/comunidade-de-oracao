@@ -22,7 +22,11 @@ const Funnel = () => {
     );
   }
 
-  return <ChatRenderer flow={funnel.flow} botName={funnel.botName} botAvatar={funnel.botAvatar} />;
+  return (
+    <div className="h-[100dvh] max-h-[100dvh]">
+      <ChatRenderer flow={funnel.flow} botName={funnel.botName} botAvatar={funnel.botAvatar} />
+    </div>
+  );
 };
 
 export default Funnel;
