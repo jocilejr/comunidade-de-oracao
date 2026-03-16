@@ -593,8 +593,7 @@ export class TypebotEngine {
             text = this.richTextToHtml(content.richText);
           }
 
-          const stripped = text.replace(/<[^>]*>/g, '').trim();
-          if (!stripped) return null;
+          if (!text) return null;
           return { id, type: 'bot', content: text, richText, timestamp };
         }
 
