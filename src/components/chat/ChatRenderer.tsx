@@ -193,7 +193,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
           {displayItems.map((item, i) => {
             if (item.type === 'typing') return <TypingIndicator key={`typing-${i}`} />;
             if (item.type === 'user') return <UserBubble key={`user-${i}`} content={item.content} />;
-            if (item.type === 'bot') return <BotBubble key={item.message.id} message={item.message} />;
+            if (item.type === 'bot') return <BotBubble key={item.message.id} message={item.message} botAvatar={botAvatar} botName={name} />;
             return null;
           })}
 
