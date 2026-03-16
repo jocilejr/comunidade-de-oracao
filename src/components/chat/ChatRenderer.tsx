@@ -63,7 +63,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
             setIsTyping(true);
             setDisplayItems(prev => [...prev, { type: 'typing' }]);
             scrollToBottom();
-            await delay(TYPING_DELAY);
+            await delay(typingDelay(msg.content || ''));
 
             setDisplayItems(prev => {
               const items = prev.filter(i => i.type !== 'typing');
