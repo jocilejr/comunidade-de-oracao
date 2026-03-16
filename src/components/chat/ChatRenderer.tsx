@@ -215,7 +215,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   }, [choiceBlock, collectEvents, scrollToBottom]);
 
   return (
-    <div className="flex flex-col h-screen max-h-screen">
+    <div className="flex flex-col h-[100dvh] max-h-[100dvh] overflow-hidden">
       {/* Progress */}
       <div className="shrink-0">
         <Progress value={progress} className="h-0.5 rounded-none [&>div]:bg-[hsl(var(--wa-progress))]" />
@@ -245,7 +245,11 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
       </header>
 
       {/* Chat area — messages flow naturally, scroll when overflow */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto wa-wallpaper">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto wa-wallpaper transition-[padding-bottom] duration-300"
+        style={{ paddingBottom: composerLift ? `${composerLift}px` : undefined }}
+      >
         <div className="px-3 py-3">
           <div className="max-w-[600px] w-full mx-auto space-y-[3px]">
             {/* Date chip */}
@@ -284,7 +288,15 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
       </div>
 
       {/* Input bar — always visible */}
-      <div className="shrink-0">
+      <div
+        className="shrink-0 transition-transform duration-300 ease-out"
+        style={{
+          transform: composerLift ? `translateY(-${composerLift}px)` : 'translateY(0)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}
+        onFocusCapture={handleComposerFocusCapture}
+        onBlurCapture={handleComposerBlurCapture}
+      >
         {inputBlock && !ended ? (
           <ChatInput block={inputBlock} onSubmit={handleInputSubmit} />
         ) : (
