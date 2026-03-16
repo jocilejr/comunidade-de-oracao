@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { TypebotBlock } from '@/lib/typebot-types';
-import { Send } from 'lucide-react';
+import { Send, Smile } from 'lucide-react';
 
 interface ChatInputProps {
   block: TypebotBlock;
@@ -31,44 +31,24 @@ const ChatInput = ({ block, onSubmit }: ChatInputProps) => {
       setError('Este campo é obrigatório');
       return false;
     }
-
-    if (blockType.includes('email')) {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
-        setError(options.retryMessageContent || 'Por favor, insira um email válido');
-        return false;
-      }
+    if (blockType.includes('email') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+      setError(options.retryMessageContent || 'Por favor, insira um email válido');
+      return false;
     }
-
-    if (blockType.includes('phone')) {
-      if (!/^[+]?[\d\s()-]{7,}$/.test(val.replace(/\s/g, ''))) {
-        setError(options.retryMessageContent || 'Por favor, insira um telefone válido');
-        return false;
-      }
+    if (blockType.includes('phone') && !/^[+]?[\d\s()-]{7,}$/.test(val.replace(/\s/g, ''))) {
+      setError(options.retryMessageContent || 'Por favor, insira um telefone válido');
+      return false;
     }
-
     if (blockType.includes('url')) {
       try { new URL(val); } catch {
         setError(options.retryMessageContent || 'Por favor, insira uma URL válida');
         return false;
       }
     }
-
-    if (blockType.includes('number')) {
-      if (isNaN(Number(val))) {
-        setError('Por favor, insira um número válido');
-        return false;
-      }
-      const content = (block as any).content;
-      if (content?.min !== undefined && Number(val) < content.min) {
-        setError(`Valor mínimo: ${content.min}`);
-        return false;
-      }
-      if (content?.max !== undefined && Number(val) > content.max) {
-        setError(`Valor máximo: ${content.max}`);
-        return false;
-      }
+    if (blockType.includes('number') && isNaN(Number(val))) {
+      setError('Por favor, insira um número válido');
+      return false;
     }
-
     return true;
   };
 
@@ -82,38 +62,44 @@ const ChatInput = ({ block, onSubmit }: ChatInputProps) => {
   const inputType = getInputType(blockType);
 
   return (
-    <div className="border-t border-border bg-card p-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
-      <div className="flex gap-2 max-w-[600px] mx-auto">
-        {isLong ? (
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={e => { setValue(e.target.value); setError(''); }}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
-            placeholder={placeholder}
-            rows={3}
-            className="flex-1 rounded-xl border border-input bg-background px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-          />
-        ) : (
-          <input
-            ref={inputRef}
-            type={inputType}
-            value={value}
-            onChange={e => { setValue(e.target.value); setError(''); }}
-            onKeyDown={e => { if (e.key === 'Enter') handleSubmit(); }}
-            placeholder={placeholder}
-            className="flex-1 rounded-xl border border-input bg-background px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        )}
+    <div className="px-2 py-2 animate-in fade-in slide-in-from-bottom-4 duration-300" style={{ backgroundColor: 'hsl(var(--wa-input-bar))' }}>
+      <div className="flex items-end gap-2 max-w-[600px] mx-auto">
+        <div className="flex-1 rounded-3xl flex items-end gap-2 px-3 py-2" style={{ backgroundColor: 'hsl(var(--wa-input-bg))' }}>
+          <Smile className="w-5 h-5 shrink-0 mb-0.5" style={{ color: 'hsl(var(--wa-time))' }} />
+          {isLong ? (
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={e => { setValue(e.target.value); setError(''); }}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
+              placeholder={placeholder}
+              rows={1}
+              className="flex-1 bg-transparent text-sm resize-none outline-none placeholder:opacity-50 max-h-24"
+              style={{ color: 'hsl(var(--wa-bot-foreground))' }}
+            />
+          ) : (
+            <input
+              ref={inputRef}
+              type={inputType}
+              value={value}
+              onChange={e => { setValue(e.target.value); setError(''); }}
+              onKeyDown={e => { if (e.key === 'Enter') handleSubmit(); }}
+              placeholder={placeholder}
+              className="flex-1 bg-transparent text-sm outline-none placeholder:opacity-50"
+              style={{ color: 'hsl(var(--wa-bot-foreground))' }}
+            />
+          )}
+        </div>
         <button
           onClick={handleSubmit}
-          className="shrink-0 h-11 w-11 rounded-xl bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
+          className="shrink-0 h-10 w-10 rounded-full flex items-center justify-center transition-colors"
+          style={{ backgroundColor: 'hsl(var(--wa-send))' }}
         >
-          <Send className="w-4 h-4" />
+          <Send className="w-4 h-4 text-white" />
         </button>
       </div>
       {error && (
-        <p className="text-destructive text-xs mt-1 max-w-[600px] mx-auto px-1">{error}</p>
+        <p className="text-destructive text-xs mt-1 max-w-[600px] mx-auto px-3">{error}</p>
       )}
     </div>
   );
@@ -125,7 +111,7 @@ function getDefaultPlaceholder(type: string): string {
   if (type.includes('number')) return 'Digite um número...';
   if (type.includes('url')) return 'Digite uma URL...';
   if (type.includes('date')) return 'Selecione uma data...';
-  return 'Digite sua resposta...';
+  return 'Mensagem';
 }
 
 function getInputType(type: string): string {

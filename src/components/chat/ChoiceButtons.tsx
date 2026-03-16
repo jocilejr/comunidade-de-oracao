@@ -10,11 +10,7 @@ const ChoiceButtons = ({ block, onSelect }: ChoiceButtonsProps) => {
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className={
-        isPicture
-          ? "grid grid-cols-2 gap-2"
-          : "flex flex-col gap-2"
-      }>
+      <div className={isPicture ? "grid grid-cols-2 gap-2" : "flex flex-col gap-2"}>
         {block.items.map((item) => {
           const label = (item as any).title || item.content || 'Opção';
           const picSrc = (item as any).pictureSrc;
@@ -26,17 +22,22 @@ const ChoiceButtons = ({ block, onSelect }: ChoiceButtonsProps) => {
               onClick={() => onSelect(item.id, label)}
               className={
                 isPicture
-                  ? "rounded-xl border-2 border-border bg-card overflow-hidden hover:border-primary transition-colors text-left"
-                  : "w-full rounded-xl border-2 border-primary/20 bg-card px-4 py-3 text-sm font-medium text-foreground hover:bg-primary hover:text-primary-foreground transition-all duration-150"
+                  ? "rounded-lg overflow-hidden shadow-sm text-left transition-transform active:scale-95"
+                  : "w-full rounded-lg px-4 py-2.5 text-sm font-medium shadow-sm transition-all active:scale-95"
+              }
+              style={
+                isPicture
+                  ? { backgroundColor: 'hsl(var(--wa-bot-bubble))', color: 'hsl(var(--wa-bot-foreground))' }
+                  : { backgroundColor: 'hsl(var(--wa-bot-bubble))', color: 'hsl(var(--wa-send))', border: '1.5px solid hsl(var(--wa-send))' }
               }
             >
               {isPicture && picSrc && (
                 <img src={picSrc} alt={label} className="w-full h-28 object-cover" loading="lazy" />
               )}
-              <div className={isPicture ? "p-3" : ""}>
+              <div className={isPicture ? "p-2.5" : ""}>
                 <span className="block text-sm font-medium">{label}</span>
                 {description && (
-                  <span className="block text-xs text-muted-foreground mt-0.5">{description}</span>
+                  <span className="block text-xs mt-0.5" style={{ color: 'hsl(var(--wa-time))' }}>{description}</span>
                 )}
               </div>
             </button>

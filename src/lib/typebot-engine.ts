@@ -572,64 +572,77 @@ export class TypebotEngine {
     const id = crypto.randomUUID();
     const timestamp = Date.now();
     const blockType = this.normalizeBlockType(block.type);
+    const content = (block as any).content;
 
-    switch (blockType) {
-      case 'text': {
-        const tb = block as TextBubbleBlock;
-        const content = tb.content;
-        let text = '';
-        let richText = content.richText;
+    if (!content) {
+      console.warn(`Block ${block.type} has no content, skipping`);
+      return null;
+    }
 
-        if (content.html) {
-          text = this.replaceVariables(content.html);
-        } else if (content.plainText) {
-          text = this.replaceVariables(content.plainText);
-        } else if (content.richText) {
-          text = this.richTextToHtml(content.richText);
+    try {
+      switch (blockType) {
+        case 'text': {
+          let text = '';
+          const richText = content.richText;
+
+          if (content.html) {
+            text = this.replaceVariables(content.html);
+          } else if (content.plainText) {
+            text = this.replaceVariables(content.plainText);
+          } else if (content.richText) {
+            text = this.richTextToHtml(content.richText);
+          }
+
+          return { id, type: 'bot', content: text, richText, timestamp };
         }
 
-        return { id, type: 'bot', content: text, richText, timestamp };
-      }
+        case 'image': {
+          const url = content.url || content.src || '';
+          if (!url) return null;
+          return {
+            id, type: 'bot', content: '', timestamp,
+            mediaType: 'image',
+            mediaUrl: this.replaceVariables(url),
+            mediaAlt: content.alt || '',
+          };
+        }
 
-      case 'image': {
-        const ib = block as ImageBubbleBlock;
-        return {
-          id, type: 'bot', content: '', timestamp,
-          mediaType: 'image',
-          mediaUrl: this.replaceVariables(ib.content.url),
-          mediaAlt: ib.content.alt,
-        };
-      }
+        case 'video': {
+          const url = content.url || content.id || '';
+          if (!url) return null;
+          return {
+            id, type: 'bot', content: '', timestamp,
+            mediaType: 'video',
+            mediaUrl: this.replaceVariables(url),
+          };
+        }
 
-      case 'video': {
-        const vb = block as VideoBubbleBlock;
-        return {
-          id, type: 'bot', content: '', timestamp,
-          mediaType: 'video',
-          mediaUrl: this.replaceVariables(vb.content.url),
-        };
-      }
+        case 'audio': {
+          const url = content.url || '';
+          if (!url) return null;
+          return {
+            id, type: 'bot', content: '', timestamp,
+            mediaType: 'audio',
+            mediaUrl: this.replaceVariables(url),
+          };
+        }
 
-      case 'audio': {
-        const ab = block as AudioBubbleBlock;
-        return {
-          id, type: 'bot', content: '', timestamp,
-          mediaType: 'audio',
-          mediaUrl: this.replaceVariables(ab.content.url),
-        };
-      }
+        case 'embed': {
+          const url = content.url || '';
+          if (!url) return null;
+          return {
+            id, type: 'bot', content: '', timestamp,
+            mediaType: 'embed',
+            mediaUrl: this.replaceVariables(url),
+          };
+        }
 
-      case 'embed': {
-        const eb = block as EmbedBubbleBlock;
-        return {
-          id, type: 'bot', content: '', timestamp,
-          mediaType: 'embed',
-          mediaUrl: this.replaceVariables(eb.content.url),
-        };
+        default:
+          return null;
       }
-
-      default:
-        return null;
+    } catch (e) {
+      console.warn(`Error converting block ${block.type} to message:`, e);
+      return null;
     }
   }
 

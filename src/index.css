@@ -36,12 +36,19 @@
 
     --radius: 0.5rem;
 
-    --chat-bot: 0 0% 100%;
-    --chat-bot-foreground: 222.2 84% 4.9%;
-    --chat-bot-border: 214.3 31.8% 91.4%;
-    --chat-user: 238 84% 67%;
-    --chat-user-foreground: 0 0% 100%;
-    --chat-progress: 160 84% 39%;
+    /* WhatsApp theme tokens */
+    --wa-header: 142 48% 35%;
+    --wa-header-foreground: 0 0% 100%;
+    --wa-wallpaper: 30 15% 90%;
+    --wa-bot-bubble: 0 0% 100%;
+    --wa-bot-foreground: 0 0% 13%;
+    --wa-user-bubble: 103 44% 84%;
+    --wa-user-foreground: 0 0% 13%;
+    --wa-input-bar: 0 0% 95%;
+    --wa-input-bg: 0 0% 100%;
+    --wa-send: 142 48% 35%;
+    --wa-time: 0 0% 55%;
+    --wa-progress: 142 48% 35%;
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -74,12 +81,19 @@
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
 
-    --chat-bot: 217.2 32.6% 17.5%;
-    --chat-bot-foreground: 210 40% 98%;
-    --chat-bot-border: 217.2 32.6% 25%;
-    --chat-user: 238 84% 67%;
-    --chat-user-foreground: 0 0% 100%;
-    --chat-progress: 160 84% 39%;
+    /* WhatsApp dark theme */
+    --wa-header: 199 28% 18%;
+    --wa-header-foreground: 0 0% 92%;
+    --wa-wallpaper: 200 18% 10%;
+    --wa-bot-bubble: 199 20% 20%;
+    --wa-bot-foreground: 0 0% 92%;
+    --wa-user-bubble: 152 31% 21%;
+    --wa-user-foreground: 0 0% 92%;
+    --wa-input-bar: 199 28% 14%;
+    --wa-input-bg: 199 20% 20%;
+    --wa-send: 142 48% 35%;
+    --wa-time: 0 0% 60%;
+    --wa-progress: 142 48% 45%;
 
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
@@ -103,4 +117,10 @@
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Montserrat', system-ui, sans-serif;
   }
+}
+
+/* WhatsApp wallpaper pattern */
+.wa-wallpaper {
+  background-color: hsl(var(--wa-wallpaper));
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.06'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
 }
