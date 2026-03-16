@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type FocusEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type FocusEvent } from 'react';
 import { TypebotFlow, ChatMessage, TypebotBlock, ChoiceInputBlock } from '@/lib/typebot-types';
 import { TypebotEngine, EngineEvent } from '@/lib/typebot-engine';
 import BotBubble from './BotBubble';
@@ -45,7 +45,9 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   const processingRef = useRef(false);
   const baseViewportHeightRef = useRef(0);
 
-  const name = botName || flow.name || 'Assistente';
+  const flowSessionKey = `${flow.id || flow.name || 'flow'}-${flow.groups.length}-${flow.edges.length}`;
+  const sessionFlow = useMemo(() => flow, [flowSessionKey]);
+  const name = botName || sessionFlow.name || 'Assistente';
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -140,11 +142,28 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   }, [processEvents]);
 
   useEffect(() => {
-    const engine = new TypebotEngine(flow);
+    const engine = new TypebotEngine(sessionFlow);
     engineRef.current = engine;
+
+    // Hard reset only when changing to a new flow session
+    eventQueueRef.current = [];
+    processingRef.current = false;
+    setDisplayItems([]);
+    setInputBlock(null);
+    setChoiceBlock(null);
+    setIsTyping(false);
+    setProgress(0);
+    setEnded(false);
+    setIsComposerFocused(false);
+
     collectEvents(engine.start());
-    return () => { engineRef.current = null; eventQueueRef.current = []; };
-  }, [flow, collectEvents]);
+
+    return () => {
+      engineRef.current = null;
+      eventQueueRef.current = [];
+      processingRef.current = false;
+    };
+  }, [sessionFlow, collectEvents]);
 
   useEffect(() => {
     if (!window.visualViewport) return;
