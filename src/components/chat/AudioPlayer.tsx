@@ -3,8 +3,6 @@ import { Play, Pause } from 'lucide-react';
 
 interface AudioPlayerProps {
   src: string;
-  avatarUrl?: string;
-  avatarFallback?: string;
   time?: string;
 }
 
