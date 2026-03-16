@@ -7,7 +7,7 @@ interface BotBubbleProps {
   botName?: string;
 }
 
-const BotBubble = ({ message }: BotBubbleProps) => {
+const BotBubble = ({ message, botAvatar, botName }: BotBubbleProps) => {
   const time = new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   if (message.mediaType === 'image' && message.mediaUrl) {
