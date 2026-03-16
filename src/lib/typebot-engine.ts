@@ -250,114 +250,133 @@ export class TypebotEngine {
     const blockType = this.normalizeBlockType(block.type);
     this.processedBlocks++;
 
-    switch (blockType) {
-      case 'condition': {
-        const condBlock = block as ConditionBlock;
-        for (const item of condBlock.items) {
-          if (this.evaluateCondition(item.content.comparisons, item.content.logicalOperator)) {
-            if (item.outgoingEdgeId) {
-              yield* this.processFromEdge(item.outgoingEdgeId);
+    try {
+      switch (blockType) {
+        case 'condition': {
+          const condBlock = block as ConditionBlock;
+          if (condBlock.items) {
+            for (const item of condBlock.items) {
+              if (item.content?.comparisons && this.evaluateCondition(item.content.comparisons, item.content.logicalOperator || 'AND')) {
+                if (item.outgoingEdgeId) {
+                  yield* this.processFromEdge(item.outgoingEdgeId);
+                  return 'stop';
+                }
+              }
+            }
+          }
+          if (block.outgoingEdgeId) {
+            yield* this.processFromEdge(block.outgoingEdgeId);
+            return 'stop';
+          }
+          return 'continue';
+        }
+
+        case 'setvariable': {
+          const svBlock = block as SetVariableBlock;
+          if (svBlock.content?.variableId) {
+            const value = this.evaluateSetVariable(svBlock);
+            this.setVariable(svBlock.content.variableId, value);
+          }
+          return 'continue';
+        }
+
+        case 'redirect': {
+          const rdBlock = block as RedirectBlock;
+          if (rdBlock.content?.url) {
+            const url = this.replaceVariables(rdBlock.content.url);
+            yield { type: 'redirect', url, isNewTab: rdBlock.content.isNewTab ?? false };
+            return 'stop';
+          }
+          return 'continue';
+        }
+
+        case 'webhook': {
+          const whBlock = block as WebhookBlock;
+          await this.executeWebhook(whBlock);
+          return 'continue';
+        }
+
+        case 'script': {
+          try {
+            const code = this.replaceVariables((block as any).content?.code || '');
+            if (code) {
+              const fn = new Function('variables', 'setVariable', code);
+              const getVar = (name: string) => {
+                const v = this.flow.variables?.find(v => v.name === name);
+                return v ? this.variables.get(v.id) || '' : '';
+              };
+              const setVar = (name: string, val: string) => {
+                const v = this.flow.variables?.find(v => v.name === name);
+                if (v) this.variables.set(v.id, String(val));
+              };
+              fn(getVar, setVar);
+            }
+          } catch (e) {
+            console.warn('Script execution error:', e);
+          }
+          return 'continue';
+        }
+
+        case 'wait': {
+          const waitBlock = block as WaitBlock;
+          const raw = waitBlock.content?.secondsToWaitFor;
+          if (raw !== undefined && raw !== null) {
+            const seconds = Number(this.replaceVariables(String(raw)));
+            yield { type: 'wait', seconds: isNaN(seconds) ? 1 : seconds };
+          }
+          return 'continue';
+        }
+
+        case 'abtest': {
+          const abBlock = block as AbTestBlock;
+          if (abBlock.items) {
+            const random = Math.random() * 100;
+            let cumulative = 0;
+            for (const item of abBlock.items) {
+              cumulative += item.percent;
+              if (random <= cumulative && item.outgoingEdgeId) {
+                yield* this.processFromEdge(item.outgoingEdgeId);
+                return 'stop';
+              }
+            }
+          }
+          return 'continue';
+        }
+
+        case 'jump': {
+          const jumpBlock = block as JumpBlock;
+          if (jumpBlock.content?.groupId) {
+            const targetGroup = this.findGroupById(jumpBlock.content.groupId);
+            if (targetGroup) {
+              let blockIdx = 0;
+              if (jumpBlock.content.blockId) {
+                const idx = targetGroup.blocks.findIndex(b => b.id === jumpBlock.content.blockId);
+                if (idx >= 0) blockIdx = idx;
+              }
+              yield* this.processGroup(targetGroup, blockIdx);
               return 'stop';
             }
           }
+          return 'continue';
         }
-        // No condition matched — follow default edge
-        if (block.outgoingEdgeId) {
-          yield* this.processFromEdge(block.outgoingEdgeId);
-          return 'stop';
+
+        case 'typebotlink': {
+          console.warn('Typebot link blocks not supported in standalone mode');
+          return 'continue';
         }
-        return 'continue';
-      }
 
-      case 'setvariable': {
-        const svBlock = block as SetVariableBlock;
-        const value = this.evaluateSetVariable(svBlock);
-        this.setVariable(svBlock.content.variableId, value);
-        return 'continue';
+        default:
+          console.warn(`Unsupported block type: ${block.type}`);
+          return 'continue';
       }
-
-      case 'redirect': {
-        const rdBlock = block as RedirectBlock;
-        const url = this.replaceVariables(rdBlock.content.url);
-        yield { type: 'redirect', url, isNewTab: rdBlock.content.isNewTab ?? false };
-        return 'stop';
-      }
-
-      case 'webhook': {
-        const whBlock = block as WebhookBlock;
-        await this.executeWebhook(whBlock);
-        return 'continue';
-      }
-
-      case 'script': {
-        try {
-          const code = this.replaceVariables((block as any).content?.code || '');
-          // Create a sandboxed function with variable access
-          const fn = new Function('variables', 'setVariable', code);
-          const getVar = (name: string) => {
-            const v = this.flow.variables?.find(v => v.name === name);
-            return v ? this.variables.get(v.id) || '' : '';
-          };
-          const setVar = (name: string, val: string) => {
-            const v = this.flow.variables?.find(v => v.name === name);
-            if (v) this.variables.set(v.id, String(val));
-          };
-          fn(getVar, setVar);
-        } catch (e) {
-          console.warn('Script execution error:', e);
-        }
-        return 'continue';
-      }
-
-      case 'wait': {
-        const waitBlock = block as WaitBlock;
-        const seconds = Number(this.replaceVariables(String(waitBlock.content.secondsToWaitFor)));
-        yield { type: 'wait', seconds: isNaN(seconds) ? 1 : seconds };
-        return 'continue';
-      }
-
-      case 'abtest': {
-        const abBlock = block as AbTestBlock;
-        const random = Math.random() * 100;
-        let cumulative = 0;
-        for (const item of abBlock.items) {
-          cumulative += item.percent;
-          if (random <= cumulative && item.outgoingEdgeId) {
-            yield* this.processFromEdge(item.outgoingEdgeId);
-            return 'stop';
-          }
-        }
-        return 'continue';
-      }
-
-      case 'jump': {
-        const jumpBlock = block as JumpBlock;
-        const targetGroup = this.findGroupById(jumpBlock.content.groupId);
-        if (targetGroup) {
-          let blockIdx = 0;
-          if (jumpBlock.content.blockId) {
-            const idx = targetGroup.blocks.findIndex(b => b.id === jumpBlock.content.blockId);
-            if (idx >= 0) blockIdx = idx;
-          }
-          yield* this.processGroup(targetGroup, blockIdx);
-          return 'stop';
-        }
-        return 'continue';
-      }
-
-      case 'typebotlink': {
-        // Can't link to external typebots — skip
-        console.warn('Typebot link blocks not supported in standalone mode');
-        return 'continue';
-      }
-
-      default:
-        console.warn(`Unsupported logic block type: ${block.type}`);
-        return 'continue';
+    } catch (e) {
+      console.warn(`Error processing block ${block.type}:`, e);
+      return 'continue';
     }
   }
 
   private evaluateSetVariable(block: SetVariableBlock): string {
+    if (!block.content) return '';
     const { type, expressionToEvaluate, isCode } = block.content;
 
     if (type === 'Empty') return '';
