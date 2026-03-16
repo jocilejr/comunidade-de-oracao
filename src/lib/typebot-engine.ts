@@ -343,34 +343,40 @@ export class TypebotEngine {
           return 'continue';
         }
 
-      case 'jump': {
-        const jumpBlock = block as JumpBlock;
-        const targetGroup = this.findGroupById(jumpBlock.content.groupId);
-        if (targetGroup) {
-          let blockIdx = 0;
-          if (jumpBlock.content.blockId) {
-            const idx = targetGroup.blocks.findIndex(b => b.id === jumpBlock.content.blockId);
-            if (idx >= 0) blockIdx = idx;
+        case 'jump': {
+          const jumpBlock = block as JumpBlock;
+          if (jumpBlock.content?.groupId) {
+            const targetGroup = this.findGroupById(jumpBlock.content.groupId);
+            if (targetGroup) {
+              let blockIdx = 0;
+              if (jumpBlock.content.blockId) {
+                const idx = targetGroup.blocks.findIndex(b => b.id === jumpBlock.content.blockId);
+                if (idx >= 0) blockIdx = idx;
+              }
+              yield* this.processGroup(targetGroup, blockIdx);
+              return 'stop';
+            }
           }
-          yield* this.processGroup(targetGroup, blockIdx);
-          return 'stop';
+          return 'continue';
         }
-        return 'continue';
-      }
 
-      case 'typebotlink': {
-        // Can't link to external typebots — skip
-        console.warn('Typebot link blocks not supported in standalone mode');
-        return 'continue';
-      }
+        case 'typebotlink': {
+          console.warn('Typebot link blocks not supported in standalone mode');
+          return 'continue';
+        }
 
-      default:
-        console.warn(`Unsupported logic block type: ${block.type}`);
-        return 'continue';
+        default:
+          console.warn(`Unsupported block type: ${block.type}`);
+          return 'continue';
+      }
+    } catch (e) {
+      console.warn(`Error processing block ${block.type}:`, e);
+      return 'continue';
     }
   }
 
   private evaluateSetVariable(block: SetVariableBlock): string {
+    if (!block.content) return '';
     const { type, expressionToEvaluate, isCode } = block.content;
 
     if (type === 'Empty') return '';
