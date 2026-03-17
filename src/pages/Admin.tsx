@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { getAllFunnels, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings } from '@/lib/funnel-storage';
+import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings } from '@/lib/funnel-storage';
 import { StoredFunnel } from '@/lib/typebot-types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,7 +36,7 @@ const Admin = () => {
   const { theme, toggleTheme } = useTheme();
 
   const refresh = useCallback(async () => {
-    const data = await getAllFunnels();
+    const data = await getAllFunnelsMeta();
     setFunnels(data);
   }, []);
 
@@ -44,7 +44,7 @@ const Admin = () => {
     const load = async () => {
       setLoadingFunnels(true);
       const [funnelData, galleryData, settingsData] = await Promise.all([
-        getAllFunnels(),
+        getAllFunnelsMeta(),
         getAvatarGallery(),
         getUserSettings(),
       ]);

@@ -10,7 +10,7 @@ export async function getAllFunnels(): Promise<StoredFunnel[]> {
 
   const { data, error } = await supabase
     .from('funnels')
-    .select('*')
+    .select('id, slug, name, created_at, bot_name, bot_avatar, flow')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
@@ -22,6 +22,30 @@ export async function getAllFunnels(): Promise<StoredFunnel[]> {
     name: row.name,
     uploadedAt: row.created_at,
     flow: row.flow as unknown as TypebotFlow,
+    botName: row.bot_name || '',
+    botAvatar: row.bot_avatar || '',
+  }));
+}
+
+/** Lightweight listing without the heavy flow column */
+export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from('funnels')
+    .select('id, slug, name, created_at, bot_name, bot_avatar')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (error || !data) return [];
+
+  return data.map(row => ({
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    uploadedAt: row.created_at,
+    flow: { id: '', name: '', groups: [], edges: [] } as unknown as TypebotFlow,
     botName: row.bot_name || '',
     botAvatar: row.bot_avatar || '',
   }));
