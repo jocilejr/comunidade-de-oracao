@@ -30,6 +30,8 @@ const Admin = () => {
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [inspectFunnel, setInspectFunnel] = useState<StoredFunnel | null>(null);
+  const [loadingInspect, setLoadingInspect] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
