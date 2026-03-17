@@ -4,6 +4,7 @@ import { Play, Pause } from 'lucide-react';
 interface AudioPlayerProps {
   src: string;
   time?: string;
+  autoPlay?: boolean;
 }
 
 // Generate random waveform data that looks like real WhatsApp
