@@ -56,8 +56,31 @@ serve(async (req) => {
     };
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
-      body.tools = tools;
-      body.tool_choice = "auto";
+      // Normalize tools: Typebot may send tools without the required `function` wrapper
+      body.tools = tools
+        .map((tool: any) => {
+          // Already valid OpenAI format
+          if (tool.type === "function" && tool.function) return tool;
+          // Typebot format: { name, description, parameters, ... } without function wrapper
+          if (tool.name || tool.function?.name) {
+            return {
+              type: "function",
+              function: {
+                name: tool.name || tool.function?.name,
+                description: tool.description || tool.function?.description || "",
+                parameters: tool.parameters || tool.function?.parameters || { type: "object", properties: {} },
+              },
+            };
+          }
+          return null; // skip malformed tools
+        })
+        .filter(Boolean);
+
+      if ((body.tools as any[]).length > 0) {
+        body.tool_choice = "auto";
+      } else {
+        delete body.tools;
+      }
     }
 
     const response = await fetch(
