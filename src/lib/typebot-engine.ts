@@ -550,6 +550,11 @@ export class TypebotEngine {
       // Build tools payload if present
       const tools = opts.tools && opts.tools.length > 0 ? opts.tools : undefined;
 
+      if (!this.openaiApiKey) {
+        console.warn('OpenAI API key not configured. Go to Admin > Settings to add your key.');
+        return;
+      }
+
       const proxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-proxy`;
       const response = await fetch(proxyUrl, {
         method: 'POST',
@@ -561,6 +566,7 @@ export class TypebotEngine {
           messages,
           model: opts.model || 'gpt-4',
           tools,
+          apiKey: this.openaiApiKey,
         }),
       });
 
