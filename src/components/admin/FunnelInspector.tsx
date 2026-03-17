@@ -557,7 +557,7 @@ function getOrderedGroups(flow: TypebotFlow): OrderedGroup[] {
   const groupById = new Map<string, number>();
   groups.forEach((g, i) => groupById.set(g.id, i));
 
-  // For a given group, collect all target groupIds via outgoingEdgeIds on blocks and items
+  // For a given group, collect all target groupIds via outgoingEdgeIds on blocks/items AND group-level edges
   function getTargetGroupIds(group: TypebotGroup): string[] {
     const targets: string[] = [];
     for (const block of group.blocks) {
@@ -575,6 +575,12 @@ function getOrderedGroups(flow: TypebotFlow): OrderedGroup[] {
             if (edge?.to?.groupId) targets.push(edge.to.groupId);
           }
         }
+      }
+    }
+    // Group-level edges (e.g. Start group where from.groupId is set without blockId)
+    for (const edge of edges) {
+      if (edge.from.groupId === group.id && !edge.from.blockId && edge.to?.groupId) {
+        targets.push(edge.to.groupId);
       }
     }
     return targets;
