@@ -626,8 +626,11 @@ export class TypebotEngine {
         content: this.replaceVariables(m.content || ''),
       }));
 
-      // Build tools payload if present
-      const tools = opts.tools && opts.tools.length > 0 ? opts.tools : undefined;
+      // Separate Typebot "code tools" from real OpenAI function tools
+      const allTools = opts.tools || [];
+      const codeTools = allTools.filter((t: any) => t.code !== undefined);
+      const apiTools = allTools.filter((t: any) => t.code === undefined);
+      const tools = apiTools.length > 0 ? apiTools : undefined;
 
       if (!this.ownerUserId) {
         console.warn('Owner user ID not available for OpenAI block.');
@@ -664,21 +667,55 @@ export class TypebotEngine {
       const assistantContent = choice.message?.content || '';
       const toolCalls = choice.message?.tool_calls;
 
+      // Execute Typebot code tools if the AI made tool calls matching them
+      const codeToolResults: Record<string, string> = {};
+      if (toolCalls && codeTools.length > 0) {
+        for (const tc of toolCalls) {
+          const fnName = tc.function?.name;
+          const codeTool = codeTools.find((ct: any) => (ct.function?.name || ct.name) === fnName);
+          if (codeTool && (codeTool as any).code) {
+            try {
+              const args = JSON.parse(tc.function?.arguments || '{}');
+              const fn = new Function('args', (codeTool as any).code);
+              const result = fn(args);
+              codeToolResults[fnName] = result !== undefined ? String(result) : '';
+            } catch (e) {
+              console.warn(`Code tool "${fnName}" execution error:`, e);
+            }
+          }
+        }
+      }
+
       // Map response to variables
       if (opts.responseMapping) {
-        for (const mapping of opts.responseMapping) {
+        for (let idx = 0; idx < opts.responseMapping.length; idx++) {
+          const mapping = opts.responseMapping[idx];
           if (!mapping.variableId) continue;
 
-          const extract = mapping.valueToExtract || 'Message content';
+          const extract = mapping.valueToExtract || '';
 
-          if (extract === 'Message content' || extract === 'Message Content') {
+          if (extract === 'Message content' || extract === 'Message Content' || (extract === '' && idx === 0)) {
+            // First mapping without valueToExtract defaults to message content
             this.setVariable(mapping.variableId, assistantContent);
+          } else if (extract === '' && toolCalls && toolCalls.length > 0) {
+            // Subsequent mappings without valueToExtract: try tool call results
+            const tc = toolCalls[0];
+            const fnName = tc.function?.name;
+            if (codeToolResults[fnName] !== undefined) {
+              this.setVariable(mapping.variableId, codeToolResults[fnName]);
+            } else {
+              try {
+                const args = JSON.parse(tc.function?.arguments || '{}');
+                this.setVariable(mapping.variableId, JSON.stringify(args));
+              } catch {
+                this.setVariable(mapping.variableId, '');
+              }
+            }
           } else if (toolCalls && toolCalls.length > 0) {
-            // Try to extract from tool call arguments
+            // Try to extract from tool call arguments by key
             for (const tc of toolCalls) {
               try {
                 const args = JSON.parse(tc.function?.arguments || '{}');
-                // Try exact key match or nested path
                 const value = this.getNestedValue(args, extract) ?? args[extract];
                 if (value !== undefined && value !== null) {
                   this.setVariable(mapping.variableId, String(value));

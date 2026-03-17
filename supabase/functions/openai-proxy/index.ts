@@ -57,18 +57,32 @@ serve(async (req) => {
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
       // Normalize tools: Typebot may send tools without the required `function` wrapper
+      // Filter out Typebot "code tools" which have a `code` property — those are for local execution
       body.tools = tools
         .map((tool: any) => {
+          // Skip Typebot code tools (they have inline JS, not OpenAI functions)
+          if (tool.code !== undefined) return null;
+
           // Already valid OpenAI format
-          if (tool.type === "function" && tool.function) return tool;
+          if (tool.type === "function" && tool.function) {
+            // Fix parameters: must be an object, not an array
+            const params = tool.function.parameters;
+            if (!params || Array.isArray(params)) {
+              tool.function.parameters = { type: "object", properties: {} };
+            }
+            return tool;
+          }
           // Typebot format: { name, description, parameters, ... } without function wrapper
           if (tool.name || tool.function?.name) {
+            const rawParams = tool.parameters || tool.function?.parameters;
             return {
               type: "function",
               function: {
                 name: tool.name || tool.function?.name,
                 description: tool.description || tool.function?.description || "",
-                parameters: tool.parameters || tool.function?.parameters || { type: "object", properties: {} },
+                parameters: (rawParams && typeof rawParams === "object" && !Array.isArray(rawParams))
+                  ? rawParams
+                  : { type: "object", properties: {} },
               },
             };
           }
