@@ -204,7 +204,7 @@ const Admin = () => {
 
   // Preview mode — mobile frame
   if (previewFunnel) {
-    const pf = funnels.find(f => f.slug === previewFunnel.slug) || previewFunnel;
+    const pf = previewFunnel;
     return (
       <div className="flex items-center justify-center h-screen bg-background">
         <div className="relative">
