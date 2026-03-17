@@ -8,6 +8,7 @@ import ChatInput from './ChatInput';
 import ChoiceButtons from './ChoiceButtons';
 import { Progress } from '@/components/ui/progress';
 import { ArrowLeft, MoreVertical, Phone, Video } from 'lucide-react';
+import { playNotificationSound } from '@/lib/notification-sound';
 
 interface ChatRendererProps {
   flow: TypebotFlow;
