@@ -43,12 +43,24 @@ const Admin = () => {
   useEffect(() => {
     const load = async () => {
       setLoadingFunnels(true);
-      const [funnelData, galleryData] = await Promise.all([getAllFunnels(), getAvatarGallery()]);
+      const [funnelData, galleryData, settingsData] = await Promise.all([
+        getAllFunnels(),
+        getAvatarGallery(),
+        getUserSettings(),
+      ]);
       setFunnels(funnelData);
       setGallery(galleryData);
+      if (settingsData) setOpenaiKey(settingsData.openai_api_key);
       setLoadingFunnels(false);
     };
     load();
+
+    // Get current user ID
+    import('@/integrations/supabase/client').then(({ supabase }) => {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) setCurrentUserId(user.id);
+      });
+    });
   }, []);
 
   const handleFile = useCallback(async (file: File) => {
