@@ -392,9 +392,11 @@ export class TypebotEngine {
         case 'wait': {
           const waitBlock = block as WaitBlock;
           const raw = waitBlock.content?.secondsToWaitFor ?? (waitBlock.content as any)?.seconds ?? (waitBlock.content as any)?.delay;
+          console.log('[Engine] Wait block hit:', { raw, content: waitBlock.content, blockType: block.type });
           const seconds = raw !== undefined && raw !== null
             ? Number(this.replaceVariables(String(raw)))
             : 1;
+          console.log('[Engine] Yielding wait event:', seconds, 'seconds');
           yield { type: 'wait', seconds: isNaN(seconds) || seconds <= 0 ? 1 : seconds };
           return 'continue';
         }
