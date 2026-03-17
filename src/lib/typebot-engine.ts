@@ -258,6 +258,7 @@ export class TypebotEngine {
     for (let i = startIndex; i < group.blocks.length; i++) {
       const block = group.blocks[i];
       const blockType = this.normalizeBlockType(block.type);
+      console.log('[Engine] processGroup block:', { type: block.type, normalized: blockType, id: block.id });
 
       // Bubble blocks — collect messages
       if (this.isBubbleBlock(blockType)) {
