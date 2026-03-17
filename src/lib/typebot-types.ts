@@ -78,6 +78,7 @@ export type TypebotBlock =
   | WaitBlock
   | AbTestBlock
   | JumpBlock
+  | OpenAIBlock
   | GenericBlock;
 
 interface BaseBlock {
