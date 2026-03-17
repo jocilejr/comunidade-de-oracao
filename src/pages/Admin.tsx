@@ -222,6 +222,7 @@ const Admin = () => {
               { id: 'funnels', label: 'Funis', icon: FolderOpen, badge: funnels.length > 0 ? funnels.length : undefined },
               { id: 'gallery', label: 'Galeria de Avatares', icon: ImagePlus, badge: gallery.length > 0 ? gallery.length : undefined },
               { id: 'stats', label: 'Estatísticas', icon: BarChart3 },
+              { id: 'settings', label: 'Configurações', icon: Settings },
             ].map(item => (
               <button
                 key={item.id}
