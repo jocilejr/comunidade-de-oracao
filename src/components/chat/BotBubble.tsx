@@ -93,6 +93,7 @@ const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true 
           <AudioPlayer
             src={message.mediaUrl}
             time={time}
+            autoPlay
           />
         </div>
       </div>

@@ -78,6 +78,7 @@ const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId }: ChatRendererPro
               return [...items, { type: 'bot', message: msg }];
             });
             setIsTyping(false);
+            playNotificationSound();
             scrollToBottom();
             await delay(MESSAGE_DELAY);
           }

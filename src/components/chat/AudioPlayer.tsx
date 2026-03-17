@@ -31,7 +31,12 @@ const AudioPlayer = ({ src, time, autoPlay = false }: AudioPlayerProps) => {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onMeta = () => setDuration(audio.duration);
+    const onMeta = () => {
+      setDuration(audio.duration);
+      if (autoPlay) {
+        audio.play().then(() => setPlaying(true)).catch(() => {});
+      }
+    };
     const onTime = () => { if (!seeking) setCurrent(audio.currentTime); };
     const onEnd = () => setPlaying(false);
     audio.addEventListener('loadedmetadata', onMeta);
@@ -42,7 +47,7 @@ const AudioPlayer = ({ src, time, autoPlay = false }: AudioPlayerProps) => {
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('ended', onEnd);
     };
-  }, [seeking]);
+  }, [seeking, autoPlay]);
 
   const toggle = () => {
     const audio = audioRef.current;
