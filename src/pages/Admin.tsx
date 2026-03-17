@@ -538,6 +538,70 @@ const Admin = () => {
                 )}
               </div>
             )}
+
+            {/* ===== SETTINGS TAB ===== */}
+            {activeTab === 'settings' && (
+              <div className="max-w-2xl space-y-6">
+                <Card>
+                  <CardContent className="p-6 space-y-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <Key className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-foreground">Chave da OpenAI</h3>
+                        <p className="text-xs text-muted-foreground">Usada pelos blocos de IA nos funis (blocos OpenAI do Typebot)</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">API Key</Label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Input
+                            type={showKey ? 'text' : 'password'}
+                            placeholder="sk-..."
+                            value={openaiKey}
+                            onChange={e => setOpenaiKey(e.target.value)}
+                            className="pr-10 font-mono text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowKey(!showKey)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        <Button
+                          onClick={async () => {
+                            setSavingKey(true);
+                            const ok = await saveUserSettings(openaiKey);
+                            setSavingKey(false);
+                            toast({
+                              title: ok ? 'Chave salva!' : 'Erro',
+                              description: ok ? 'Sua chave da OpenAI foi salva com sucesso.' : 'Não foi possível salvar a chave.',
+                              variant: ok ? 'default' : 'destructive',
+                            });
+                          }}
+                          disabled={savingKey}
+                        >
+                          <Save className="w-4 h-4 mr-1" />
+                          {savingKey ? 'Salvando...' : 'Salvar'}
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Obtenha sua chave em{' '}
+                        <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                          platform.openai.com/api-keys
+                        </a>
+                        . A chave é armazenada de forma segura e usada apenas no servidor.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </div>
         </main>
       </div>
