@@ -338,9 +338,9 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
         {messages.map((msg: any, i: number) => (
           <div key={i} className="space-y-1">
             <p className="text-xs font-semibold text-violet-600 dark:text-violet-400">{msg.role}</p>
-            <pre className="text-xs bg-background/80 rounded p-2.5 whitespace-pre-wrap break-words border border-border max-h-52 overflow-y-auto leading-relaxed">
-              {msg.content || '(vazio)'}
-            </pre>
+            <div className="text-xs bg-background/80 rounded p-2.5 whitespace-pre-wrap break-words border border-border max-h-52 overflow-y-auto leading-relaxed">
+              {msg.content ? <MustacheText text={msg.content} variables={variables} /> : '(vazio)'}
+            </div>
           </div>
         ))}
         {tools.length > 0 && (
