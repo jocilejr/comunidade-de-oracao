@@ -152,6 +152,12 @@ const Admin = () => {
     else toast({ title: 'Erro', description: 'Não foi possível carregar o funil.', variant: 'destructive' });
   };
 
+  const handlePreview = async (funnel: StoredFunnel) => {
+    const full = await getFunnelById(funnel.id);
+    if (full) setPreviewFunnel(full);
+    else toast({ title: 'Erro', description: 'Não foi possível carregar o funil para simulação.', variant: 'destructive' });
+  };
+
   const handleProfileSave = async () => {
     if (!profileDialog) return;
     const success = await updateFunnelProfile(profileDialog.slug, editName, editAvatar);
