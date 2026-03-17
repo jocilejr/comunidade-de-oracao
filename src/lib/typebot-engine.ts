@@ -558,6 +558,7 @@ export class TypebotEngine {
     if (t.includes('ab test')) return 'abtest';
     if (t === 'jump') return 'jump';
     if (t.includes('typebot link')) return 'typebotlink';
+    if (t === 'openai') return 'openai';
     return t;
   }
 
