@@ -258,7 +258,7 @@ export class TypebotEngine {
     for (let i = startIndex; i < group.blocks.length; i++) {
       const block = group.blocks[i];
       const blockType = this.normalizeBlockType(block.type);
-      console.log('[Engine] processGroup block:', { type: block.type, normalized: blockType, id: block.id });
+      
 
       // Bubble blocks — collect messages
       if (this.isBubbleBlock(blockType)) {
@@ -355,9 +355,12 @@ export class TypebotEngine {
 
         case 'redirect': {
           const rdBlock = block as RedirectBlock;
-          if (rdBlock.content?.url) {
-            const url = this.replaceVariables(rdBlock.content.url);
-            yield { type: 'redirect', url, isNewTab: rdBlock.content.isNewTab ?? false };
+          const rdOpts = (rdBlock as any).options || {};
+          const rdUrl = rdBlock.content?.url || rdOpts.url;
+          if (rdUrl) {
+            const url = this.replaceVariables(rdUrl);
+            const isNewTab = rdBlock.content?.isNewTab ?? rdOpts.isNewTab ?? false;
+            yield { type: 'redirect', url, isNewTab };
             return 'stop';
           }
           return 'continue';
@@ -392,12 +395,16 @@ export class TypebotEngine {
 
         case 'wait': {
           const waitBlock = block as WaitBlock;
-          const raw = waitBlock.content?.secondsToWaitFor ?? (waitBlock.content as any)?.seconds ?? (waitBlock.content as any)?.delay;
-          console.log('[Engine] Wait block hit:', { raw, content: waitBlock.content, blockType: block.type });
+          const waitOpts = (waitBlock as any).options || {};
+          const raw = waitBlock.content?.secondsToWaitFor
+            ?? waitOpts.secondsToWaitFor
+            ?? waitOpts.seconds
+            ?? waitOpts.delay
+            ?? (waitBlock.content as any)?.seconds
+            ?? (waitBlock.content as any)?.delay;
           const seconds = raw !== undefined && raw !== null
             ? Number(this.replaceVariables(String(raw)))
             : 1;
-          console.log('[Engine] Yielding wait event:', seconds, 'seconds');
           yield { type: 'wait', seconds: isNaN(seconds) || seconds <= 0 ? 1 : seconds };
           return 'continue';
         }

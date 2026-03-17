@@ -15,6 +15,7 @@ interface ChatRendererProps {
   botName?: string;
   botAvatar?: string;
   ownerUserId?: string;
+  forceNewTab?: boolean;
 }
 
 type DisplayItem =
@@ -32,7 +33,7 @@ function typingDelay(content: string): number {
   return Math.min(MAX_TYPING, Math.max(MIN_TYPING, len * 15));
 }
 
-const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId }: ChatRendererProps) => {
+const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId, forceNewTab }: ChatRendererProps) => {
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
   const [inputBlock, setInputBlock] = useState<TypebotBlock | null>(null);
   const [choiceBlock, setChoiceBlock] = useState<ChoiceInputBlock | null>(null);
@@ -97,7 +98,7 @@ const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId }: ChatRendererPro
           break;
         }
         case 'redirect': {
-          if (event.isNewTab) window.open(event.url, '_blank');
+          if (forceNewTab || event.isNewTab) window.open(event.url, '_blank');
           else window.location.href = event.url;
           break;
         }
