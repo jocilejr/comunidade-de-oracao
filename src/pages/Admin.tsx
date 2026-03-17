@@ -152,6 +152,12 @@ const Admin = () => {
     else toast({ title: 'Erro', description: 'Não foi possível carregar o funil.', variant: 'destructive' });
   };
 
+  const handlePreview = async (funnel: StoredFunnel) => {
+    const full = await getFunnelById(funnel.id);
+    if (full) setPreviewFunnel(full);
+    else toast({ title: 'Erro', description: 'Não foi possível carregar o funil para simulação.', variant: 'destructive' });
+  };
+
   const handleProfileSave = async () => {
     if (!profileDialog) return;
     const success = await updateFunnelProfile(profileDialog.slug, editName, editAvatar);
@@ -198,7 +204,7 @@ const Admin = () => {
 
   // Preview mode — mobile frame
   if (previewFunnel) {
-    const pf = funnels.find(f => f.slug === previewFunnel.slug) || previewFunnel;
+    const pf = previewFunnel;
     return (
       <div className="flex items-center justify-center h-screen bg-background">
         <div className="relative">
@@ -440,7 +446,7 @@ const Admin = () => {
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleInspect(funnel)} title="Inspecionar funil">
                             <Settings className="w-3.5 h-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPreviewFunnel(funnel)} title="Simular funil">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handlePreview(funnel)} title="Simular funil">
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
                           <Link to={`/f/${funnel.slug}`} target="_blank">
