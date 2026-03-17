@@ -1,11 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { getAllFunnels, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify } from '@/lib/funnel-storage';
+import { getAllFunnels, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings } from '@/lib/funnel-storage';
 import { StoredFunnel } from '@/lib/typebot-types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, User, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser } from 'lucide-react';
+import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, User, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
@@ -25,6 +25,10 @@ const Admin = () => {
   const [editAvatar, setEditAvatar] = useState('');
   const [gallery, setGallery] = useState<string[]>([]);
   const [loadingFunnels, setLoadingFunnels] = useState(true);
+  const [openaiKey, setOpenaiKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -39,12 +43,24 @@ const Admin = () => {
   useEffect(() => {
     const load = async () => {
       setLoadingFunnels(true);
-      const [funnelData, galleryData] = await Promise.all([getAllFunnels(), getAvatarGallery()]);
+      const [funnelData, galleryData, settingsData] = await Promise.all([
+        getAllFunnels(),
+        getAvatarGallery(),
+        getUserSettings(),
+      ]);
       setFunnels(funnelData);
       setGallery(galleryData);
+      if (settingsData) setOpenaiKey(settingsData.openai_api_key);
       setLoadingFunnels(false);
     };
     load();
+
+    // Get current user ID
+    import('@/integrations/supabase/client').then(({ supabase }) => {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) setCurrentUserId(user.id);
+      });
+    });
   }, []);
 
   const handleFile = useCallback(async (file: File) => {
@@ -176,6 +192,7 @@ const Admin = () => {
                 flow={pf.flow}
                 botName={pf.botName || undefined}
                 botAvatar={pf.botAvatar || undefined}
+                ownerUserId={currentUserId || undefined}
               />
             </div>
           </div>
@@ -206,6 +223,7 @@ const Admin = () => {
               { id: 'funnels', label: 'Funis', icon: FolderOpen, badge: funnels.length > 0 ? funnels.length : undefined },
               { id: 'gallery', label: 'Galeria de Avatares', icon: ImagePlus, badge: gallery.length > 0 ? gallery.length : undefined },
               { id: 'stats', label: 'Estatísticas', icon: BarChart3 },
+              { id: 'settings', label: 'Configurações', icon: Settings },
             ].map(item => (
               <button
                 key={item.id}
@@ -254,11 +272,13 @@ const Admin = () => {
                   {activeTab === 'funnels' && 'Funis'}
                   {activeTab === 'gallery' && 'Galeria de Avatares'}
                   {activeTab === 'stats' && 'Estatísticas'}
+                  {activeTab === 'settings' && 'Configurações'}
                 </h2>
                 <p className="text-sm text-muted-foreground">
                   {activeTab === 'funnels' && 'Gerencie seus funis de conversação'}
                   {activeTab === 'gallery' && 'Fotos de perfil importadas para reutilizar nos funis'}
                   {activeTab === 'stats' && 'Acompanhe o desempenho dos funis'}
+                  {activeTab === 'settings' && 'Configure integrações e chaves de API'}
                 </p>
               </div>
               <Link to="/">
@@ -517,6 +537,70 @@ const Admin = () => {
                     </CardContent>
                   </Card>
                 )}
+              </div>
+            )}
+
+            {/* ===== SETTINGS TAB ===== */}
+            {activeTab === 'settings' && (
+              <div className="max-w-2xl space-y-6">
+                <Card>
+                  <CardContent className="p-6 space-y-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <Key className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-foreground">Chave da OpenAI</h3>
+                        <p className="text-xs text-muted-foreground">Usada pelos blocos de IA nos funis (blocos OpenAI do Typebot)</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">API Key</Label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Input
+                            type={showKey ? 'text' : 'password'}
+                            placeholder="sk-..."
+                            value={openaiKey}
+                            onChange={e => setOpenaiKey(e.target.value)}
+                            className="pr-10 font-mono text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowKey(!showKey)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        <Button
+                          onClick={async () => {
+                            setSavingKey(true);
+                            const ok = await saveUserSettings(openaiKey);
+                            setSavingKey(false);
+                            toast({
+                              title: ok ? 'Chave salva!' : 'Erro',
+                              description: ok ? 'Sua chave da OpenAI foi salva com sucesso.' : 'Não foi possível salvar a chave.',
+                              variant: ok ? 'default' : 'destructive',
+                            });
+                          }}
+                          disabled={savingKey}
+                        >
+                          <Save className="w-4 h-4 mr-1" />
+                          {savingKey ? 'Salvando...' : 'Salvar'}
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Obtenha sua chave em{' '}
+                        <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                          platform.openai.com/api-keys
+                        </a>
+                        . A chave é armazenada de forma segura e usada apenas no servidor.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             )}
           </div>

@@ -41,10 +41,12 @@ export class TypebotEngine {
   private currentBlockIndex: number = 0;
   private totalBlocks: number = 0;
   private processedBlocks: number = 0;
+  private ownerUserId: string | null = null;
 
-  constructor(flow: TypebotFlow) {
+  constructor(flow: TypebotFlow, options?: { ownerUserId?: string }) {
     this.flow = flow;
     this.variables = new Map();
+    this.ownerUserId = options?.ownerUserId || null;
 
     // Initialize variables
     for (const v of flow.variables || []) {
@@ -548,6 +550,11 @@ export class TypebotEngine {
       // Build tools payload if present
       const tools = opts.tools && opts.tools.length > 0 ? opts.tools : undefined;
 
+      if (!this.ownerUserId) {
+        console.warn('Owner user ID not available for OpenAI block.');
+        return;
+      }
+
       const proxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-proxy`;
       const response = await fetch(proxyUrl, {
         method: 'POST',
@@ -559,6 +566,7 @@ export class TypebotEngine {
           messages,
           model: opts.model || 'gpt-4',
           tools,
+          userId: this.ownerUserId,
         }),
       });
 

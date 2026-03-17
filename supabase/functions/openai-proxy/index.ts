@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,47 +7,65 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Map Typebot model names to Lovable AI Gateway models
-function mapModel(typebotModel: string): string {
-  const m = (typebotModel || "").toLowerCase();
-  if (m.includes("gpt-4") || m.includes("gpt4")) return "google/gemini-2.5-flash";
-  if (m.includes("gpt-3.5") || m.includes("gpt35")) return "google/gemini-2.5-flash-lite";
-  return "google/gemini-3-flash-preview"; // default
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { messages, model, tools } = await req.json();
+    const { messages, model, tools, userId } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: "User ID not provided." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const mappedModel = mapModel(model || "");
+    // Fetch the user's OpenAI API key from user_settings using service role
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: settings, error: settingsError } = await supabase
+      .from("user_settings")
+      .select("openai_api_key")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error("Error fetching settings:", settingsError);
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch API key settings." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const apiKey = settings?.openai_api_key;
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: "OpenAI API key not configured. Go to Admin > Settings to add your key." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const body: Record<string, unknown> = {
-      model: mappedModel,
+      model: model || "gpt-4",
       messages,
       stream: false,
     };
 
-    // If tools are defined, pass them for function calling
     if (tools && Array.isArray(tools) && tools.length > 0) {
       body.tools = tools;
       body.tool_choice = "auto";
     }
 
     const response = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      "https://api.openai.com/v1/chat/completions",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -55,7 +74,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("AI gateway error:", response.status, errText);
+      console.error("OpenAI API error:", response.status, errText);
 
       if (response.status === 429) {
         return new Response(
@@ -63,15 +82,15 @@ serve(async (req) => {
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 402) {
+      if (response.status === 401) {
         return new Response(
-          JSON.stringify({ error: "Payment required. Please add credits." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "Invalid API key. Check your OpenAI key in Settings." }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       return new Response(
-        JSON.stringify({ error: "AI gateway error", details: errText }),
+        JSON.stringify({ error: "OpenAI API error", details: errText }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

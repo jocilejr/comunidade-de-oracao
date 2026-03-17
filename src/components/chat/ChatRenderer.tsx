@@ -13,6 +13,7 @@ interface ChatRendererProps {
   flow: TypebotFlow;
   botName?: string;
   botAvatar?: string;
+  ownerUserId?: string;
 }
 
 type DisplayItem =
@@ -30,7 +31,7 @@ function typingDelay(content: string): number {
   return Math.min(MAX_TYPING, Math.max(MIN_TYPING, len * 15));
 }
 
-const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
+const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId }: ChatRendererProps) => {
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
   const [inputBlock, setInputBlock] = useState<TypebotBlock | null>(null);
   const [choiceBlock, setChoiceBlock] = useState<ChoiceInputBlock | null>(null);
@@ -141,7 +142,7 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
   }, [processEvents]);
 
   useEffect(() => {
-    const engine = new TypebotEngine(sessionFlow);
+    const engine = new TypebotEngine(sessionFlow, { ownerUserId });
     engineRef.current = engine;
 
     // Hard reset only when changing to a new flow session
