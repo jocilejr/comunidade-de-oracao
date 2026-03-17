@@ -44,7 +44,7 @@ const Admin = () => {
     const load = async () => {
       setLoadingFunnels(true);
       const [funnelData, galleryData, settingsData] = await Promise.all([
-        getAllFunnels(),
+        getAllFunnelsMeta(),
         getAvatarGallery(),
         getUserSettings(),
       ]);
