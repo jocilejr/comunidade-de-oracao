@@ -630,6 +630,23 @@ const Admin = () => {
         onChange={handleAvatarUpload}
       />
 
+      {/* Funnel Inspector dialog */}
+      <Dialog open={!!inspectFunnel} onOpenChange={open => { if (!open) setInspectFunnel(null); }}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              Inspetor — {inspectFunnel?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {loadingInspect ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">Carregando fluxo...</p>
+          ) : inspectFunnel ? (
+            <FunnelInspector flow={inspectFunnel.flow} />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       {/* Per-funnel profile dialog */}
       <Dialog open={!!profileDialog} onOpenChange={open => { if (!open) setProfileDialog(null); }}>
         <DialogContent className="sm:max-w-md">
