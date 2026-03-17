@@ -17,6 +17,7 @@ import {
   WaitBlock,
   AbTestBlock,
   JumpBlock,
+  OpenAIBlock,
   TextBubbleBlock,
   ImageBubbleBlock,
   VideoBubbleBlock,
