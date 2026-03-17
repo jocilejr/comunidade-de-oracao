@@ -355,9 +355,12 @@ export class TypebotEngine {
 
         case 'redirect': {
           const rdBlock = block as RedirectBlock;
-          if (rdBlock.content?.url) {
-            const url = this.replaceVariables(rdBlock.content.url);
-            yield { type: 'redirect', url, isNewTab: rdBlock.content.isNewTab ?? false };
+          const rdOpts = (rdBlock as any).options || {};
+          const rdUrl = rdBlock.content?.url || rdOpts.url;
+          if (rdUrl) {
+            const url = this.replaceVariables(rdUrl);
+            const isNewTab = rdBlock.content?.isNewTab ?? rdOpts.isNewTab ?? false;
+            yield { type: 'redirect', url, isNewTab };
             return 'stop';
           }
           return 'continue';
