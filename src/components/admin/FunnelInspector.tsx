@@ -309,7 +309,7 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
             </span>
             {(item.content?.comparisons || []).map((cmp: any, j: number) => (
               <p key={cmp.id || j} className="font-mono text-xs pl-2">
-                {getVarName(cmp.variableId, variables)} <span className="text-muted-foreground">{cmp.comparisonOperator}</span> "{cmp.value}"
+                {resolveVarName(cmp.variableId, variables)} <span className="text-muted-foreground">{cmp.comparisonOperator}</span> "{cmp.value}"
               </p>
             ))}
           </div>
