@@ -587,6 +587,28 @@ function getOrderedGroups(flow: TypebotFlow): OrderedGroup[] {
   }
 
   // Choose start group with same strategy used by runtime
+  const rawFlow = flow as TypebotFlow & {
+    events?: Array<{ id?: string; type?: string; outgoingEdgeId?: string }>;
+  };
+
+  const startEvent = rawFlow.events?.find(
+    event => String(event?.type || '').toLowerCase() === 'start'
+  );
+
+  const eventStartGroupId = (() => {
+    if (startEvent?.outgoingEdgeId) {
+      const edge = edgeById.get(startEvent.outgoingEdgeId);
+      if (edge?.to?.groupId) return edge.to.groupId;
+    }
+
+    const fallbackEventEdge = edges.find(edge => {
+      const from = edge.from as { eventId?: string } | undefined;
+      return Boolean(from?.eventId) && Boolean(edge.to?.groupId);
+    });
+
+    return fallbackEventEdge?.to?.groupId;
+  })();
+
   const incomingGroupIds = new Set(
     edges
       .map(edge => edge.to?.groupId)
@@ -599,7 +621,8 @@ function getOrderedGroups(flow: TypebotFlow): OrderedGroup[] {
 
   const noIncoming = groups.filter(group => !incomingGroupIds.has(group.id));
 
-  const startGroupId = explicitStart?.id
+  const startGroupId = eventStartGroupId
+    ?? explicitStart?.id
     ?? (noIncoming.length === 1
       ? noIncoming[0].id
       : (noIncoming.find(group => getTargetGroupIds(group).length > 0)?.id ?? noIncoming[0]?.id ?? groups[0].id));

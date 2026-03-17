@@ -89,17 +89,51 @@ export class TypebotEngine {
     });
   }
 
+  private getStartGroupFromEvent(): TypebotGroup | undefined {
+    const rawFlow = this.flow as TypebotFlow & {
+      events?: Array<{ id?: string; type?: string; outgoingEdgeId?: string }>;
+    };
+
+    const startEvent = rawFlow.events?.find(
+      event => String(event?.type || '').toLowerCase() === 'start'
+    );
+
+    if (startEvent?.outgoingEdgeId) {
+      const edge = this.findEdge(startEvent.outgoingEdgeId);
+      const targetGroupId = edge?.to?.groupId;
+      if (targetGroupId) {
+        const targetGroup = this.findGroupById(targetGroupId);
+        if (targetGroup) return targetGroup;
+      }
+    }
+
+    const fallbackEventEdge = (this.flow.edges || []).find(edge => {
+      const from = edge.from as { eventId?: string } | undefined;
+      return Boolean(from?.eventId) && Boolean(edge.to?.groupId);
+    });
+
+    if (fallbackEventEdge?.to?.groupId) {
+      return this.findGroupById(fallbackEventEdge.to.groupId);
+    }
+
+    return undefined;
+  }
+
   private getStartGroup(): TypebotGroup | undefined {
     const groups = this.flow.groups || [];
     if (groups.length === 0) return undefined;
 
-    // 1) Prefer explicit "start" block
+    // 1) Prefer start event (Typebot runtime behavior)
+    const eventStart = this.getStartGroupFromEvent();
+    if (eventStart) return eventStart;
+
+    // 2) Prefer explicit "start" block
     const explicitStart = groups.find(group =>
       group.blocks.some(block => this.normalizeBlockType(block.type) === 'start')
     );
     if (explicitStart) return explicitStart;
 
-    // 2) Fallback to groups without incoming edges
+    // 3) Fallback to groups without incoming edges
     const incomingGroupIds = new Set(
       (this.flow.edges || [])
         .map(edge => edge.to?.groupId)
@@ -115,7 +149,7 @@ export class TypebotEngine {
       return noIncoming[0];
     }
 
-    // 3) Final fallback
+    // 4) Final fallback
     return groups[0];
   }
 
