@@ -536,17 +536,100 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
   );
 }
 
+// ---- Ordered traversal ----
+
+interface OrderedGroup {
+  group: TypebotGroup;
+  seq: number;       // 1-based sequence
+  connected: boolean; // reachable from start?
+}
+
+function getOrderedGroups(flow: TypebotFlow): OrderedGroup[] {
+  const groups = flow.groups || [];
+  const edges = flow.edges || [];
+  if (groups.length === 0) return [];
+
+  // Build edge lookup: edgeId → edge
+  const edgeById = new Map<string, typeof edges[0]>();
+  edges.forEach(e => edgeById.set(e.id, e));
+
+  // Build groupId → group index
+  const groupById = new Map<string, number>();
+  groups.forEach((g, i) => groupById.set(g.id, i));
+
+  // For a given group, collect all target groupIds via outgoingEdgeIds on blocks and items
+  function getTargetGroupIds(group: TypebotGroup): string[] {
+    const targets: string[] = [];
+    for (const block of group.blocks) {
+      const b = block as any;
+      // Block-level outgoing edge
+      if (b.outgoingEdgeId) {
+        const edge = edgeById.get(b.outgoingEdgeId);
+        if (edge?.to?.groupId) targets.push(edge.to.groupId);
+      }
+      // Item-level outgoing edges (choices, conditions, AB test, etc.)
+      if (Array.isArray(b.items)) {
+        for (const item of b.items) {
+          if (item.outgoingEdgeId) {
+            const edge = edgeById.get(item.outgoingEdgeId);
+            if (edge?.to?.groupId) targets.push(edge.to.groupId);
+          }
+        }
+      }
+    }
+    return targets;
+  }
+
+  // BFS from first group (Start)
+  const visited = new Set<string>();
+  const ordered: OrderedGroup[] = [];
+  const queue: string[] = [groups[0].id];
+  visited.add(groups[0].id);
+
+  while (queue.length > 0) {
+    const gid = queue.shift()!;
+    const idx = groupById.get(gid);
+    if (idx === undefined) continue;
+    ordered.push({ group: groups[idx], seq: ordered.length + 1, connected: true });
+
+    const targets = getTargetGroupIds(groups[idx]);
+    for (const tid of targets) {
+      if (!visited.has(tid) && groupById.has(tid)) {
+        visited.add(tid);
+        queue.push(tid);
+      }
+    }
+  }
+
+  // Append orphan groups
+  for (const g of groups) {
+    if (!visited.has(g.id)) {
+      ordered.push({ group: g, seq: ordered.length + 1, connected: false });
+    }
+  }
+
+  return ordered;
+}
+
 // ---- Group ----
 
-function GroupSection({ group, index, variables }: { group: TypebotGroup; index: number; variables: TypebotVariable[] }) {
-  const [open, setOpen] = useState(index === 0);
+function GroupSection({ group, seq, connected, variables }: { group: TypebotGroup; seq: number; connected: boolean; variables: TypebotVariable[] }) {
+  const [open, setOpen] = useState(seq === 1);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="w-full flex items-center gap-3 px-4 py-3 bg-card border border-border rounded-lg hover:bg-muted/40 transition-colors">
         <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? 'rotate-0' : '-rotate-90'}`} />
+        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-bold shrink-0">
+          {seq}
+        </span>
         <Layers className="w-4 h-4 text-primary" />
-        <span className="font-semibold text-sm flex-1 text-left">{group.title || `Grupo ${index + 1}`}</span>
+        <span className="font-semibold text-sm flex-1 text-left">{group.title || `Grupo ${seq}`}</span>
+        {!connected && (
+          <Badge variant="outline" className="text-[10px] bg-destructive/10 text-destructive border-destructive/30">
+            desconectado
+          </Badge>
+        )}
         <span className="text-xs text-muted-foreground">{group.blocks.length} bloco{group.blocks.length !== 1 ? 's' : ''}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -605,10 +688,10 @@ const FunnelInspector = ({ flow }: FunnelInspectorProps) => {
         </Collapsible>
       )}
 
-      {/* Groups */}
+      {/* Groups — ordered by flow traversal */}
       <div className="space-y-2">
-        {flow.groups.map((group, i) => (
-          <GroupSection key={group.id} group={group} index={i} variables={flow.variables || []} />
+        {getOrderedGroups(flow).map(({ group, seq, connected }) => (
+          <GroupSection key={group.id} group={group} seq={seq} connected={connected} variables={flow.variables || []} />
         ))}
       </div>
     </div>
