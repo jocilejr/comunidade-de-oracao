@@ -688,10 +688,10 @@ const FunnelInspector = ({ flow }: FunnelInspectorProps) => {
         </Collapsible>
       )}
 
-      {/* Groups */}
+      {/* Groups — ordered by flow traversal */}
       <div className="space-y-2">
-        {flow.groups.map((group, i) => (
-          <GroupSection key={group.id} group={group} index={i} variables={flow.variables || []} />
+        {getOrderedGroups(flow).map(({ group, seq, connected }) => (
+          <GroupSection key={group.id} group={group} seq={seq} connected={connected} variables={flow.variables || []} />
         ))}
       </div>
     </div>
