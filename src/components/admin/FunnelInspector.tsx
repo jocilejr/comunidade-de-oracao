@@ -61,14 +61,52 @@ function getBlockIcon(type: string) {
   return Box;
 }
 
-function getVarName(id: string, variables: TypebotVariable[]): string {
-  return variables.find(v => v.id === id)?.name || id;
+function resolveVarName(ref: string, variables: TypebotVariable[]): string {
+  if (!ref) return '?';
+  const trimmed = ref.trim();
+  // Try by id first
+  const byId = variables.find(v => v.id === trimmed);
+  if (byId) return byId.name;
+  // Try by name
+  const byName = variables.find(v => v.name === trimmed);
+  if (byName) return byName.name;
+  return trimmed;
+}
+
+function getInlineVariableId(node: any): string | null {
+  // Format 1: variableId directly on node
+  if (node.variableId) return node.variableId;
+  // Format 2: children[0].variableId
+  if (node.children?.[0]?.variableId) return node.children[0].variableId;
+  return null;
+}
+
+function MustacheText({ text, variables }: { text: string; variables: TypebotVariable[] }) {
+  const parts = text.split(/(\{\{[^}]+\}\})/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = part.match(/^\{\{(.+)\}\}$/);
+        if (match) {
+          const name = resolveVarName(match[1].trim(), variables);
+          return (
+            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 text-[11px] font-mono mx-0.5 align-baseline">
+              {`{{${name}}}`}
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
 }
 
 function VarBadge({ id, variables }: { id: string; variables: TypebotVariable[] }) {
+  const name = resolveVarName(id, variables);
+  const notFound = !variables.find(v => v.id === id.trim() || v.name === id.trim());
   return (
-    <Badge variant="outline" className="font-mono text-xs bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30">
-      {getVarName(id, variables)}
+    <Badge variant="outline" className={`font-mono text-xs ${notFound ? 'bg-destructive/10 text-destructive border-destructive/30' : 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30'}`}>
+      {name}{notFound ? ' ⚠' : ''}
     </Badge>
   );
 }
@@ -86,23 +124,26 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
       const renderChild = (child: any, idx: number) => {
         // Inline variable node
         if (child.type === 'inline-variable') {
-          const varId = child.children?.[0]?.variableId;
+          const varId = getInlineVariableId(child);
           if (varId) {
             return (
               <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 text-[11px] font-mono mx-0.5 align-baseline">
-                {`{{${getVarName(varId, variables)}}}`}
+                {`{{${resolveVarName(varId, variables)}}}`}
               </span>
             );
           }
           return null;
         }
-        // Normal text node
+        // Normal text node — also handle {{var}} in plain text
         const text = child.text || '';
         if (!text) return null;
         const style: React.CSSProperties = {};
         if (child.bold) style.fontWeight = 'bold';
         if (child.italic) style.fontStyle = 'italic';
         if (child.underline) style.textDecoration = 'underline';
+        if (text.includes('{{')) {
+          return <span key={idx} style={style}><MustacheText text={text} variables={variables} /></span>;
+        }
         return <span key={idx} style={style}>{text}</span>;
       };
 
@@ -240,16 +281,18 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
 
   // Set Variable
   if (type === 'set variable') {
-    const varName = getVarName(b.content?.variableId || '', variables);
-    const expr = b.content?.expressionToEvaluate || b.content?.type || '';
+    const varId = b.options?.variableId || b.content?.variableId || '';
+    const varName = resolveVarName(varId, variables);
+    const expr = b.options?.expressionToEvaluate || b.content?.expressionToEvaluate || b.options?.type || b.content?.type || '';
+    const isCode = b.options?.isCode || b.content?.isCode;
     return (
       <div className="space-y-1">
         <div className="font-mono text-sm">
           <span className="text-amber-600 dark:text-amber-400 font-semibold">{varName}</span>
           <span className="text-muted-foreground"> = </span>
-          <span className="text-foreground">{expr || '(vazio)'}</span>
+          <span className="text-foreground">{expr ? <MustacheText text={String(expr)} variables={variables} /> : '(vazio)'}</span>
         </div>
-        {b.content?.isCode && <Badge variant="outline" className="text-[10px]">JavaScript</Badge>}
+        {isCode && <Badge variant="outline" className="text-[10px]">JavaScript</Badge>}
       </div>
     );
   }
@@ -266,7 +309,7 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
             </span>
             {(item.content?.comparisons || []).map((cmp: any, j: number) => (
               <p key={cmp.id || j} className="font-mono text-xs pl-2">
-                {getVarName(cmp.variableId, variables)} <span className="text-muted-foreground">{cmp.comparisonOperator}</span> "{cmp.value}"
+                {resolveVarName(cmp.variableId, variables)} <span className="text-muted-foreground">{cmp.comparisonOperator}</span> "{cmp.value}"
               </p>
             ))}
           </div>
@@ -295,9 +338,9 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
         {messages.map((msg: any, i: number) => (
           <div key={i} className="space-y-1">
             <p className="text-xs font-semibold text-violet-600 dark:text-violet-400">{msg.role}</p>
-            <pre className="text-xs bg-background/80 rounded p-2.5 whitespace-pre-wrap break-words border border-border max-h-52 overflow-y-auto leading-relaxed">
-              {msg.content || '(vazio)'}
-            </pre>
+            <div className="text-xs bg-background/80 rounded p-2.5 whitespace-pre-wrap break-words border border-border max-h-52 overflow-y-auto leading-relaxed">
+              {msg.content ? <MustacheText text={msg.content} variables={variables} /> : '(vazio)'}
+            </div>
           </div>
         ))}
         {tools.length > 0 && (
@@ -324,7 +367,7 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
             <p className="text-xs font-semibold text-violet-600 dark:text-violet-400">Response Mapping</p>
             {responseMapping.map((rm: any, i: number) => (
               <div key={i} className="flex items-center gap-1.5 text-xs font-mono">
-                <span>{rm.valueToExtract}</span>
+                <span>{rm.valueToExtract || 'response'}</span>
                 <span className="text-muted-foreground">→</span>
                 <VarBadge id={rm.variableId} variables={variables} />
               </div>
