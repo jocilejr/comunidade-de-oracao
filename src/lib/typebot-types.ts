@@ -319,6 +319,25 @@ export interface JumpBlock extends BaseBlock {
   content: { groupId: string; blockId?: string };
 }
 
+export interface OpenAIBlock extends BaseBlock {
+  type: 'openai' | 'OpenAI';
+  options?: {
+    action?: string;
+    model?: string;
+    messages?: Array<{ role: string; content?: string; name?: string }>;
+    responseMapping?: Array<{ id: string; valueToExtract: string; variableId: string }>;
+    tools?: Array<{
+      type: string;
+      function: {
+        name: string;
+        description?: string;
+        parameters?: Record<string, unknown>;
+      };
+    }>;
+  };
+  content?: Record<string, unknown>;
+}
+
 export interface GenericBlock extends BaseBlock {
   type: string;
   content?: Record<string, unknown>;
