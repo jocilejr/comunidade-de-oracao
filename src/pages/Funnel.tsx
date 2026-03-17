@@ -38,7 +38,12 @@ const Funnel = () => {
 
   return (
     <div className="h-[100dvh] max-h-[100dvh]">
-      <ChatRenderer flow={funnel.flow} botName={funnel.botName} botAvatar={funnel.botAvatar} />
+      <ChatRenderer
+        flow={funnel.flow}
+        botName={funnel.botName}
+        botAvatar={funnel.botAvatar}
+        ownerUserId={funnel.userId}
+      />
     </div>
   );
 };

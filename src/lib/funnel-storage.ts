@@ -196,3 +196,33 @@ export function validateTypebotJson(json: unknown): { valid: boolean; flow?: Typ
     return { valid: false, error: 'JSON inválido.' };
   }
 }
+
+// ---- User Settings ----
+
+export async function getUserSettings(): Promise<{ openai_api_key: string } | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from('user_settings')
+    .select('openai_api_key')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return { openai_api_key: data.openai_api_key || '' };
+}
+
+export async function saveUserSettings(openaiApiKey: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { error } = await supabase
+    .from('user_settings')
+    .upsert(
+      { user_id: user.id, openai_api_key: openaiApiKey },
+      { onConflict: 'user_id' }
+    );
+
+  return !error;
+}
