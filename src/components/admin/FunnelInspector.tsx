@@ -124,23 +124,26 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
       const renderChild = (child: any, idx: number) => {
         // Inline variable node
         if (child.type === 'inline-variable') {
-          const varId = child.children?.[0]?.variableId;
+          const varId = getInlineVariableId(child);
           if (varId) {
             return (
               <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 text-[11px] font-mono mx-0.5 align-baseline">
-                {`{{${getVarName(varId, variables)}}}`}
+                {`{{${resolveVarName(varId, variables)}}}`}
               </span>
             );
           }
           return null;
         }
-        // Normal text node
+        // Normal text node — also handle {{var}} in plain text
         const text = child.text || '';
         if (!text) return null;
         const style: React.CSSProperties = {};
         if (child.bold) style.fontWeight = 'bold';
         if (child.italic) style.fontStyle = 'italic';
         if (child.underline) style.textDecoration = 'underline';
+        if (text.includes('{{')) {
+          return <span key={idx} style={style}><MustacheText text={text} variables={variables} /></span>;
+        }
         return <span key={idx} style={style}>{text}</span>;
       };
 
