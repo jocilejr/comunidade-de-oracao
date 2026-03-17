@@ -106,6 +106,10 @@ export class TypebotEngine {
     return this.flow.edges.find(e => e.from.blockId === blockId);
   }
 
+  private findEdgeFromGroup(groupId: string): TypebotEdge | undefined {
+    return this.flow.edges.find(e => e.from.groupId === groupId && !e.from.blockId);
+  }
+
   async* start(): AsyncGenerator<EngineEvent> {
     const group = this.getStartGroup();
     if (!group) {
@@ -244,6 +248,13 @@ export class TypebotEngine {
         yield* this.processFromEdge(edge.id);
         return;
       }
+    }
+
+    // Fallback: try edge from group itself (e.g. Start group)
+    const groupEdge = this.findEdgeFromGroup(group.id);
+    if (groupEdge) {
+      yield* this.processFromEdge(groupEdge.id);
+      return;
     }
 
     yield { type: 'end' };
@@ -649,6 +660,7 @@ export class TypebotEngine {
     if (t === 'jump') return 'jump';
     if (t.includes('typebot link')) return 'typebotlink';
     if (t === 'openai') return 'openai';
+    if (t === 'start') return 'start';
     return t;
   }
 
