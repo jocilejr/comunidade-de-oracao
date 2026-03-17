@@ -250,6 +250,13 @@ export class TypebotEngine {
       }
     }
 
+    // Fallback: try edge from group itself (e.g. Start group)
+    const groupEdge = this.findEdgeFromGroup(group.id);
+    if (groupEdge) {
+      yield* this.processFromEdge(groupEdge.id);
+      return;
+    }
+
     yield { type: 'end' };
   }
 
