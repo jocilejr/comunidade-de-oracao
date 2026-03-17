@@ -106,6 +106,10 @@ export class TypebotEngine {
     return this.flow.edges.find(e => e.from.blockId === blockId);
   }
 
+  private findEdgeFromGroup(groupId: string): TypebotEdge | undefined {
+    return this.flow.edges.find(e => e.from.groupId === groupId && !e.from.blockId);
+  }
+
   async* start(): AsyncGenerator<EngineEvent> {
     const group = this.getStartGroup();
     if (!group) {
