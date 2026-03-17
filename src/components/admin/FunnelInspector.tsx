@@ -79,18 +79,51 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
   const b = block as any;
   const type = block.type.toLowerCase();
 
-  // Text bubble
+  // Text bubble — supports inline variables from richText
   if (type === 'text' || type === 'bubble text') {
-    const html = b.content?.html || b.content?.plainText || '';
     const richText = b.content?.richText;
-    let display = html;
-    if (!display && richText) {
-      display = richText.map((r: any) =>
-        (r.children || []).map((c: any) => c.text || '').join('')
-      ).join('\n');
+    if (richText && richText.length > 0) {
+      const renderChild = (child: any, idx: number) => {
+        // Inline variable node
+        if (child.type === 'inline-variable') {
+          const varId = child.children?.[0]?.variableId;
+          if (varId) {
+            return (
+              <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 text-[11px] font-mono mx-0.5 align-baseline">
+                {`{{${getVarName(varId, variables)}}}`}
+              </span>
+            );
+          }
+          return null;
+        }
+        // Normal text node
+        const text = child.text || '';
+        if (!text) return null;
+        const style: React.CSSProperties = {};
+        if (child.bold) style.fontWeight = 'bold';
+        if (child.italic) style.fontStyle = 'italic';
+        if (child.underline) style.textDecoration = 'underline';
+        return <span key={idx} style={style}>{text}</span>;
+      };
+
+      const hasContent = richText.some((r: any) =>
+        (r.children || []).some((c: any) => c.text || c.type === 'inline-variable')
+      );
+
+      if (hasContent) {
+        return (
+          <div className="text-sm leading-relaxed text-foreground/90">
+            {richText.map((r: any, ri: number) => (
+              <p key={ri}>{(r.children || []).map(renderChild)}</p>
+            ))}
+          </div>
+        );
+      }
     }
-    return display
-      ? <div className="text-sm leading-relaxed text-foreground/90" dangerouslySetInnerHTML={{ __html: display }} />
+    // Fallback to html/plainText
+    const html = b.content?.html || b.content?.plainText || '';
+    return html
+      ? <div className="text-sm leading-relaxed text-foreground/90" dangerouslySetInnerHTML={{ __html: html }} />
       : <span className="text-sm text-muted-foreground italic">Vazio</span>;
   }
 
