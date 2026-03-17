@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,11 +13,38 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, model, tools, apiKey } = await req.json();
+    const { messages, model, tools, userId } = await req.json();
 
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ error: "User ID not provided." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fetch the user's OpenAI API key from user_settings using service role
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: settings, error: settingsError } = await supabase
+      .from("user_settings")
+      .select("openai_api_key")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error("Error fetching settings:", settingsError);
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch API key settings." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const apiKey = settings?.openai_api_key;
     if (!apiKey) {
       return new Response(
-        JSON.stringify({ error: "API key not provided. Configure your OpenAI key in Settings." }),
+        JSON.stringify({ error: "OpenAI API key not configured. Go to Admin > Settings to add your key." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
