@@ -276,28 +276,17 @@ const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
         </div>
       </div>
 
-      {/* Input bar — always visible */}
-      <div
-        className="shrink-0"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-        onFocusCapture={handleComposerFocusCapture}
-        onBlurCapture={handleComposerBlurCapture}
-      >
-        {inputBlock && !ended ? (
+      {/* Input bar — only when there's an active input */}
+      {inputBlock && !ended && (
+        <div
+          className="shrink-0"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          onFocusCapture={handleComposerFocusCapture}
+          onBlurCapture={handleComposerBlurCapture}
+        >
           <ChatInput block={inputBlock} onSubmit={handleInputSubmit} />
-        ) : (
-          <div className="px-2 py-2" style={{ backgroundColor: 'hsl(var(--wa-input-bar))' }}>
-            <div className="flex items-center gap-2 max-w-[600px] mx-auto">
-              <div className="flex-1 rounded-3xl px-4 py-2.5" style={{ backgroundColor: 'hsl(var(--wa-input-bg))', opacity: 0.5 }}>
-                <span className="text-sm" style={{ color: 'hsl(var(--wa-time))' }}>Mensagem</span>
-              </div>
-              <div className="shrink-0 h-10 w-10 rounded-full flex items-center justify-center opacity-50" style={{ backgroundColor: 'hsl(var(--wa-send))' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
