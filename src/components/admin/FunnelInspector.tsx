@@ -281,16 +281,18 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
 
   // Set Variable
   if (type === 'set variable') {
-    const varName = getVarName(b.content?.variableId || '', variables);
-    const expr = b.content?.expressionToEvaluate || b.content?.type || '';
+    const varId = b.options?.variableId || b.content?.variableId || '';
+    const varName = resolveVarName(varId, variables);
+    const expr = b.options?.expressionToEvaluate || b.content?.expressionToEvaluate || b.options?.type || b.content?.type || '';
+    const isCode = b.options?.isCode || b.content?.isCode;
     return (
       <div className="space-y-1">
         <div className="font-mono text-sm">
           <span className="text-amber-600 dark:text-amber-400 font-semibold">{varName}</span>
           <span className="text-muted-foreground"> = </span>
-          <span className="text-foreground">{expr || '(vazio)'}</span>
+          <span className="text-foreground">{expr ? <MustacheText text={String(expr)} variables={variables} /> : '(vazio)'}</span>
         </div>
-        {b.content?.isCode && <Badge variant="outline" className="text-[10px]">JavaScript</Badge>}
+        {isCode && <Badge variant="outline" className="text-[10px]">JavaScript</Badge>}
       </div>
     );
   }
