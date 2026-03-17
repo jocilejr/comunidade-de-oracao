@@ -727,7 +727,6 @@ export class TypebotEngine {
               } catch { /* use raw string */ }
               this.setVariable(mapping.variableId, finalValue);
             } else {
-            } else {
               try {
                 const args = JSON.parse(tc.function?.arguments || '{}');
                 this.setVariable(mapping.variableId, JSON.stringify(args));
