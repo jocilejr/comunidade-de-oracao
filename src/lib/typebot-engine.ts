@@ -714,7 +714,19 @@ export class TypebotEngine {
             const tc = toolCalls[0];
             const fnName = tc.function?.name;
             if (codeToolResults[fnName] !== undefined) {
-              this.setVariable(mapping.variableId, codeToolResults[fnName]);
+              // If code tool result is a JSON object with a single field, extract that value
+              let finalValue = codeToolResults[fnName];
+              try {
+                const parsed = JSON.parse(finalValue);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                  const values = Object.values(parsed);
+                  if (values.length === 1) {
+                    finalValue = String(values[0]);
+                  }
+                }
+              } catch { /* use raw string */ }
+              this.setVariable(mapping.variableId, finalValue);
+            } else {
             } else {
               try {
                 const args = JSON.parse(tc.function?.arguments || '{}');
