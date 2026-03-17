@@ -1,1 +1,4 @@
 project_id = "exvfzbkhdclukfrhkvtf"
+
+[functions.openai-proxy]
+verify_jwt = false
