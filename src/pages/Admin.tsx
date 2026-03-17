@@ -125,6 +125,14 @@ const Admin = () => {
     setEditAvatar(funnel.botAvatar || '');
   };
 
+  const handleInspect = async (funnel: StoredFunnel) => {
+    setLoadingInspect(true);
+    const full = await getFunnelById(funnel.id);
+    setLoadingInspect(false);
+    if (full) setInspectFunnel(full);
+    else toast({ title: 'Erro', description: 'Não foi possível carregar o funil.', variant: 'destructive' });
+  };
+
   const handleProfileSave = async () => {
     if (!profileDialog) return;
 
