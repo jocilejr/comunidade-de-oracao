@@ -367,7 +367,7 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
             <p className="text-xs font-semibold text-violet-600 dark:text-violet-400">Response Mapping</p>
             {responseMapping.map((rm: any, i: number) => (
               <div key={i} className="flex items-center gap-1.5 text-xs font-mono">
-                <span>{rm.valueToExtract}</span>
+                <span>{rm.valueToExtract || 'response'}</span>
                 <span className="text-muted-foreground">→</span>
                 <VarBadge id={rm.variableId} variables={variables} />
               </div>
