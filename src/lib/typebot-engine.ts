@@ -197,14 +197,6 @@ export class TypebotEngine {
       const idx = group.blocks.findIndex(b => b.id === edge.to.blockId);
       if (idx >= 0) blockIndex = idx;
     }
-
-    // Auto-wait between groups: adds a natural pause when transitioning to a new group
-    // that starts with bubble blocks (messages). Skip if the first block is logic/input.
-    const firstBlock = group.blocks[blockIndex];
-    if (firstBlock && this.isBubbleBlock(this.normalizeBlockType(firstBlock.type))) {
-      yield { type: 'wait', seconds: 0.5 };
-    }
-
     yield* this.processGroup(group, blockIndex);
   }
 
@@ -266,6 +258,7 @@ export class TypebotEngine {
     for (let i = startIndex; i < group.blocks.length; i++) {
       const block = group.blocks[i];
       const blockType = this.normalizeBlockType(block.type);
+      console.log('[Engine] processGroup block:', { type: block.type, normalized: blockType, id: block.id });
 
       // Bubble blocks — collect messages
       if (this.isBubbleBlock(blockType)) {
@@ -400,9 +393,11 @@ export class TypebotEngine {
         case 'wait': {
           const waitBlock = block as WaitBlock;
           const raw = waitBlock.content?.secondsToWaitFor ?? (waitBlock.content as any)?.seconds ?? (waitBlock.content as any)?.delay;
+          console.log('[Engine] Wait block hit:', { raw, content: waitBlock.content, blockType: block.type });
           const seconds = raw !== undefined && raw !== null
             ? Number(this.replaceVariables(String(raw)))
             : 1;
+          console.log('[Engine] Yielding wait event:', seconds, 'seconds');
           yield { type: 'wait', seconds: isNaN(seconds) || seconds <= 0 ? 1 : seconds };
           return 'continue';
         }
