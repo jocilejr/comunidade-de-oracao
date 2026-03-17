@@ -90,8 +90,33 @@ export class TypebotEngine {
   }
 
   private getStartGroup(): TypebotGroup | undefined {
-    // First group is typically the start
-    return this.flow.groups[0];
+    const groups = this.flow.groups || [];
+    if (groups.length === 0) return undefined;
+
+    // 1) Prefer explicit "start" block
+    const explicitStart = groups.find(group =>
+      group.blocks.some(block => this.normalizeBlockType(block.type) === 'start')
+    );
+    if (explicitStart) return explicitStart;
+
+    // 2) Fallback to groups without incoming edges
+    const incomingGroupIds = new Set(
+      (this.flow.edges || [])
+        .map(edge => edge.to?.groupId)
+        .filter((groupId): groupId is string => Boolean(groupId))
+    );
+
+    const noIncoming = groups.filter(group => !incomingGroupIds.has(group.id));
+    if (noIncoming.length === 1) return noIncoming[0];
+
+    if (noIncoming.length > 1) {
+      const withOutgoing = noIncoming.find(group => this.findEdgeFromGroup(group.id));
+      if (withOutgoing) return withOutgoing;
+      return noIncoming[0];
+    }
+
+    // 3) Final fallback
+    return groups[0];
   }
 
   private findGroupById(groupId: string): TypebotGroup | undefined {
