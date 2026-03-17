@@ -61,14 +61,52 @@ function getBlockIcon(type: string) {
   return Box;
 }
 
-function getVarName(id: string, variables: TypebotVariable[]): string {
-  return variables.find(v => v.id === id)?.name || id;
+function resolveVarName(ref: string, variables: TypebotVariable[]): string {
+  if (!ref) return '?';
+  const trimmed = ref.trim();
+  // Try by id first
+  const byId = variables.find(v => v.id === trimmed);
+  if (byId) return byId.name;
+  // Try by name
+  const byName = variables.find(v => v.name === trimmed);
+  if (byName) return byName.name;
+  return trimmed;
+}
+
+function getInlineVariableId(node: any): string | null {
+  // Format 1: variableId directly on node
+  if (node.variableId) return node.variableId;
+  // Format 2: children[0].variableId
+  if (node.children?.[0]?.variableId) return node.children[0].variableId;
+  return null;
+}
+
+function MustacheText({ text, variables }: { text: string; variables: TypebotVariable[] }) {
+  const parts = text.split(/(\{\{[^}]+\}\})/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = part.match(/^\{\{(.+)\}\}$/);
+        if (match) {
+          const name = resolveVarName(match[1].trim(), variables);
+          return (
+            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 text-[11px] font-mono mx-0.5 align-baseline">
+              {`{{${name}}}`}
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
 }
 
 function VarBadge({ id, variables }: { id: string; variables: TypebotVariable[] }) {
+  const name = resolveVarName(id, variables);
+  const notFound = !variables.find(v => v.id === id.trim() || v.name === id.trim());
   return (
-    <Badge variant="outline" className="font-mono text-xs bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30">
-      {getVarName(id, variables)}
+    <Badge variant="outline" className={`font-mono text-xs ${notFound ? 'bg-destructive/10 text-destructive border-destructive/30' : 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30'}`}>
+      {name}{notFound ? ' ⚠' : ''}
     </Badge>
   );
 }
