@@ -271,11 +271,13 @@ const Admin = () => {
                   {activeTab === 'funnels' && 'Funis'}
                   {activeTab === 'gallery' && 'Galeria de Avatares'}
                   {activeTab === 'stats' && 'Estatísticas'}
+                  {activeTab === 'settings' && 'Configurações'}
                 </h2>
                 <p className="text-sm text-muted-foreground">
                   {activeTab === 'funnels' && 'Gerencie seus funis de conversação'}
                   {activeTab === 'gallery' && 'Fotos de perfil importadas para reutilizar nos funis'}
                   {activeTab === 'stats' && 'Acompanhe o desempenho dos funis'}
+                  {activeTab === 'settings' && 'Configure integrações e chaves de API'}
                 </p>
               </div>
               <Link to="/">
