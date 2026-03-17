@@ -36,7 +36,7 @@ const Admin = () => {
   const { theme, toggleTheme } = useTheme();
 
   const refresh = useCallback(async () => {
-    const data = await getAllFunnels();
+    const data = await getAllFunnelsMeta();
     setFunnels(data);
   }, []);
 
