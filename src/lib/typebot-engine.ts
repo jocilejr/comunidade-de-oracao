@@ -366,6 +366,11 @@ export class TypebotEngine {
           return 'continue';
         }
 
+        case 'openai': {
+          await this.executeOpenAI(block as OpenAIBlock);
+          return 'continue';
+        }
+
         default:
           console.warn(`Unsupported block type: ${block.type}`);
           return 'continue';
