@@ -4,6 +4,7 @@ import { Play, Pause } from 'lucide-react';
 interface AudioPlayerProps {
   src: string;
   time?: string;
+  autoPlay?: boolean;
 }
 
 // Generate random waveform data that looks like real WhatsApp
@@ -19,7 +20,7 @@ const generateWaveform = (count: number): number[] => {
 
 const BARS = generateWaveform(46);
 
-const AudioPlayer = ({ src, time }: AudioPlayerProps) => {
+const AudioPlayer = ({ src, time, autoPlay = false }: AudioPlayerProps) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -30,7 +31,12 @@ const AudioPlayer = ({ src, time }: AudioPlayerProps) => {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onMeta = () => setDuration(audio.duration);
+    const onMeta = () => {
+      setDuration(audio.duration);
+      if (autoPlay) {
+        audio.play().then(() => setPlaying(true)).catch(() => {});
+      }
+    };
     const onTime = () => { if (!seeking) setCurrent(audio.currentTime); };
     const onEnd = () => setPlaying(false);
     audio.addEventListener('loadedmetadata', onMeta);
@@ -41,7 +47,7 @@ const AudioPlayer = ({ src, time }: AudioPlayerProps) => {
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('ended', onEnd);
     };
-  }, [seeking]);
+  }, [seeking, autoPlay]);
 
   const toggle = () => {
     const audio = audioRef.current;

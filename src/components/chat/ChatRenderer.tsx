@@ -8,6 +8,7 @@ import ChatInput from './ChatInput';
 import ChoiceButtons from './ChoiceButtons';
 import { Progress } from '@/components/ui/progress';
 import { ArrowLeft, MoreVertical, Phone, Video } from 'lucide-react';
+import { playNotificationSound } from '@/lib/notification-sound';
 
 interface ChatRendererProps {
   flow: TypebotFlow;
@@ -77,6 +78,7 @@ const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId }: ChatRendererPro
               return [...items, { type: 'bot', message: msg }];
             });
             setIsTyping(false);
+            playNotificationSound();
             scrollToBottom();
             await delay(MESSAGE_DELAY);
           }
