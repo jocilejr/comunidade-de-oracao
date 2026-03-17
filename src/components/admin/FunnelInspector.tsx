@@ -586,11 +586,29 @@ function getOrderedGroups(flow: TypebotFlow): OrderedGroup[] {
     return targets;
   }
 
-  // BFS from first group (Start)
+  // Choose start group with same strategy used by runtime
+  const incomingGroupIds = new Set(
+    edges
+      .map(edge => edge.to?.groupId)
+      .filter((groupId): groupId is string => Boolean(groupId))
+  );
+
+  const explicitStart = groups.find(group =>
+    group.blocks.some(block => String(block.type || '').toLowerCase() === 'start')
+  );
+
+  const noIncoming = groups.filter(group => !incomingGroupIds.has(group.id));
+
+  const startGroupId = explicitStart?.id
+    ?? (noIncoming.length === 1
+      ? noIncoming[0].id
+      : (noIncoming.find(group => getTargetGroupIds(group).length > 0)?.id ?? noIncoming[0]?.id ?? groups[0].id));
+
+  // BFS from detected start group
   const visited = new Set<string>();
   const ordered: OrderedGroup[] = [];
-  const queue: string[] = [groups[0].id];
-  visited.add(groups[0].id);
+  const queue: string[] = [startGroupId];
+  visited.add(startGroupId);
 
   while (queue.length > 0) {
     const gid = queue.shift()!;

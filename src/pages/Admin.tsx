@@ -212,8 +212,8 @@ const Admin = () => {
             </Button>
           </div>
           <div className="w-[375px] h-[667px] rounded-[2.5rem] border-[6px] border-foreground/80 overflow-hidden shadow-2xl bg-background relative">
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-foreground/80 rounded-b-2xl z-50" />
-            <div className="h-full">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-foreground/80 rounded-b-2xl z-50 pointer-events-none" />
+            <div className="h-full pt-6">
               <ChatRenderer
                 key={pf.slug}
                 flow={pf.flow}
