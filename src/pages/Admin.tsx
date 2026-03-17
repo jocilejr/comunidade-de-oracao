@@ -1,11 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings } from '@/lib/funnel-storage';
+import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById } from '@/lib/funnel-storage';
+import FunnelInspector from '@/components/admin/FunnelInspector';
 import { StoredFunnel } from '@/lib/typebot-types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, User, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff } from 'lucide-react';
+import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, User, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, Search as SearchIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
@@ -29,6 +30,8 @@ const Admin = () => {
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [inspectFunnel, setInspectFunnel] = useState<StoredFunnel | null>(null);
+  const [loadingInspect, setLoadingInspect] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -120,6 +123,14 @@ const Admin = () => {
     setProfileDialog(funnel);
     setEditName(funnel.botName || '');
     setEditAvatar(funnel.botAvatar || '');
+  };
+
+  const handleInspect = async (funnel: StoredFunnel) => {
+    setLoadingInspect(true);
+    const full = await getFunnelById(funnel.id);
+    setLoadingInspect(false);
+    if (full) setInspectFunnel(full);
+    else toast({ title: 'Erro', description: 'Não foi possível carregar o funil.', variant: 'destructive' });
   };
 
   const handleProfileSave = async () => {
@@ -408,8 +419,11 @@ const Admin = () => {
                             <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => openProfileDialog(funnel)} title="Perfil do bot">
                               <CircleUser className="w-4 h-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setPreviewFunnel(funnel)} title="Simular funil">
-                              <Eye className="w-4 h-4" />
+                             <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleInspect(funnel)} title="Inspecionar funil">
+                               <Settings className="w-4 h-4" />
+                             </Button>
+                             <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setPreviewFunnel(funnel)} title="Simular funil">
+                               <Eye className="w-4 h-4" />
                             </Button>
                             <Link to={`/f/${funnel.slug}`} target="_blank">
                               <Button variant="ghost" size="icon" className="h-9 w-9" title="Abrir em nova aba">
@@ -615,6 +629,23 @@ const Admin = () => {
         className="hidden"
         onChange={handleAvatarUpload}
       />
+
+      {/* Funnel Inspector dialog */}
+      <Dialog open={!!inspectFunnel} onOpenChange={open => { if (!open) setInspectFunnel(null); }}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              Inspetor — {inspectFunnel?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {loadingInspect ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">Carregando fluxo...</p>
+          ) : inspectFunnel ? (
+            <FunnelInspector flow={inspectFunnel.flow} />
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       {/* Per-funnel profile dialog */}
       <Dialog open={!!profileDialog} onOpenChange={open => { if (!open) setProfileDialog(null); }}>

@@ -149,6 +149,27 @@ export async function updateFunnelProfile(slug: string, botName?: string, botAva
   return !error;
 }
 
+export async function getFunnelById(id: string): Promise<StoredFunnel | undefined> {
+  const { data, error } = await supabase
+    .from('funnels')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error || !data) return undefined;
+
+  return {
+    id: data.id,
+    slug: data.slug,
+    name: data.name,
+    uploadedAt: data.created_at,
+    flow: data.flow as unknown as TypebotFlow,
+    botName: data.bot_name || '',
+    botAvatar: data.bot_avatar || '',
+    userId: data.user_id,
+  };
+}
+
 // ---- Avatar Gallery (Supabase) ----
 
 export async function getAvatarGallery(): Promise<string[]> {
