@@ -41,12 +41,12 @@ export class TypebotEngine {
   private currentBlockIndex: number = 0;
   private totalBlocks: number = 0;
   private processedBlocks: number = 0;
-  private openaiApiKey: string | null = null;
+  private ownerUserId: string | null = null;
 
-  constructor(flow: TypebotFlow, options?: { openaiApiKey?: string }) {
+  constructor(flow: TypebotFlow, options?: { ownerUserId?: string }) {
     this.flow = flow;
     this.variables = new Map();
-    this.openaiApiKey = options?.openaiApiKey || null;
+    this.ownerUserId = options?.ownerUserId || null;
 
     // Initialize variables
     for (const v of flow.variables || []) {
