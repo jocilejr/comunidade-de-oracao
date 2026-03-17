@@ -13,6 +13,7 @@ interface ChatRendererProps {
   flow: TypebotFlow;
   botName?: string;
   botAvatar?: string;
+  openaiApiKey?: string;
 }
 
 type DisplayItem =
