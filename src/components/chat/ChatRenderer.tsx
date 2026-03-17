@@ -31,7 +31,7 @@ function typingDelay(content: string): number {
   return Math.min(MAX_TYPING, Math.max(MIN_TYPING, len * 15));
 }
 
-const ChatRenderer = ({ flow, botName, botAvatar }: ChatRendererProps) => {
+const ChatRenderer = ({ flow, botName, botAvatar, openaiApiKey }: ChatRendererProps) => {
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
   const [inputBlock, setInputBlock] = useState<TypebotBlock | null>(null);
   const [choiceBlock, setChoiceBlock] = useState<ChoiceInputBlock | null>(null);
