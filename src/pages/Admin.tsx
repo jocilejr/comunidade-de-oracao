@@ -25,6 +25,10 @@ const Admin = () => {
   const [editAvatar, setEditAvatar] = useState('');
   const [gallery, setGallery] = useState<string[]>([]);
   const [loadingFunnels, setLoadingFunnels] = useState(true);
+  const [openaiKey, setOpenaiKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
