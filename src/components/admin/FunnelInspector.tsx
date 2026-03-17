@@ -61,52 +61,122 @@ function getBlockIcon(type: string) {
   return Box;
 }
 
-function resolveVarName(ref: string, variables: TypebotVariable[]): string {
-  if (!ref) return '?';
-  const trimmed = ref.trim();
-  // Try by id first
+function resolveVarName(ref: string | null | undefined, variables: TypebotVariable[]): string {
+  const trimmed = (ref || '').trim();
+  if (!trimmed) return 'variável não definida';
+
   const byId = variables.find(v => v.id === trimmed);
   if (byId) return byId.name;
-  // Try by name
+
   const byName = variables.find(v => v.name === trimmed);
   if (byName) return byName.name;
+
   return trimmed;
 }
 
 function getInlineVariableId(node: any): string | null {
-  // Format 1: variableId directly on node
-  if (node.variableId) return node.variableId;
-  // Format 2: children[0].variableId
-  if (node.children?.[0]?.variableId) return node.children[0].variableId;
+  if (!node) return null;
+  if (typeof node.variableId === 'string' && node.variableId.trim()) return node.variableId;
+
+  if (Array.isArray(node.children)) {
+    const match = node.children.find((child: any) => typeof child?.variableId === 'string' && child.variableId.trim());
+    if (match?.variableId) return match.variableId;
+  }
+
+  if (typeof node?.content?.variableId === 'string' && node.content.variableId.trim()) {
+    return node.content.variableId;
+  }
+
   return null;
 }
 
-function MustacheText({ text, variables }: { text: string; variables: TypebotVariable[] }) {
-  const parts = text.split(/(\{\{[^}]+\}\})/g);
+function MustacheText({ text, variables }: { text: unknown; variables: TypebotVariable[] }) {
+  const rawText = typeof text === 'string' ? text : String(text ?? '');
+  const parts = rawText.split(/(\{\{[^}]+\}\})/g);
+
   return (
     <>
       {parts.map((part, i) => {
         const match = part.match(/^\{\{(.+)\}\}$/);
         if (match) {
-          const name = resolveVarName(match[1].trim(), variables);
+          const name = resolveVarName(match[1], variables);
           return (
-            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 text-[11px] font-mono mx-0.5 align-baseline">
+            <span key={i} className="inline-flex items-center rounded border border-border bg-accent px-1.5 py-0.5 font-mono text-[11px] text-accent-foreground align-baseline mx-0.5">
               {`{{${name}}}`}
             </span>
           );
         }
+
         return <span key={i}>{part}</span>;
       })}
     </>
   );
 }
 
-function VarBadge({ id, variables }: { id: string; variables: TypebotVariable[] }) {
-  const name = resolveVarName(id, variables);
-  const notFound = !variables.find(v => v.id === id.trim() || v.name === id.trim());
+function hasRenderableRichTextNode(node: any): boolean {
+  if (!node) return false;
+
+  if (Array.isArray(node)) {
+    return node.some(hasRenderableRichTextNode);
+  }
+
+  if (node.type === 'inline-variable') {
+    return Boolean(getInlineVariableId(node));
+  }
+
+  if (typeof node.text === 'string') {
+    return node.text.trim().length > 0;
+  }
+
+  if (Array.isArray(node.children)) {
+    return node.children.some(hasRenderableRichTextNode);
+  }
+
+  return false;
+}
+
+function renderRichTextNode(node: any, key: string, variables: TypebotVariable[]): React.ReactNode {
+  if (!node) return null;
+
+  if (node.type === 'inline-variable') {
+    const varId = getInlineVariableId(node);
+    if (!varId) return null;
+
+    return (
+      <span key={key} className="inline-flex items-center rounded border border-border bg-accent px-1.5 py-0.5 font-mono text-[11px] text-accent-foreground align-baseline mx-0.5">
+        {`{{${resolveVarName(varId, variables)}}}`}
+      </span>
+    );
+  }
+
+  if (typeof node.text === 'string') {
+    const style: React.CSSProperties = {};
+    if (node.bold) style.fontWeight = 'bold';
+    if (node.italic) style.fontStyle = 'italic';
+    if (node.underline) style.textDecoration = 'underline';
+
+    return (
+      <span key={key} style={style}>
+        {node.text.includes('{{') ? <MustacheText text={node.text} variables={variables} /> : node.text}
+      </span>
+    );
+  }
+
+  if (Array.isArray(node.children)) {
+    return node.children.map((child: any, idx: number) => renderRichTextNode(child, `${key}-${idx}`, variables));
+  }
+
+  return null;
+}
+
+function VarBadge({ id, variables }: { id?: string; variables: TypebotVariable[] }) {
+  const safeId = (id || '').trim();
+  const found = safeId ? variables.some(v => v.id === safeId || v.name === safeId) : false;
+  const name = resolveVarName(safeId, variables);
+
   return (
-    <Badge variant="outline" className={`font-mono text-xs ${notFound ? 'bg-destructive/10 text-destructive border-destructive/30' : 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30'}`}>
-      {name}{notFound ? ' ⚠' : ''}
+    <Badge variant="outline" className={`font-mono text-xs ${found ? 'bg-accent text-accent-foreground border-border' : 'bg-destructive/10 text-destructive border-destructive/30'}`}>
+      {name}{found ? '' : ' ⚠'}
     </Badge>
   );
 }
@@ -117,55 +187,49 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
   const b = block as any;
   const type = block.type.toLowerCase();
 
-  // Text bubble — supports inline variables from richText
+  // Text bubble — supports inline variables from richText and {{mustache}}
   if (type === 'text' || type === 'bubble text') {
-    const richText = b.content?.richText;
-    if (richText && richText.length > 0) {
-      const renderChild = (child: any, idx: number) => {
-        // Inline variable node
-        if (child.type === 'inline-variable') {
-          const varId = getInlineVariableId(child);
-          if (varId) {
-            return (
-              <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 text-[11px] font-mono mx-0.5 align-baseline">
-                {`{{${resolveVarName(varId, variables)}}}`}
-              </span>
-            );
+    const richTextSource = b.content?.richText ?? b.options?.richText;
+    const richText = typeof richTextSource === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(richTextSource);
+          } catch {
+            return null;
           }
-          return null;
-        }
-        // Normal text node — also handle {{var}} in plain text
-        const text = child.text || '';
-        if (!text) return null;
-        const style: React.CSSProperties = {};
-        if (child.bold) style.fontWeight = 'bold';
-        if (child.italic) style.fontStyle = 'italic';
-        if (child.underline) style.textDecoration = 'underline';
-        if (text.includes('{{')) {
-          return <span key={idx} style={style}><MustacheText text={text} variables={variables} /></span>;
-        }
-        return <span key={idx} style={style}>{text}</span>;
-      };
+        })()
+      : richTextSource;
 
-      const hasContent = richText.some((r: any) =>
-        (r.children || []).some((c: any) => c.text || c.type === 'inline-variable')
+    if (Array.isArray(richText) && richText.length > 0 && hasRenderableRichTextNode(richText)) {
+      return (
+        <div className="text-sm leading-relaxed text-foreground/90">
+          {richText.map((row: any, ri: number) => (
+            <p key={ri}>
+              {Array.isArray(row?.children)
+                ? row.children.map((child: any, ci: number) => renderRichTextNode(child, `${ri}-${ci}`, variables))
+                : renderRichTextNode(row, `${ri}`, variables)}
+            </p>
+          ))}
+        </div>
       );
-
-      if (hasContent) {
-        return (
-          <div className="text-sm leading-relaxed text-foreground/90">
-            {richText.map((r: any, ri: number) => (
-              <p key={ri}>{(r.children || []).map(renderChild)}</p>
-            ))}
-          </div>
-        );
-      }
     }
-    // Fallback to html/plainText
-    const html = b.content?.html || b.content?.plainText || '';
-    return html
-      ? <div className="text-sm leading-relaxed text-foreground/90" dangerouslySetInnerHTML={{ __html: html }} />
-      : <span className="text-sm text-muted-foreground italic">Vazio</span>;
+
+    const fallback = b.content?.html || b.options?.html || b.content?.plainText || b.options?.plainText || '';
+
+    if (!fallback) {
+      return <span className="text-sm text-muted-foreground italic">Vazio</span>;
+    }
+
+    if (typeof fallback === 'string' && !/[<>]/.test(fallback)) {
+      return (
+        <div className="text-sm leading-relaxed text-foreground/90">
+          <MustacheText text={fallback} variables={variables} />
+        </div>
+      );
+    }
+
+    const safeHtml = typeof fallback === 'string' ? fallback : String(fallback);
+    return <div className="text-sm leading-relaxed text-foreground/90" dangerouslySetInnerHTML={{ __html: safeHtml }} />;
   }
 
   // Image
