@@ -676,9 +676,21 @@ export class TypebotEngine {
           if (codeTool && (codeTool as any).code) {
             try {
               const args = JSON.parse(tc.function?.arguments || '{}');
-              const fn = new Function('args', (codeTool as any).code);
+              // Inject tool_call arguments as local variables so code like `input.toLowerCase()` works
+              const argDeclarations = Object.keys(args)
+                .map(k => `var ${k} = args[${JSON.stringify(k)}];`)
+                .join('\n');
+              const code = (codeTool as any).code;
+              const fn = new Function('args', argDeclarations + '\n' + code);
               const result = fn(args);
-              codeToolResults[fnName] = result !== undefined ? String(result) : '';
+              // Serialize objects as JSON instead of "[object Object]"
+              if (result === undefined || result === null) {
+                codeToolResults[fnName] = '';
+              } else if (typeof result === 'object') {
+                codeToolResults[fnName] = JSON.stringify(result);
+              } else {
+                codeToolResults[fnName] = String(result);
+              }
             } catch (e) {
               console.warn(`Code tool "${fnName}" execution error:`, e);
             }
@@ -702,7 +714,18 @@ export class TypebotEngine {
             const tc = toolCalls[0];
             const fnName = tc.function?.name;
             if (codeToolResults[fnName] !== undefined) {
-              this.setVariable(mapping.variableId, codeToolResults[fnName]);
+              // If code tool result is a JSON object with a single field, extract that value
+              let finalValue = codeToolResults[fnName];
+              try {
+                const parsed = JSON.parse(finalValue);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                  const values = Object.values(parsed);
+                  if (values.length === 1) {
+                    finalValue = String(values[0]);
+                  }
+                }
+              } catch { /* use raw string */ }
+              this.setVariable(mapping.variableId, finalValue);
             } else {
               try {
                 const args = JSON.parse(tc.function?.arguments || '{}');
