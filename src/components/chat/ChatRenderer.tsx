@@ -142,7 +142,7 @@ const ChatRenderer = ({ flow, botName, botAvatar, openaiApiKey }: ChatRendererPr
   }, [processEvents]);
 
   useEffect(() => {
-    const engine = new TypebotEngine(sessionFlow, { openaiApiKey: props.openaiApiKey });
+    const engine = new TypebotEngine(sessionFlow, { openaiApiKey });
     engineRef.current = engine;
 
     // Hard reset only when changing to a new flow session
