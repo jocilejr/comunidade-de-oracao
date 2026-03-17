@@ -531,6 +531,83 @@ export class TypebotEngine {
     }
   }
 
+  private async executeOpenAI(block: OpenAIBlock): Promise<void> {
+    try {
+      const opts = block.options;
+      if (!opts?.messages || opts.messages.length === 0) {
+        console.warn('OpenAI block has no messages configured');
+        return;
+      }
+
+      // Build messages with variable replacement
+      const messages = opts.messages.map(m => ({
+        role: m.role || 'user',
+        content: this.replaceVariables(m.content || ''),
+      }));
+
+      // Build tools payload if present
+      const tools = opts.tools && opts.tools.length > 0 ? opts.tools : undefined;
+
+      const proxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-proxy`;
+      const response = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          messages,
+          model: opts.model || 'gpt-4',
+          tools,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.warn('OpenAI proxy error:', response.status, errText);
+        return;
+      }
+
+      const data = await response.json();
+
+      // Extract response content
+      const choice = data.choices?.[0];
+      if (!choice) return;
+
+      const assistantContent = choice.message?.content || '';
+      const toolCalls = choice.message?.tool_calls;
+
+      // Map response to variables
+      if (opts.responseMapping) {
+        for (const mapping of opts.responseMapping) {
+          if (!mapping.variableId) continue;
+
+          const extract = mapping.valueToExtract || 'Message content';
+
+          if (extract === 'Message content' || extract === 'Message Content') {
+            this.setVariable(mapping.variableId, assistantContent);
+          } else if (toolCalls && toolCalls.length > 0) {
+            // Try to extract from tool call arguments
+            for (const tc of toolCalls) {
+              try {
+                const args = JSON.parse(tc.function?.arguments || '{}');
+                // Try exact key match or nested path
+                const value = this.getNestedValue(args, extract) ?? args[extract];
+                if (value !== undefined && value !== null) {
+                  this.setVariable(mapping.variableId, String(value));
+                }
+              } catch {
+                console.warn('Failed to parse tool call arguments');
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('OpenAI block execution error:', e);
+    }
+  }
+
   private getNestedValue(obj: any, path: string): any {
     return path.split('.').reduce((curr, key) => curr?.[key], obj);
   }
