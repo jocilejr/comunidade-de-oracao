@@ -192,6 +192,7 @@ const Admin = () => {
                 flow={pf.flow}
                 botName={pf.botName || undefined}
                 botAvatar={pf.botAvatar || undefined}
+                ownerUserId={currentUserId || undefined}
               />
             </div>
           </div>
