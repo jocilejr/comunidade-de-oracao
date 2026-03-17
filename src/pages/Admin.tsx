@@ -226,6 +226,7 @@ const Admin = () => {
                 botName={pf.botName || undefined}
                 botAvatar={pf.botAvatar || undefined}
                 ownerUserId={currentUserId || undefined}
+                forceNewTab
               />
             </div>
           </div>

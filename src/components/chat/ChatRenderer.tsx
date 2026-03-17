@@ -98,7 +98,7 @@ const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId, forceNewTab }: Ch
           break;
         }
         case 'redirect': {
-          if (event.isNewTab) window.open(event.url, '_blank');
+          if (forceNewTab || event.isNewTab) window.open(event.url, '_blank');
           else window.location.href = event.url;
           break;
         }
