@@ -653,6 +653,7 @@ export class TypebotEngine {
     if (t === 'jump') return 'jump';
     if (t.includes('typebot link')) return 'typebotlink';
     if (t === 'openai') return 'openai';
+    if (t === 'start') return 'start';
     return t;
   }
 
