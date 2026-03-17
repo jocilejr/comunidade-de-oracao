@@ -228,7 +228,8 @@ function BlockContent({ block, variables }: { block: TypebotBlock; variables: Ty
       );
     }
 
-    return <div className="text-sm leading-relaxed text-foreground/90" dangerouslySetInnerHTML={{ __html: fallback }} />;
+    const safeHtml = typeof fallback === 'string' ? fallback : String(fallback);
+    return <div className="text-sm leading-relaxed text-foreground/90" dangerouslySetInnerHTML={{ __html: safeHtml }} />;
   }
 
   // Image
