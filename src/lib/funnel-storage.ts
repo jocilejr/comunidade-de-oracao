@@ -346,6 +346,7 @@ export interface UserSettings {
   openai_api_key: string;
   typebot_api_token: string;
   typebot_workspace_id: string;
+  typebot_base_url: string;
 }
 
 export async function getUserSettings(): Promise<UserSettings | null> {
