@@ -329,22 +329,54 @@ reload_nginx() {
 reload_nginx
 log "Nginx recarregado com sucesso"
 
-# Obter certificados via webroot (NÃO modifica configs existentes do Nginx)
-log "Obtendo certificados SSL para domínio público..."
-certbot certonly --webroot -w "$ACME_ROOT" \
-  -d "${PUBLIC_DOMAIN}" -d "www.${PUBLIC_DOMAIN}" \
-  --email "${SSL_EMAIL}" --agree-tos --non-interactive || {
-  warn "Certbot falhou para ${PUBLIC_DOMAIN}. Verifique se o DNS aponta para este servidor."
-  warn "  Tente manualmente: certbot certonly --webroot -w ${ACME_ROOT} -d ${PUBLIC_DOMAIN}"
+# Função para obter SSL com fallback standalone
+obtain_cert() {
+  local DOMAINS="$1"
+  local LABEL="$2"
+
+  # Tentar webroot primeiro
+  if certbot certonly --webroot -w "$ACME_ROOT" \
+    $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive 2>/dev/null; then
+    log "SSL obtido via webroot para ${LABEL}"
+    return 0
+  fi
+
+  warn "Webroot falhou para ${LABEL}. Tentando standalone (Nginx será pausado brevemente)..."
+
+  # Fallback: standalone (precisa parar Nginx momentaneamente)
+  if pidof nginx > /dev/null 2>&1; then
+    nginx -s stop 2>/dev/null || kill $(pidof -s nginx) 2>/dev/null || true
+    sleep 1
+  fi
+
+  if certbot certonly --standalone \
+    $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive 2>/dev/null; then
+    log "SSL obtido via standalone para ${LABEL}"
+    # Reiniciar Nginx
+    nginx
+    return 0
+  fi
+
+  # Reiniciar Nginx mesmo se falhou
+  nginx 2>/dev/null || true
+  warn "Certbot falhou para ${LABEL}. Verifique se o DNS aponta para este servidor."
+  warn "  Tente manualmente: certbot certonly --standalone $DOMAINS"
+  return 1
 }
 
+# Verificar se www resolve antes de incluí-lo
+log "Obtendo certificados SSL para domínio público..."
+PUBLIC_CERT_DOMAINS="-d ${PUBLIC_DOMAIN}"
+if dig +short "www.${PUBLIC_DOMAIN}" A 2>/dev/null | grep -q .; then
+  PUBLIC_CERT_DOMAINS="$PUBLIC_CERT_DOMAINS -d www.${PUBLIC_DOMAIN}"
+  log "DNS para www.${PUBLIC_DOMAIN} encontrado, incluindo no certificado"
+else
+  warn "www.${PUBLIC_DOMAIN} não resolve no DNS. Certificado será apenas para ${PUBLIC_DOMAIN}"
+fi
+obtain_cert "$PUBLIC_CERT_DOMAINS" "${PUBLIC_DOMAIN}" || true
+
 log "Obtendo certificados SSL para dashboard..."
-certbot certonly --webroot -w "$ACME_ROOT" \
-  -d "${DASHBOARD_DOMAIN}" \
-  --email "${SSL_EMAIL}" --agree-tos --non-interactive || {
-  warn "Certbot falhou para ${DASHBOARD_DOMAIN}. Verifique se o DNS aponta para este servidor."
-  warn "  Tente manualmente: certbot certonly --webroot -w ${ACME_ROOT} -d ${DASHBOARD_DOMAIN}"
-}
+obtain_cert "-d ${DASHBOARD_DOMAIN}" "${DASHBOARD_DOMAIN}" || true
 
 # Aplicar config completa com dois domínios (apenas se certs existem)
 if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
