@@ -146,7 +146,7 @@ const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId, forceNewTab, funn
   }, [processEvents]);
 
   useEffect(() => {
-    const engine = new TypebotEngine(sessionFlow, { ownerUserId });
+    const engine = new TypebotEngine(sessionFlow, { ownerUserId, funnelId });
     engineRef.current = engine;
 
     // Hard reset only when changing to a new flow session

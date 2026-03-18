@@ -43,6 +43,7 @@ const Funnel = () => {
         botName={funnel.botName}
         botAvatar={funnel.botAvatar}
         ownerUserId={funnel.userId}
+        funnelId={funnel.id}
       />
     </div>
   );
