@@ -290,6 +290,7 @@ server {
     location /.well-known/acme-challenge/ {
         root ${ACME_ROOT};
         allow all;
+        try_files \$uri =404;
     }
 
     # Temporário: servir SPA até SSL ser configurado
@@ -326,35 +327,14 @@ obtain_cert() {
   local DOMAINS="$1"
   local LABEL="$2"
 
-  # Tentar webroot primeiro
   if certbot certonly --webroot -w "$ACME_ROOT" \
-    $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive 2>/dev/null; then
+    $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive; then
     log "SSL obtido via webroot para ${LABEL}"
     return 0
   fi
 
-  warn "Webroot falhou para ${LABEL}. Tentando standalone (Nginx será pausado brevemente)..."
-
-  # Fallback: standalone (precisa parar Nginx momentaneamente)
-  systemctl stop nginx 2>/dev/null || true
-  sleep 2
-
-  # Verificar se porta 80 foi liberada
-  if lsof -ti :80 > /dev/null 2>&1; then
-    warn "Porta 80 ainda ocupada após parar Nginx. Standalone pode falhar."
-  fi
-
-  if certbot certonly --standalone \
-    $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive; then
-    log "SSL obtido via standalone para ${LABEL}"
-    systemctl start nginx
-    return 0
-  fi
-
-  # Reiniciar Nginx mesmo se falhou
-  systemctl start nginx 2>/dev/null || true
   warn "Certbot falhou para ${LABEL}. Verifique se o DNS aponta para este servidor."
-  warn "  Tente manualmente: certbot certonly --standalone $DOMAINS"
+  warn "  Após corrigir, rode: certbot certonly --webroot -w ${ACME_ROOT} $DOMAINS"
   return 1
 }
 
