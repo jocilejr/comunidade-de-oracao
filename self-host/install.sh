@@ -320,13 +320,22 @@ NGINX_TEMP
 
 ln -sf /etc/nginx/sites-available/funnel-app /etc/nginx/sites-enabled/
 
-# Validar config antes de recarregar — NÃO derruba conexões de outras apps
-if nginx -t 2>/dev/null; then
-  systemctl reload nginx 2>/dev/null || systemctl start nginx
-  log "Nginx recarregado com sucesso"
-else
-  err "Configuração Nginx inválida! Verifique /etc/nginx/sites-available/funnel-app"
-fi
+# Função para reload seguro do Nginx (detecta systemd vs processo direto)
+reload_nginx() {
+  if ! nginx -t 2>/dev/null; then
+    err "Configuração Nginx inválida! Verifique /etc/nginx/sites-available/funnel-app"
+  fi
+  if systemctl is-active --quiet nginx; then
+    systemctl reload nginx
+  elif pidof nginx > /dev/null 2>&1; then
+    nginx -s reload
+  else
+    systemctl start nginx
+  fi
+}
+
+reload_nginx
+log "Nginx recarregado com sucesso"
 
 # Obter certificados via webroot (NÃO modifica configs existentes do Nginx)
 log "Obtendo certificados SSL para domínio público..."
@@ -352,12 +361,8 @@ if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
       -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
       "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
 
-  if nginx -t 2>/dev/null; then
-    systemctl reload nginx
-    log "Nginx configurado com SSL"
-  else
-    err "Config final do Nginx inválida! Restaure manualmente."
-  fi
+  reload_nginx
+  log "Nginx configurado com SSL"
 else
   warn "Certificados SSL incompletos. Nginx rodando apenas em HTTP."
   warn "Após configurar DNS, rode: certbot certonly --webroot -w ${ACME_ROOT} -d DOMINIO"
