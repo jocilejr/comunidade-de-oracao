@@ -336,21 +336,23 @@ obtain_cert() {
   warn "Webroot falhou para ${LABEL}. Tentando standalone (Nginx será pausado brevemente)..."
 
   # Fallback: standalone (precisa parar Nginx momentaneamente)
-  if pidof nginx > /dev/null 2>&1; then
-    nginx -s stop 2>/dev/null || kill $(pidof -s nginx) 2>/dev/null || true
-    sleep 1
+  systemctl stop nginx 2>/dev/null || true
+  sleep 2
+
+  # Verificar se porta 80 foi liberada
+  if lsof -ti :80 > /dev/null 2>&1; then
+    warn "Porta 80 ainda ocupada após parar Nginx. Standalone pode falhar."
   fi
 
   if certbot certonly --standalone \
-    $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive 2>/dev/null; then
+    $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive; then
     log "SSL obtido via standalone para ${LABEL}"
-    # Reiniciar Nginx
-    nginx
+    systemctl start nginx
     return 0
   fi
 
   # Reiniciar Nginx mesmo se falhou
-  nginx 2>/dev/null || true
+  systemctl start nginx 2>/dev/null || true
   warn "Certbot falhou para ${LABEL}. Verifique se o DNS aponta para este servidor."
   warn "  Tente manualmente: certbot certonly --standalone $DOMAINS"
   return 1
