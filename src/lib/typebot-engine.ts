@@ -176,12 +176,69 @@ export class TypebotEngine {
   }
 
   async* start(): AsyncGenerator<EngineEvent> {
+    // Create session in database
+    if (this.funnelId) {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data } = await supabase
+          .from('funnel_sessions')
+          .insert({ funnel_id: this.funnelId })
+          .select('id')
+          .single();
+        if (data) this.sessionId = data.id;
+      } catch (e) {
+        console.warn('Failed to create session:', e);
+      }
+    }
+
     const group = this.getStartGroup();
     if (!group) {
       yield { type: 'end' };
       return;
     }
     yield* this.processGroup(group, 0);
+  }
+
+  private async logEvent(
+    eventType: string,
+    blockId?: string,
+    content?: string,
+    metadata?: Record<string, any>,
+  ): Promise<void> {
+    if (!this.sessionId) return;
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      await supabase.from('funnel_session_events').insert({
+        session_id: this.sessionId,
+        event_type: eventType,
+        block_id: blockId || null,
+        group_title: this.lastGroupTitle || null,
+        content: content || null,
+        metadata: metadata || {},
+      });
+    } catch (e) {
+      console.warn('Failed to log event:', e);
+    }
+  }
+
+  private async updateSession(updates: Record<string, any>): Promise<void> {
+    if (!this.sessionId) return;
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      // Build variables snapshot
+      const vars: Record<string, string> = {};
+      for (const v of this.flow.variables || []) {
+        const val = this.variables.get(v.id);
+        if (val) vars[v.name] = val;
+      }
+      await supabase.from('funnel_sessions').update({
+        ...updates,
+        variables: vars,
+        last_group_title: this.lastGroupTitle,
+      }).eq('id', this.sessionId);
+    } catch (e) {
+      console.warn('Failed to update session:', e);
+    }
   }
 
   async* processFromEdge(edgeId: string): AsyncGenerator<EngineEvent> {
