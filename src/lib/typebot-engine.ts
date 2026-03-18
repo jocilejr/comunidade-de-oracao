@@ -253,6 +253,8 @@ export class TypebotEngine {
       this.setVariable(options.variableId, value);
     }
 
+    this.pushHistory('user', value);
+
     this.processedBlocks++;
 
     // Find the chosen item's edge
