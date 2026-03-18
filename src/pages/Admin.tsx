@@ -168,7 +168,7 @@ const Admin = () => {
 
   const handleProfileSave = async () => {
     if (!profileDialog) return;
-    const success = await updateFunnelProfile(profileDialog.slug, editName, editAvatar);
+    const success = await updateFunnelProfile(profileDialog.slug, editName, editAvatar, editPageTitle, editPageDescription);
     if (!success) {
       toast({ title: 'Erro', description: 'Não foi possível salvar o perfil do funil.', variant: 'destructive' });
       return;
