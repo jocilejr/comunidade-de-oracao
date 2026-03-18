@@ -803,6 +803,17 @@ const Admin = () => {
                       />
                     </div>
 
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">URL Base (Self-hosted)</Label>
+                      <Input
+                        placeholder="https://meu-typebot.com"
+                        value={typebotBaseUrl}
+                        onChange={e => setTypebotBaseUrl(e.target.value)}
+                        className="font-mono text-xs"
+                      />
+                      <p className="text-[10px] text-muted-foreground">Deixe vazio para usar typebot.io</p>
+                    </div>
+
                     <div className="flex gap-2">
                       <Button
                         size="sm"
@@ -812,6 +823,7 @@ const Admin = () => {
                           const ok = await saveUserSettings({
                             typebot_api_token: typebotToken,
                             typebot_workspace_id: typebotWorkspaceId,
+                            typebot_base_url: typebotBaseUrl,
                           });
                           setSavingKey(false);
                           toast({

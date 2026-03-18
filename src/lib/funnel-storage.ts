@@ -381,6 +381,7 @@ export async function saveUserSettings(settings: {
   if (settings.openai_api_key !== undefined) payload.openai_api_key = settings.openai_api_key;
   if (settings.typebot_api_token !== undefined) payload.typebot_api_token = settings.typebot_api_token;
   if (settings.typebot_workspace_id !== undefined) payload.typebot_workspace_id = settings.typebot_workspace_id;
+  if (settings.typebot_base_url !== undefined) payload.typebot_base_url = settings.typebot_base_url;
 
   const { error } = await supabase
     .from('user_settings')
