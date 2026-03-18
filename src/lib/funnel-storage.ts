@@ -184,6 +184,8 @@ export async function getFunnelById(id: string): Promise<StoredFunnel | undefine
     botName: data.bot_name || '',
     botAvatar: data.bot_avatar || '',
     previewImage: data.preview_image || '',
+    pageTitle: data.page_title || '',
+    pageDescription: data.page_description || '',
     userId: data.user_id,
   };
 }
