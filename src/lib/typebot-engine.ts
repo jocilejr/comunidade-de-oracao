@@ -762,7 +762,7 @@ export class TypebotEngine {
       // Map response to variables
       if (opts.responseMapping) {
         // Get code tool result names for quick lookup
-        const codeToolNames = Array.from(codeToolResults.keys());
+        const codeToolNames = Object.keys(codeToolResults);
 
         for (let idx = 0; idx < opts.responseMapping.length; idx++) {
           const mapping = opts.responseMapping[idx];
@@ -774,7 +774,7 @@ export class TypebotEngine {
             this.setVariable(mapping.variableId, assistantContent);
           } else if (extract === '' && idx > 0 && codeToolNames.length > 0) {
             // Subsequent mapping: use code tool result (post-processing of GPT response)
-            const firstResult = codeToolResults[codeToolNames[0]];
+            const firstResult = codeToolResults[codeToolNames[0] as string];
             let finalValue = firstResult || '';
             try {
               const parsed = JSON.parse(finalValue);
