@@ -83,8 +83,8 @@ if ! command -v psql &>/dev/null; then
 fi
 log "PostgreSQL $(psql --version | head -1)"
 
-# Nginx + Certbot + PM2
-apt-get install -y -qq nginx certbot python3-certbot-nginx uuid-runtime
+# Nginx + Certbot + PM2 + dnsutils
+apt-get install -y -qq nginx certbot python3-certbot-nginx uuid-runtime dnsutils
 npm install -g pm2 2>/dev/null || true
 log "Nginx, Certbot, PM2 instalados"
 
