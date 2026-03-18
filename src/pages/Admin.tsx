@@ -186,20 +186,23 @@ const Admin = () => {
     else toast({ title: 'Erro', description: 'Não foi possível carregar o funil para simulação.', variant: 'destructive' });
   };
 
+  const [savingProfile, setSavingProfile] = useState(false);
+
   const handleProfileSave = async () => {
-    if (!profileDialog) return;
-    const success = await updateFunnelProfile(profileDialog.slug, editName, editAvatar, editPageTitle, editPageDescription);
-    if (!success) {
-      toast({ title: 'Erro', description: 'Não foi possível salvar o perfil do funil.', variant: 'destructive' });
-      return;
+    if (!profileDialog || savingProfile) return;
+    setSavingProfile(true);
+    try {
+      const success = await updateFunnelProfile(profileDialog.slug, editName, editAvatar, editPageTitle, editPageDescription);
+      if (!success) {
+        toast({ title: 'Erro', description: 'Não foi possível salvar o perfil do funil.', variant: 'destructive' });
+        return;
+      }
+      await refresh();
+      setProfileDialog(null);
+      toast({ title: 'Perfil do funil salvo!' });
+    } finally {
+      setSavingProfile(false);
     }
-    if (editAvatar && editAvatar.startsWith('data:')) {
-      const updated = await addToAvatarGallery(editAvatar);
-      setGallery(updated);
-    }
-    await refresh();
-    setProfileDialog(null);
-    toast({ title: 'Perfil do funil salvo!' });
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1033,8 +1036,12 @@ const Admin = () => {
             </div>
           </div>
 
-          <Button onClick={handleProfileSave} className="w-full" size="sm">
-            <Save className="w-3.5 h-3.5 mr-1.5" /> Salvar perfil
+          <Button onClick={handleProfileSave} className="w-full" size="sm" disabled={savingProfile}>
+            {savingProfile ? (
+              <><span className="w-3.5 h-3.5 mr-1.5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin inline-block" /> Salvando...</>
+            ) : (
+              <><Save className="w-3.5 h-3.5 mr-1.5" /> Salvar perfil</>
+            )}
           </Button>
         </DialogContent>
       </Dialog>
