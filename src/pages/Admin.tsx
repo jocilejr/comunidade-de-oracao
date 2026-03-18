@@ -18,7 +18,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 
 const NAV_ITEMS = [
   { id: 'funnels', label: 'Funis', icon: FolderOpen },
-  { id: 'logs', label: 'Logs', icon: ScrollText },
   { id: 'gallery', label: 'Avatares', icon: ImagePlus },
   { id: 'stats', label: 'Estatísticas', icon: BarChart3 },
   { id: 'settings', label: 'Configurações', icon: Settings },
@@ -56,6 +55,7 @@ const Admin = () => {
   const [savingKey, setSavingKey] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [inspectFunnel, setInspectFunnel] = useState<StoredFunnel | null>(null);
+  const [logsFunnel, setLogsFunnel] = useState<StoredFunnel | null>(null);
   const [loadingInspect, setLoadingInspect] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
@@ -310,14 +310,14 @@ const Admin = () => {
               <div>
                 <h2 className="text-base font-bold text-foreground">
                   {activeTab === 'funnels' && 'Funis'}
-                  {activeTab === 'logs' && 'Logs'}
+                  
                   {activeTab === 'gallery' && 'Galeria de Avatares'}
                   {activeTab === 'stats' && 'Estatísticas'}
                   {activeTab === 'settings' && 'Configurações'}
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {activeTab === 'funnels' && 'Gerencie seus funis de conversação'}
-                  {activeTab === 'logs' && 'Acompanhe as sessões dos visitantes'}
+                  
                   {activeTab === 'gallery' && 'Fotos de perfil para reutilizar nos funis'}
                   {activeTab === 'stats' && 'Acompanhe o desempenho dos funis'}
                   {activeTab === 'settings' && 'Configure integrações e chaves de API'}
@@ -448,6 +448,9 @@ const Admin = () => {
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openProfileDialog(funnel)} title="Perfil do bot">
                             <CircleUser className="w-3.5 h-3.5" />
                           </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLogsFunnel(funnel)} title="Logs do funil">
+                            <ScrollText className="w-3.5 h-3.5" />
+                          </Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleInspect(funnel)} title="Inspecionar funil">
                             <Settings className="w-3.5 h-3.5" />
                           </Button>
@@ -475,10 +478,17 @@ const Admin = () => {
               </div>
             )}
 
-            {/* ===== LOGS TAB ===== */}
-            {activeTab === 'logs' && (
-              <SessionLogs funnels={funnels.map(f => ({ id: f.id, name: f.name, slug: f.slug }))} />
-            )}
+            {/* Logs Dialog */}
+            <Dialog open={!!logsFunnel} onOpenChange={open => { if (!open) setLogsFunnel(null); }}>
+              <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Logs — {logsFunnel?.name}</DialogTitle>
+                </DialogHeader>
+                {logsFunnel && (
+                  <SessionLogs funnels={[{ id: logsFunnel.id, name: logsFunnel.name, slug: logsFunnel.slug }]} defaultFunnel={logsFunnel.id} />
+                )}
+              </DialogContent>
+            </Dialog>
 
             {/* ===== GALLERY TAB ===== */}
             {activeTab === 'gallery' && (

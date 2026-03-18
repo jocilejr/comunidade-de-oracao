@@ -47,11 +47,11 @@ const EVENT_LABELS: Record<string, string> = {
   end: 'Fim da conversa',
 };
 
-const SessionLogs = ({ funnels }: { funnels: FunnelMeta[] }) => {
+const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaultFunnel?: string }) => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [events, setEvents] = useState<SessionEvent[]>([]);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
-  const [selectedFunnel, setSelectedFunnel] = useState<string>('all');
+  const [selectedFunnel, setSelectedFunnel] = useState<string>(defaultFunnel || 'all');
   const [loading, setLoading] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(false);
 
@@ -216,22 +216,31 @@ const SessionLogs = ({ funnels }: { funnels: FunnelMeta[] }) => {
   // List view
   return (
     <div className="max-w-5xl space-y-4">
-      {/* Filter */}
-      <div className="flex items-center gap-3">
-        <select
-          value={selectedFunnel}
-          onChange={e => setSelectedFunnel(e.target.value)}
-          className="text-xs rounded-lg border border-border bg-card px-3 py-1.5 text-foreground"
-        >
-          <option value="all">Todos os funis</option>
-          {funnels.map(f => (
-            <option key={f.id} value={f.id}>{f.name}</option>
-          ))}
-        </select>
-        <Button variant="outline" size="sm" onClick={loadSessions}>
-          Atualizar
-        </Button>
-      </div>
+      {/* Filter — only show if no default funnel */}
+      {!defaultFunnel && (
+        <div className="flex items-center gap-3">
+          <select
+            value={selectedFunnel}
+            onChange={e => setSelectedFunnel(e.target.value)}
+            className="text-xs rounded-lg border border-border bg-card px-3 py-1.5 text-foreground"
+          >
+            <option value="all">Todos os funis</option>
+            {funnels.map(f => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+          <Button variant="outline" size="sm" onClick={loadSessions}>
+            Atualizar
+          </Button>
+        </div>
+      )}
+      {defaultFunnel && (
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={loadSessions}>
+            Atualizar
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-2">
