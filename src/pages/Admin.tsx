@@ -1,13 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById } from '@/lib/funnel-storage';
 import FunnelInspector from '@/components/admin/FunnelInspector';
+import SessionLogs from '@/components/admin/SessionLogs';
 import { StoredFunnel } from '@/lib/typebot-types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff } from 'lucide-react';
+import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
@@ -17,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 
 const NAV_ITEMS = [
   { id: 'funnels', label: 'Funis', icon: FolderOpen },
+  { id: 'logs', label: 'Logs', icon: ScrollText },
   { id: 'gallery', label: 'Avatares', icon: ImagePlus },
   { id: 'stats', label: 'Estatísticas', icon: BarChart3 },
   { id: 'settings', label: 'Configurações', icon: Settings },
@@ -308,12 +310,14 @@ const Admin = () => {
               <div>
                 <h2 className="text-base font-bold text-foreground">
                   {activeTab === 'funnels' && 'Funis'}
+                  {activeTab === 'logs' && 'Logs'}
                   {activeTab === 'gallery' && 'Galeria de Avatares'}
                   {activeTab === 'stats' && 'Estatísticas'}
                   {activeTab === 'settings' && 'Configurações'}
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {activeTab === 'funnels' && 'Gerencie seus funis de conversação'}
+                  {activeTab === 'logs' && 'Acompanhe as sessões dos visitantes'}
                   {activeTab === 'gallery' && 'Fotos de perfil para reutilizar nos funis'}
                   {activeTab === 'stats' && 'Acompanhe o desempenho dos funis'}
                   {activeTab === 'settings' && 'Configure integrações e chaves de API'}
@@ -469,6 +473,11 @@ const Admin = () => {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* ===== LOGS TAB ===== */}
+            {activeTab === 'logs' && (
+              <SessionLogs funnels={funnels.map(f => ({ id: f.id, name: f.name, slug: f.slug }))} />
             )}
 
             {/* ===== GALLERY TAB ===== */}

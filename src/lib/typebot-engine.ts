@@ -44,11 +44,15 @@ export class TypebotEngine {
   private ownerUserId: string | null = null;
   private pausedContext: { group: TypebotGroup; nextBlockIndex: number } | null = null;
   private conversationHistory: Array<{ role: 'assistant' | 'user'; content: string }> = [];
+  private sessionId: string | null = null;
+  private funnelId: string | null = null;
+  private lastGroupTitle: string = '';
 
-  constructor(flow: TypebotFlow, options?: { ownerUserId?: string }) {
+  constructor(flow: TypebotFlow, options?: { ownerUserId?: string; funnelId?: string }) {
     this.flow = flow;
     this.variables = new Map();
     this.ownerUserId = options?.ownerUserId || null;
+    this.funnelId = options?.funnelId || null;
 
     // Initialize variables
     for (const v of flow.variables || []) {
@@ -172,12 +176,69 @@ export class TypebotEngine {
   }
 
   async* start(): AsyncGenerator<EngineEvent> {
+    // Create session in database
+    if (this.funnelId) {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data } = await supabase
+          .from('funnel_sessions')
+          .insert({ funnel_id: this.funnelId })
+          .select('id')
+          .single();
+        if (data) this.sessionId = data.id;
+      } catch (e) {
+        console.warn('Failed to create session:', e);
+      }
+    }
+
     const group = this.getStartGroup();
     if (!group) {
       yield { type: 'end' };
       return;
     }
     yield* this.processGroup(group, 0);
+  }
+
+  private async logEvent(
+    eventType: string,
+    blockId?: string,
+    content?: string,
+    metadata?: Record<string, any>,
+  ): Promise<void> {
+    if (!this.sessionId) return;
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      await supabase.from('funnel_session_events').insert({
+        session_id: this.sessionId,
+        event_type: eventType,
+        block_id: blockId || null,
+        group_title: this.lastGroupTitle || null,
+        content: content || null,
+        metadata: metadata || {},
+      });
+    } catch (e) {
+      console.warn('Failed to log event:', e);
+    }
+  }
+
+  private async updateSession(updates: Record<string, any>): Promise<void> {
+    if (!this.sessionId) return;
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      // Build variables snapshot
+      const vars: Record<string, string> = {};
+      for (const v of this.flow.variables || []) {
+        const val = this.variables.get(v.id);
+        if (val) vars[v.name] = val;
+      }
+      await supabase.from('funnel_sessions').update({
+        ...updates,
+        variables: vars,
+        last_group_title: this.lastGroupTitle,
+      }).eq('id', this.sessionId);
+    } catch (e) {
+      console.warn('Failed to update session:', e);
+    }
   }
 
   async* processFromEdge(edgeId: string): AsyncGenerator<EngineEvent> {
@@ -218,6 +279,7 @@ export class TypebotEngine {
     }
 
     this.pushHistory('user', value);
+    this.logEvent('user_input', block.id, value, options?.variableId ? { variableId: options.variableId } : {});
 
     this.processedBlocks++;
 
@@ -254,6 +316,7 @@ export class TypebotEngine {
     }
 
     this.pushHistory('user', value);
+    this.logEvent('choice', block.id, value, { itemId });
 
     this.processedBlocks++;
 
@@ -291,6 +354,7 @@ export class TypebotEngine {
 
   private async* processGroup(group: TypebotGroup, startIndex: number): AsyncGenerator<EngineEvent> {
     const messages: ChatMessage[] = [];
+    this.lastGroupTitle = group.title || group.id;
 
     for (let i = startIndex; i < group.blocks.length; i++) {
       const block = group.blocks[i];
@@ -305,7 +369,12 @@ export class TypebotEngine {
             // Track bot text messages in conversation history
             if (msg.content && !msg.mediaType) {
               const plainText = msg.content.replace(/<[^>]*>/g, '').trim();
-              if (plainText) this.pushHistory('assistant', plainText);
+              if (plainText) {
+                this.pushHistory('assistant', plainText);
+                this.logEvent('bot_message', block.id, plainText);
+              }
+            } else if (msg.mediaType) {
+              this.logEvent('bot_message', block.id, `[${msg.mediaType}] ${msg.mediaUrl || ''}`);
             }
           }
         this.processedBlocks++;
@@ -362,6 +431,8 @@ export class TypebotEngine {
       return;
     }
 
+    this.logEvent('end');
+    this.updateSession({ ended_at: new Date().toISOString(), completed: true });
     yield { type: 'end' };
   }
 
@@ -753,6 +824,10 @@ export class TypebotEngine {
       if (!choice) return;
 
       const assistantContent = choice.message?.content || '';
+      this.logEvent('gpt_response', block.id, assistantContent, {
+        model: opts.model || 'gpt-4',
+        prompt: messages.map(m => `[${m.role}] ${m.content.substring(0, 200)}`),
+      });
 
       // Execute code tools locally as POST-PROCESSING on GPT's text response
       // Code tools are NOT sent to OpenAI — they process the assistant's reply
