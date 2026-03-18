@@ -189,18 +189,7 @@ if [ ! -f /usr/local/bin/postgrest ]; then
 fi
 log "PostgREST instalado"
 
-log "Instalando GoTrue..."
-GOTRUE_VERSION="v2.158.1"
-if [ ! -f /usr/local/bin/gotrue ]; then
-  if [ "$ARCH" = "amd64" ]; then
-    GOTRUE_URL="https://github.com/supabase/auth/releases/download/${GOTRUE_VERSION}/auth-${GOTRUE_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-  else
-    GOTRUE_URL="https://github.com/supabase/auth/releases/download/${GOTRUE_VERSION}/auth-${GOTRUE_VERSION}-aarch64-unknown-linux-gnu.tar.gz"
-  fi
-  curl -fsSL "$GOTRUE_URL" | tar xzf - -C /usr/local/bin/ 2>/dev/null || \
-    warn "GoTrue binário não encontrado. Auth será via API server."
-  [ -f /usr/local/bin/gotrue ] && chmod +x /usr/local/bin/gotrue
-fi
+log "Auth será gerenciado diretamente pelo API server (sem GoTrue)"
 
 # ══════════════════════════════════════════════════════════
 # 6. CONFIGURAR APLICAÇÃO
