@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, FunnelPreviewImage } from '@/lib/funnel-storage';
+import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, FunnelPreviewImage, UserSettings } from '@/lib/funnel-storage';
+import { supabase } from '@/integrations/supabase/client';
 import FunnelInspector from '@/components/admin/FunnelInspector';
 import SessionLogs from '@/components/admin/SessionLogs';
 import { StoredFunnel } from '@/lib/typebot-types';
@@ -8,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera, Plus, Star } from 'lucide-react';
+import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera, Plus, Star, Download, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
@@ -53,8 +54,14 @@ const Admin = () => {
   const [gallery, setGallery] = useState<string[]>([]);
   const [loadingFunnels, setLoadingFunnels] = useState(true);
   const [openaiKey, setOpenaiKey] = useState('');
+  const [typebotToken, setTypebotToken] = useState('');
+  const [typebotWorkspaceId, setTypebotWorkspaceId] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
+  const [typebotImportDialog, setTypebotImportDialog] = useState(false);
+  const [typebotList, setTypebotList] = useState<Array<{ id: string; name: string; createdAt?: string }>>([]);
+  const [loadingTypebots, setLoadingTypebots] = useState(false);
+  const [importingTypebotId, setImportingTypebotId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [inspectFunnel, setInspectFunnel] = useState<StoredFunnel | null>(null);
   const [logsFunnel, setLogsFunnel] = useState<StoredFunnel | null>(null);
@@ -86,7 +93,11 @@ const Admin = () => {
       ]);
       setFunnels(funnelData);
       setGallery(galleryData);
-      if (settingsData) setOpenaiKey(settingsData.openai_api_key);
+      if (settingsData) {
+        setOpenaiKey(settingsData.openai_api_key);
+        setTypebotToken(settingsData.typebot_api_token);
+        setTypebotWorkspaceId(settingsData.typebot_workspace_id);
+      }
       setLoadingFunnels(false);
     };
     load();
@@ -733,7 +744,7 @@ const Admin = () => {
                         size="sm"
                         onClick={async () => {
                           setSavingKey(true);
-                          const ok = await saveUserSettings(openaiKey);
+                          const ok = await saveUserSettings({ openai_api_key: openaiKey });
                           setSavingKey(false);
                           toast({
                             title: ok ? 'Chave salva!' : 'Erro',
@@ -752,6 +763,102 @@ const Admin = () => {
                       <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary underline">
                         platform.openai.com
                       </a>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Typebot Integration */}
+                <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Download className="w-4 h-4 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">Integração Typebot</h3>
+                      <p className="text-[11px] text-muted-foreground">Importe fluxos diretamente da API do Typebot</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">API Token</Label>
+                      <Input
+                        type="password"
+                        placeholder="Token do Typebot..."
+                        value={typebotToken}
+                        onChange={e => setTypebotToken(e.target.value)}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">Workspace ID</Label>
+                      <Input
+                        placeholder="clxxxxxxxxxxxxxxxx"
+                        value={typebotWorkspaceId}
+                        onChange={e => setTypebotWorkspaceId(e.target.value)}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          setSavingKey(true);
+                          const ok = await saveUserSettings({
+                            typebot_api_token: typebotToken,
+                            typebot_workspace_id: typebotWorkspaceId,
+                          });
+                          setSavingKey(false);
+                          toast({
+                            title: ok ? 'Configurações salvas!' : 'Erro',
+                            description: ok ? 'Token e Workspace ID salvos.' : 'Não foi possível salvar.',
+                            variant: ok ? 'default' : 'destructive',
+                          });
+                        }}
+                        disabled={savingKey}
+                      >
+                        <Save className="w-3.5 h-3.5 mr-1" />
+                        Salvar
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          if (!typebotToken || !typebotWorkspaceId) {
+                            toast({ title: 'Erro', description: 'Configure o Token e Workspace ID primeiro.', variant: 'destructive' });
+                            return;
+                          }
+                          setTypebotImportDialog(true);
+                          setLoadingTypebots(true);
+                          try {
+                            const { data, error } = await supabase.functions.invoke('typebot-proxy', {
+                              body: { action: 'list' },
+                            });
+                            if (error) throw error;
+                            const bots = data?.typebots || [];
+                            setTypebotList(bots.map((b: any) => ({ id: b.id, name: b.name, createdAt: b.createdAt })));
+                          } catch (err: any) {
+                            toast({ title: 'Erro', description: err?.message || 'Não foi possível listar os typebots.', variant: 'destructive' });
+                            setTypebotImportDialog(false);
+                          }
+                          setLoadingTypebots(false);
+                        }}
+                        disabled={!typebotToken || !typebotWorkspaceId}
+                      >
+                        <Download className="w-3.5 h-3.5 mr-1" />
+                        Importar do Typebot
+                      </Button>
+                    </div>
+
+                    <p className="text-[10px] text-muted-foreground">
+                      Obtenha o token em{' '}
+                      <a href="https://typebot.io" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                        typebot.io
+                      </a>
+                      {' '}→ Configurações → API Tokens
                     </p>
                   </div>
                 </div>
@@ -946,6 +1053,85 @@ const Admin = () => {
               <Plus className="w-3.5 h-3.5 mr-1.5" /> Adicionar imagem
             </Button>
             <input ref={previewGalleryRef} type="file" accept="image/*" className="hidden" onChange={handlePreviewGalleryUpload} />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Typebot Import Dialog */}
+      <Dialog open={typebotImportDialog} onOpenChange={open => { if (!open) setTypebotImportDialog(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm">
+              <Download className="w-4 h-4" />
+              Importar do Typebot
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 pt-2">
+            {loadingTypebots ? (
+              <div className="flex flex-col items-center py-8 gap-2">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <p className="text-xs text-muted-foreground">Carregando fluxos...</p>
+              </div>
+            ) : typebotList.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-muted-foreground">Nenhum fluxo encontrado no workspace.</p>
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-80 overflow-y-auto">
+                {typebotList.map(bot => (
+                  <div
+                    key={bot.id}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border hover:border-primary/30 hover:bg-accent/30 transition-all"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">{bot.name}</p>
+                      {bot.createdAt && (
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(bot.createdAt).toLocaleDateString('pt-BR')}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={importingTypebotId === bot.id}
+                      onClick={async () => {
+                        setImportingTypebotId(bot.id);
+                        try {
+                          const { data, error } = await supabase.functions.invoke('typebot-proxy', {
+                            body: { action: 'get', typebotId: bot.id },
+                          });
+                          if (error) throw error;
+                          const flow = data?.typebot || data;
+                          const result = validateTypebotJson(flow);
+                          if (!result.valid || !result.flow) {
+                            toast({ title: 'Erro', description: result.error || 'Fluxo inválido.', variant: 'destructive' });
+                            return;
+                          }
+                          const name = result.flow.name || bot.name;
+                          const slug = slugify(name) || 'funil-' + Date.now();
+                          await saveFunnel(name, slug, result.flow);
+                          await refresh();
+                          toast({ title: 'Importado!', description: `"${name}" disponível em /f/${slug}` });
+                          setTypebotImportDialog(false);
+                        } catch (err: any) {
+                          toast({ title: 'Erro', description: err?.message || 'Falha ao importar.', variant: 'destructive' });
+                        } finally {
+                          setImportingTypebotId(null);
+                        }
+                      }}
+                    >
+                      {importingTypebotId === bot.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
