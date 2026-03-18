@@ -35,6 +35,41 @@ export type Database = {
         }
         Relationships: []
       }
+      funnel_preview_images: {
+        Row: {
+          created_at: string
+          data_url: string
+          funnel_id: string
+          id: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          data_url: string
+          funnel_id: string
+          id?: string
+          position?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          data_url?: string
+          funnel_id?: string
+          id?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_preview_images_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "funnels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funnel_session_events: {
         Row: {
           block_id: string | null
