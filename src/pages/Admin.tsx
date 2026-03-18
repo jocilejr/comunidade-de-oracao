@@ -93,7 +93,11 @@ const Admin = () => {
       ]);
       setFunnels(funnelData);
       setGallery(galleryData);
-      if (settingsData) setOpenaiKey(settingsData.openai_api_key);
+      if (settingsData) {
+        setOpenaiKey(settingsData.openai_api_key);
+        setTypebotToken(settingsData.typebot_api_token);
+        setTypebotWorkspaceId(settingsData.typebot_workspace_id);
+      }
       setLoadingFunnels(false);
     };
     load();
