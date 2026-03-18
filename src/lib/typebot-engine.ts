@@ -202,12 +202,22 @@ export class TypebotEngine {
     yield* this.processGroup(group, blockIndex);
   }
 
+  private pushHistory(role: 'assistant' | 'user', content: string): void {
+    if (!content.trim()) return;
+    this.conversationHistory.push({ role, content });
+    if (this.conversationHistory.length > 5) {
+      this.conversationHistory.shift();
+    }
+  }
+
   async* continueAfterInput(block: TypebotBlock, value: string): AsyncGenerator<EngineEvent> {
     // Store value in variable if configured
     const options = (block as any).options;
     if (options?.variableId) {
       this.setVariable(options.variableId, value);
     }
+
+    this.pushHistory('user', value);
 
     this.processedBlocks++;
 
