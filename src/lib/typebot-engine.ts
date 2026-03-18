@@ -667,19 +667,35 @@ export class TypebotEngine {
         }
       }
       // Build tools array for API: strip `code` field, normalize parameters
+      // Auto-detect parameters from code tool source when schema is empty
       const apiTools = allTools
         .map((t: any) => {
           const name = t.function?.name || t.name;
           if (!name) return null;
           const rawParams = t.function?.parameters || t.parameters;
+          let params: Record<string, any> = (rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams))
+            ? { ...rawParams }
+            : { type: 'object', properties: {} };
+
+          // Bug fix #1: Auto-detect parameters used in code tools with empty schemas
+          if (codeToolMap.has(name) && (!params.properties || Object.keys(params.properties).length === 0)) {
+            const code = codeToolMap.get(name) || '';
+            const commonArgs = ['input', 'text', 'message', 'mensagem', 'texto'];
+            const usedArgs = commonArgs.filter(arg => code.includes(arg));
+            if (usedArgs.length > 0) {
+              params = { type: 'object', properties: {} as Record<string, any> };
+              for (const arg of usedArgs) {
+                (params.properties as Record<string, any>)[arg] = { type: 'string', description: `The user's ${arg} to process` };
+              }
+            }
+          }
+
           return {
             type: 'function' as const,
             function: {
               name,
               description: t.function?.description || t.description || '',
-              parameters: (rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams))
-                ? rawParams
-                : { type: 'object', properties: {} },
+              parameters: params,
             },
           };
         })
