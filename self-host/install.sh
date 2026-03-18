@@ -305,7 +305,7 @@ sed -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
     -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
     "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
 
-nginx -t && systemctl reload nginx
+nginx -t && systemctl restart nginx
 log "Nginx configurado com SSL"
 
 # ══════════════════════════════════════════════════════════
