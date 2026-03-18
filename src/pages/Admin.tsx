@@ -55,6 +55,7 @@ const Admin = () => {
   const [savingKey, setSavingKey] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [inspectFunnel, setInspectFunnel] = useState<StoredFunnel | null>(null);
+  const [logsFunnel, setLogsFunnel] = useState<StoredFunnel | null>(null);
   const [loadingInspect, setLoadingInspect] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
