@@ -59,6 +59,8 @@ const Admin = () => {
   const [loadingInspect, setLoadingInspect] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
+  const previewImageRef = useRef<HTMLInputElement>(null);
+  const [uploadingPreviewSlug, setUploadingPreviewSlug] = useState<string | null>(null);
   const { toast } = useToast();
   const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
