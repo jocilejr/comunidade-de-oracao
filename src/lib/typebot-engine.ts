@@ -277,12 +277,14 @@ export class TypebotEngine {
 
       // Input blocks — pause and wait for user
       if (this.isInputBlock(blockType)) {
+        // Save context so we can resume at the next block in this group
+        this.pausedContext = { group, nextBlockIndex: i + 1 };
         if (blockType === 'choice' || blockType === 'picturechoice') {
           yield { type: 'choices', block: block as ChoiceInputBlock };
         } else {
           yield { type: 'input', block };
         }
-        return; // Pause — will resume via continueAfterInput
+        return; // Pause — will resume via continueAfterInput/continueAfterChoice
       }
 
       // Logic blocks — process immediately
