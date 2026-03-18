@@ -431,6 +431,8 @@ export class TypebotEngine {
       return;
     }
 
+    this.logEvent('end');
+    this.updateSession({ ended_at: new Date().toISOString(), completed: true });
     yield { type: 'end' };
   }
 
