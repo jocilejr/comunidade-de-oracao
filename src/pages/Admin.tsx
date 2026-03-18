@@ -228,11 +228,13 @@ const Admin = () => {
   };
 
   const handleGalleryRemove = async (imageId: string, url: string) => {
-    const updated = await removeFromAvatarGallery(imageId);
-    setGallery(updated);
-    if (editAvatar === url && !updated.some(item => item.dataUrl === url)) {
+    // Optimistic update: remove from UI immediately
+    setGallery(prev => prev.filter(item => item.id !== imageId));
+    if (editAvatar === url) {
       setEditAvatar('');
     }
+    // Then delete from database in background
+    removeFromAvatarGallery(imageId);
   };
   const handlePreviewImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
