@@ -21,6 +21,8 @@ const PUBLIC_DOMAIN = process.env.PUBLIC_DOMAIN || process.env.DOMAIN || "localh
 const DASHBOARD_DOMAIN = process.env.DASHBOARD_DOMAIN || process.env.DOMAIN || "localhost";
 const PUBLIC_ORIGIN = `https://${PUBLIC_DOMAIN}`;
 const DASHBOARD_ORIGIN = `https://${DASHBOARD_DOMAIN}`;
+const JWT_SECRET = process.env.API_JWT_SECRET || process.env.PGRST_JWT_SECRET || "super-secret";
+const JWT_EXP = parseInt(process.env.GOTRUE_JWT_EXP || "3600", 10);
 
 const pool = new Pool({
   host: process.env.DB_HOST || "127.0.0.1",
