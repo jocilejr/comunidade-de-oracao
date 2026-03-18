@@ -16,6 +16,7 @@ interface ChatRendererProps {
   botAvatar?: string;
   ownerUserId?: string;
   forceNewTab?: boolean;
+  funnelId?: string;
 }
 
 type DisplayItem =
