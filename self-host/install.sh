@@ -412,7 +412,7 @@ pm2 save
 if ! pm2 startup systemd -u root --hp /root 2>&1 | grep -q "already"; then
   pm2 startup systemd -u root --hp /root 2>/dev/null || true
 fi
-log "Serviços iniciados"
+log "Serviços iniciados (API + PostgREST)"
 
 # ══════════════════════════════════════════════════════════
 # 10. CRON PARA ROTAÇÃO DE IMAGENS
