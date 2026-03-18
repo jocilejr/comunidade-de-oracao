@@ -1,0 +1,345 @@
+/**
+ * API Server — substitui as Edge Functions do Supabase.
+ * Roda em http://127.0.0.1:4000
+ *
+ * Endpoints:
+ *   GET  /share?slug=...          → HTML com OG tags (crawlers)
+ *   GET  /preview-image?slug=...  → imagem binária
+ *   POST /openai-proxy            → proxy OpenAI
+ *   POST /typebot-proxy           → proxy Typebot
+ *   POST /rotate-preview-images   → rotação de imagens
+ */
+
+const http = require("http");
+const { Pool } = require("pg");
+
+// ── Configuração ──────────────────────────────────────────
+const PORT = parseInt(process.env.API_PORT || "4000", 10);
+const DOMAIN = process.env.DOMAIN || "localhost";
+const APP_ORIGIN = `https://${DOMAIN}`;
+
+const pool = new Pool({
+  host: process.env.DB_HOST || "127.0.0.1",
+  port: parseInt(process.env.DB_PORT || "5432", 10),
+  database: process.env.DB_NAME || "funnel_app",
+  user: process.env.DB_USER || "funnel_user",
+  password: process.env.DB_PASS || "",
+});
+
+// ── Helpers ───────────────────────────────────────────────
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function json(res, data, status = 200) {
+  res.writeHead(status, { ...corsHeaders, "Content-Type": "application/json" });
+  res.end(JSON.stringify(data));
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString()));
+  });
+}
+
+// ── Route: /share ─────────────────────────────────────────
+async function handleShare(req, res, slug) {
+  const { rows } = await pool.query(
+    `SELECT name, slug, page_title, page_description, preview_image, bot_name, bot_avatar
+     FROM funnels WHERE slug = $1 LIMIT 1`,
+    [slug]
+  );
+
+  const redirectUrl = `${APP_ORIGIN}/f/${slug}`;
+
+  if (!rows.length) {
+    res.writeHead(302, { Location: redirectUrl });
+    return res.end();
+  }
+
+  const funnel = rows[0];
+  const title = escapeHtml(funnel.page_title || funnel.name || "Funil");
+  const description = escapeHtml(
+    funnel.page_description || "Aperte aqui e Receba"
+  );
+
+  const v = Date.now().toString();
+  const imageUrl = funnel.preview_image
+    ? `${APP_ORIGIN}/api/preview-image?slug=${encodeURIComponent(slug)}&v=${v}`
+    : "";
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+  <meta name="description" content="${description}" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="${description}" />
+  ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />` : ""}
+  ${imageUrl ? `<meta property="og:image:width" content="1200" />` : ""}
+  ${imageUrl ? `<meta property="og:image:height" content="630" />` : ""}
+  <meta property="og:url" content="${escapeHtml(redirectUrl)}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${title}" />
+  <meta name="twitter:description" content="${description}" />
+  ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}
+</head>
+<body>
+  <p>Redirecionando para <a href="${escapeHtml(redirectUrl)}">${title}</a>...</p>
+</body>
+</html>`;
+
+  res.writeHead(200, {
+    ...corsHeaders,
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+  });
+  res.end(html);
+}
+
+// ── Route: /preview-image ─────────────────────────────────
+async function handlePreviewImage(req, res, slug) {
+  const { rows } = await pool.query(
+    `SELECT preview_image FROM funnels WHERE slug = $1 LIMIT 1`,
+    [slug]
+  );
+
+  if (!rows.length || !rows[0].preview_image) {
+    return json(res, { error: "No image found" }, 404);
+  }
+
+  const dataUrl = rows[0].preview_image;
+
+  // data:<mime>;base64,<data>
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) {
+    if (dataUrl.startsWith("http")) {
+      res.writeHead(302, { Location: dataUrl });
+      return res.end();
+    }
+    return json(res, { error: "Invalid image format" }, 400);
+  }
+
+  const mimeType = match[1];
+  const buffer = Buffer.from(match[2], "base64");
+
+  res.writeHead(200, {
+    ...corsHeaders,
+    "Content-Type": mimeType,
+    "Cache-Control": "public, max-age=300, s-maxage=60",
+  });
+  res.end(buffer);
+}
+
+// ── Route: /openai-proxy ──────────────────────────────────
+async function handleOpenaiProxy(req, res) {
+  const body = JSON.parse(await readBody(req));
+  const { messages, model, tools, userId } = body;
+
+  if (!userId) return json(res, { error: "User ID not provided." }, 400);
+
+  const { rows } = await pool.query(
+    `SELECT openai_api_key FROM user_settings WHERE user_id = $1 LIMIT 1`,
+    [userId]
+  );
+
+  const apiKey = rows[0]?.openai_api_key;
+  if (!apiKey) {
+    return json(res, { error: "OpenAI API key not configured." }, 400);
+  }
+
+  const payload = { model: model || "gpt-4", messages, stream: false };
+
+  if (tools && Array.isArray(tools) && tools.length > 0) {
+    payload.tools = tools
+      .map((tool) => {
+        if (tool.type === "function" && tool.function?.name) {
+          const params = tool.function.parameters;
+          if (!params || Array.isArray(params))
+            tool.function.parameters = { type: "object", properties: {} };
+          const { code, ...cleanFn } = tool.function;
+          return { type: "function", function: cleanFn };
+        }
+        const name = tool.name || tool.function?.name;
+        if (!name) return null;
+        const rawParams = tool.parameters || tool.function?.parameters;
+        return {
+          type: "function",
+          function: {
+            name,
+            description: tool.description || tool.function?.description || "",
+            parameters:
+              rawParams && typeof rawParams === "object" && !Array.isArray(rawParams)
+                ? rawParams
+                : { type: "object", properties: {} },
+          },
+        };
+      })
+      .filter(Boolean);
+
+    if (payload.tools.length > 0) payload.tool_choice = "auto";
+    else delete payload.tools;
+  }
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  json(res, data, response.status);
+}
+
+// ── Route: /typebot-proxy ─────────────────────────────────
+async function handleTypebotProxy(req, res) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return json(res, { error: "Missing authorization" }, 401);
+
+  // Em self-host, validamos JWT via GoTrue ou simplesmente confiamos no proxy
+  // Para simplicidade, extraímos user_id do body ou fazemos lookup
+  const body = JSON.parse(await readBody(req));
+  const { action, typebotId, userId } = body;
+
+  if (!userId) return json(res, { error: "Missing userId" }, 400);
+
+  const { rows } = await pool.query(
+    `SELECT typebot_api_token, typebot_workspace_id, typebot_base_url
+     FROM user_settings WHERE user_id = $1 LIMIT 1`,
+    [userId]
+  );
+
+  const settings = rows[0];
+  if (!settings?.typebot_api_token) {
+    return json(res, { error: "Token do Typebot não configurado." }, 400);
+  }
+
+  const baseUrl = (settings.typebot_base_url || "https://typebot.io").replace(/\/+$/, "");
+
+  if (action === "list") {
+    if (!settings.typebot_workspace_id) {
+      return json(res, { error: "Workspace ID do Typebot não configurado." }, 400);
+    }
+    const r = await fetch(
+      `${baseUrl}/api/v1/typebots?workspaceId=${encodeURIComponent(settings.typebot_workspace_id)}`,
+      { headers: { Authorization: `Bearer ${settings.typebot_api_token}`, Accept: "application/json" } }
+    );
+    const data = await r.json();
+    return json(res, data, r.status);
+  }
+
+  if (action === "get" && typebotId) {
+    const r = await fetch(
+      `${baseUrl}/api/v1/typebots/${encodeURIComponent(typebotId)}`,
+      { headers: { Authorization: `Bearer ${settings.typebot_api_token}`, Accept: "application/json" } }
+    );
+    const data = await r.json();
+    return json(res, data, r.status);
+  }
+
+  json(res, { error: "Ação inválida. Use 'list' ou 'get'." }, 400);
+}
+
+// ── Route: /rotate-preview-images ─────────────────────────
+async function handleRotateImages(req, res) {
+  const { rows: images } = await pool.query(
+    `SELECT id, funnel_id, data_url, position
+     FROM funnel_preview_images ORDER BY position ASC`
+  );
+
+  if (!images.length) return json(res, { message: "No preview images to rotate" });
+
+  const byFunnel = {};
+  for (const img of images) {
+    if (!byFunnel[img.funnel_id]) byFunnel[img.funnel_id] = [];
+    byFunnel[img.funnel_id].push(img);
+  }
+
+  const currentHour = new Date().getUTCHours();
+  let updated = 0;
+
+  for (const [funnelId, funnelImages] of Object.entries(byFunnel)) {
+    if (funnelImages.length <= 1) continue;
+    const idx = currentHour % funnelImages.length;
+    const activeImage = funnelImages[idx];
+    await pool.query(
+      `UPDATE funnels SET preview_image = $1 WHERE id = $2`,
+      [activeImage.data_url, funnelId]
+    );
+    updated++;
+  }
+
+  json(res, { message: `Rotated ${updated} funnels`, hour: currentHour });
+}
+
+// ── Router ────────────────────────────────────────────────
+const server = http.createServer(async (req, res) => {
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, corsHeaders);
+    return res.end();
+  }
+
+  try {
+    const url = new URL(req.url, `http://localhost:${PORT}`);
+    const path = url.pathname;
+
+    if (path === "/share" || path === "/share/") {
+      const slug = url.searchParams.get("slug");
+      if (!slug) return json(res, { error: "Missing slug" }, 400);
+      return await handleShare(req, res, slug);
+    }
+
+    if (path === "/preview-image" || path === "/preview-image/") {
+      const slug = url.searchParams.get("slug");
+      if (!slug) return json(res, { error: "Missing slug" }, 400);
+      return await handlePreviewImage(req, res, slug);
+    }
+
+    if (path === "/openai-proxy" && req.method === "POST") {
+      return await handleOpenaiProxy(req, res);
+    }
+
+    if (path === "/typebot-proxy" && req.method === "POST") {
+      return await handleTypebotProxy(req, res);
+    }
+
+    if (path === "/rotate-preview-images" && req.method === "POST") {
+      return await handleRotateImages(req, res);
+    }
+
+    // Health check
+    if (path === "/health") {
+      return json(res, { status: "ok", timestamp: new Date().toISOString() });
+    }
+
+    json(res, { error: "Not found" }, 404);
+  } catch (err) {
+    console.error("API Error:", err);
+    json(res, { error: err.message || "Internal server error" }, 500);
+  }
+});
+
+server.listen(PORT, "127.0.0.1", () => {
+  console.log(`✅ API server running on http://127.0.0.1:${PORT}`);
+});
