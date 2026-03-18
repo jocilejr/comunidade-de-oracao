@@ -48,7 +48,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { typebot_api_token, typebot_workspace_id } = settings;
+    const { typebot_api_token, typebot_workspace_id, typebot_base_url } = settings;
+    const baseUrl = (typebot_base_url || "https://typebot.io").replace(/\/+$/, "");
     const body = await req.json();
     const { action, typebotId } = body;
 
