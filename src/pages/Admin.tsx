@@ -900,6 +900,8 @@ const Admin = () => {
                     </p>
                   </div>
                 </div>
+                </>
+                )}
               </div>
             )}
           </div>
