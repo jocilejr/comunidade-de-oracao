@@ -369,7 +369,12 @@ export class TypebotEngine {
             // Track bot text messages in conversation history
             if (msg.content && !msg.mediaType) {
               const plainText = msg.content.replace(/<[^>]*>/g, '').trim();
-              if (plainText) this.pushHistory('assistant', plainText);
+              if (plainText) {
+                this.pushHistory('assistant', plainText);
+                this.logEvent('bot_message', block.id, plainText);
+              }
+            } else if (msg.mediaType) {
+              this.logEvent('bot_message', block.id, `[${msg.mediaType}] ${msg.mediaUrl || ''}`);
             }
           }
         this.processedBlocks++;
