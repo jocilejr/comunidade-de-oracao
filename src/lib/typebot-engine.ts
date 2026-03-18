@@ -761,6 +761,9 @@ export class TypebotEngine {
 
       // Map response to variables
       if (opts.responseMapping) {
+        // Get code tool result names for quick lookup
+        const codeToolNames = Array.from(codeToolResults.keys());
+
         for (let idx = 0; idx < opts.responseMapping.length; idx++) {
           const mapping = opts.responseMapping[idx];
           if (!mapping.variableId) continue;
@@ -768,38 +771,25 @@ export class TypebotEngine {
           const extract = mapping.valueToExtract || '';
 
           if (extract === 'Message content' || extract === 'Message Content' || (extract === '' && idx === 0)) {
-            // First mapping without valueToExtract defaults to message content
             this.setVariable(mapping.variableId, assistantContent);
-          } else if (extract === '' && toolCalls && toolCalls.length > 0) {
-            // Subsequent mappings without valueToExtract: try tool call results
-            const tc = toolCalls[0];
-            const fnName = tc.function?.name;
-            if (codeToolResults[fnName] !== undefined) {
-              // If code tool result is a JSON object with a single field, extract that value
-              let finalValue = codeToolResults[fnName];
-              try {
-                const parsed = JSON.parse(finalValue);
-                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                  const values = Object.values(parsed);
-                  if (values.length === 1) {
-                    finalValue = String(values[0]);
-                  }
+          } else if (extract === '' && idx > 0 && codeToolNames.length > 0) {
+            // Subsequent mapping: use code tool result (post-processing of GPT response)
+            const firstResult = codeToolResults[codeToolNames[0]];
+            let finalValue = firstResult || '';
+            try {
+              const parsed = JSON.parse(finalValue);
+              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                const values = Object.values(parsed);
+                if (values.length === 1) {
+                  finalValue = String(values[0]);
                 }
-              } catch { /* use raw string */ }
-              this.setVariable(mapping.variableId, finalValue);
-            } else {
-              try {
-                const args = JSON.parse(tc.function?.arguments || '{}');
-                this.setVariable(mapping.variableId, JSON.stringify(args));
-              } catch {
-                this.setVariable(mapping.variableId, '');
               }
-            }
+            } catch { /* use raw string */ }
+            this.setVariable(mapping.variableId, finalValue);
           } else if (extract === '' && idx > 0) {
-            // Bug fix #3: No tool calls but mapping expects a value — fallback to assistant content
+            // No code tools, no API tool calls — fallback to assistant content
             this.setVariable(mapping.variableId, assistantContent);
           } else if (toolCalls && toolCalls.length > 0) {
-            // Try to extract from tool call arguments by key
             for (const tc of toolCalls) {
               try {
                 const args = JSON.parse(tc.function?.arguments || '{}');
