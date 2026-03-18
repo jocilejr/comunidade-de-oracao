@@ -475,6 +475,11 @@ const Admin = () => {
               </div>
             )}
 
+            {/* ===== LOGS TAB ===== */}
+            {activeTab === 'logs' && (
+              <SessionLogs funnels={funnels.map(f => ({ id: f.id, name: f.name, slug: f.slug }))} />
+            )}
+
             {/* ===== GALLERY TAB ===== */}
             {activeTab === 'gallery' && (
               <div className="max-w-5xl space-y-5">
