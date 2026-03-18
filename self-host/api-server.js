@@ -12,6 +12,8 @@
 
 const http = require("http");
 const { Pool } = require("pg");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 // ── Configuração ──────────────────────────────────────────
 const PORT = parseInt(process.env.API_PORT || "4000", 10);
