@@ -492,7 +492,7 @@ const Admin = () => {
 
             {/* ===== GALLERY TAB ===== */}
             {activeTab === 'gallery' && (
-              <div className="max-w-5xl space-y-5">
+              <div className="max-w-6xl space-y-5">
                 <div className="flex items-center gap-3">
                   <Button variant="outline" size="sm" onClick={() => avatarRef.current?.click()}>
                     <Upload className="w-3.5 h-3.5 mr-1.5" /> Importar foto
