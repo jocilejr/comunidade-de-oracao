@@ -170,8 +170,22 @@ export async function getFunnelById(id: string): Promise<StoredFunnel | undefine
     flow: data.flow as unknown as TypebotFlow,
     botName: data.bot_name || '',
     botAvatar: data.bot_avatar || '',
+    previewImage: data.preview_image || '',
     userId: data.user_id,
   };
+}
+
+export async function updateFunnelPreviewImage(slug: string, previewImage: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { error } = await supabase
+    .from('funnels')
+    .update({ preview_image: previewImage })
+    .eq('user_id', user.id)
+    .eq('slug', slug);
+
+  return !error;
 }
 
 // ---- Avatar Gallery (Supabase) ----
