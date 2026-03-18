@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera, Plus, Star, Download, Loader2, Copy } from 'lucide-react';
+import { Upload, Trash2, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera, Plus, Star, Download, Loader2, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
@@ -575,19 +575,14 @@ const Admin = () => {
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handlePreview(funnel)} title="Simular funil">
                               <Eye className="w-3.5 h-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Copiar link para WhatsApp (com preview)" onClick={() => {
+                            <Button variant="outline" size="sm" className="h-8 px-2.5 gap-1.5 text-[11px] font-medium" title="Copiar link para WhatsApp (com preview)" onClick={() => {
                               const v = Date.now();
                               const shareUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${funnel.slug}&v=${v}`;
                               navigator.clipboard.writeText(shareUrl);
-                              toast({ title: 'Link copiado!', description: 'Use este link para compartilhar no WhatsApp com preview de imagem.' });
+                              toast({ title: 'Link copiado!', description: 'Cole este link no WhatsApp para compartilhar com preview de imagem.' });
                             }}>
-                              <Copy className="w-3.5 h-3.5" />
+                              <Copy className="w-3.5 h-3.5" /> Compartilhar
                             </Button>
-                            <Link to={`/f/${funnel.slug}`} target="_blank">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir em nova aba">
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </Button>
-                            </Link>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1045,6 +1040,30 @@ const Admin = () => {
                 onChange={e => setEditPageDescription(e.target.value)}
                 className="text-xs"
               />
+            </div>
+
+            {/* Share link section */}
+            <div className="space-y-1.5 pt-2 border-t border-border">
+              <Label className="text-[11px] text-muted-foreground">Link de compartilhamento (WhatsApp / redes sociais)</Label>
+              <div className="flex gap-1.5">
+                <Input
+                  readOnly
+                  value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${profileDialog?.slug || ''}&v=${Date.now()}`}
+                  className="text-[10px] font-mono bg-muted"
+                  onClick={e => (e.target as HTMLInputElement).select()}
+                />
+                <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => {
+                  const v = Date.now();
+                  const shareUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${profileDialog?.slug || ''}&v=${v}`;
+                  navigator.clipboard.writeText(shareUrl);
+                  toast({ title: 'Link copiado!', description: 'Cole este link no WhatsApp para compartilhar com preview de imagem.' });
+                }}>
+                  <Copy className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Use este link para compartilhar no WhatsApp/redes sociais com preview de imagem.
+              </p>
             </div>
           </div>
 
