@@ -317,7 +317,7 @@ const Admin = () => {
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {activeTab === 'funnels' && 'Gerencie seus funis de conversação'}
-                  {activeTab === 'logs' && 'Acompanhe as sessões dos visitantes'}
+                  
                   {activeTab === 'gallery' && 'Fotos de perfil para reutilizar nos funis'}
                   {activeTab === 'stats' && 'Acompanhe o desempenho dos funis'}
                   {activeTab === 'settings' && 'Configure integrações e chaves de API'}
