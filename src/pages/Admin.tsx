@@ -148,6 +148,8 @@ const Admin = () => {
     setProfileDialog(funnel);
     setEditName(funnel.botName || '');
     setEditAvatar(funnel.botAvatar || '');
+    setEditPageTitle(funnel.pageTitle || '');
+    setEditPageDescription(funnel.pageDescription || '');
   };
 
   const handleInspect = async (funnel: StoredFunnel) => {
