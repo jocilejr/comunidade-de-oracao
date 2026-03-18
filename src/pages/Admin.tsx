@@ -241,20 +241,20 @@ const Admin = () => {
     <div className="min-h-screen bg-background">
       <div className="flex h-screen">
         {/* Sidebar */}
-        <aside className="w-60 border-r border-border bg-card/50 flex flex-col shrink-0">
-          <div className="px-4 py-4 border-b border-border">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary text-primary-foreground">
-                <Bot className="w-4 h-4" />
+        <aside className="w-64 bg-sidebar flex flex-col shrink-0">
+          <div className="px-5 py-5 border-b border-sidebar-border">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
+                <Bot className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-sm font-bold text-foreground leading-none">Funnel Manager</h1>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Typebot Runtime</p>
+                <h1 className="text-[13px] font-extrabold text-sidebar-foreground leading-tight tracking-tight">Funil Monitorado</h1>
+                <p className="text-[10px] text-sidebar-foreground/50 font-medium tracking-wide uppercase">Origem Viva</p>
               </div>
             </div>
           </div>
 
-          <nav className="flex-1 px-2 py-3 space-y-0.5">
+          <nav className="flex-1 px-3 py-4 space-y-1">
             {NAV_ITEMS.map(item => {
               const badge = item.id === 'funnels' && funnels.length > 0 ? funnels.length
                 : item.id === 'gallery' && gallery.length > 0 ? gallery.length
@@ -263,19 +263,19 @@ const Admin = () => {
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all ${
                     activeTab === item.id
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                      ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-sm'
+                      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                   }`}
                 >
                   <item.icon className="w-4 h-4 shrink-0" />
                   {item.label}
                   {badge !== undefined && (
-                    <span className={`ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                    <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
                       activeTab === item.id
-                        ? 'bg-primary-foreground/20 text-primary-foreground'
-                        : 'bg-muted text-muted-foreground'
+                        ? 'bg-sidebar-primary-foreground/20 text-sidebar-primary-foreground'
+                        : 'bg-sidebar-accent text-sidebar-foreground/60'
                     }`}>
                       {badge}
                     </span>
@@ -285,17 +285,17 @@ const Admin = () => {
             })}
           </nav>
 
-          <div className="px-2 py-3 border-t border-border space-y-0.5">
+          <div className="px-3 py-4 border-t border-sidebar-border space-y-1">
             <button
               onClick={toggleTheme}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all"
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               {theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
             </button>
             <button
               onClick={() => logout()}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] text-destructive hover:bg-destructive/10 transition-all"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] text-destructive hover:bg-destructive/10 transition-all"
             >
               <LogOut className="w-4 h-4" />
               Sair
@@ -304,18 +304,18 @@ const Admin = () => {
         </aside>
 
         {/* Main */}
-        <main className="flex-1 overflow-y-auto">
-          <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-md px-6 py-3">
-            <div className="flex items-center justify-between max-w-5xl">
+        <main className="flex-1 overflow-y-auto bg-background">
+          <header className="sticky top-0 z-10 border-b border-border bg-card/95 backdrop-blur-xl px-8 py-4">
+            <div className="flex items-center justify-between max-w-6xl">
               <div>
-                <h2 className="text-base font-bold text-foreground">
+                <h2 className="text-lg font-bold text-foreground tracking-tight">
                   {activeTab === 'funnels' && 'Funis'}
                   
                   {activeTab === 'gallery' && 'Galeria de Avatares'}
                   {activeTab === 'stats' && 'Estatísticas'}
                   {activeTab === 'settings' && 'Configurações'}
                 </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
+                <p className="text-[13px] text-muted-foreground mt-0.5">
                   {activeTab === 'funnels' && 'Gerencie seus funis de conversação'}
                   
                   {activeTab === 'gallery' && 'Fotos de perfil para reutilizar nos funis'}
@@ -324,15 +324,15 @@ const Admin = () => {
                 </p>
               </div>
               <Link to="/">
-                <Button variant="ghost" size="sm" className="text-xs">← Início</Button>
+                <Button variant="outline" size="sm" className="text-xs">← Início</Button>
               </Link>
             </div>
           </header>
 
-          <div className="px-6 py-6">
+          <div className="px-8 py-6">
             {/* ===== FUNNELS TAB ===== */}
             {activeTab === 'funnels' && (
-              <div className="space-y-5 max-w-5xl">
+              <div className="space-y-5 max-w-6xl">
                 {/* Upload */}
                 <div
                   className={`rounded-xl border-2 border-dashed transition-all cursor-pointer p-8 text-center ${
@@ -492,7 +492,7 @@ const Admin = () => {
 
             {/* ===== GALLERY TAB ===== */}
             {activeTab === 'gallery' && (
-              <div className="max-w-5xl space-y-5">
+              <div className="max-w-6xl space-y-5">
                 <div className="flex items-center gap-3">
                   <Button variant="outline" size="sm" onClick={() => avatarRef.current?.click()}>
                     <Upload className="w-3.5 h-3.5 mr-1.5" /> Importar foto
@@ -528,7 +528,7 @@ const Admin = () => {
 
             {/* ===== STATS TAB ===== */}
             {activeTab === 'stats' && (
-              <div className="max-w-5xl">
+              <div className="max-w-6xl">
                 <div className="grid grid-cols-3 gap-3 mb-6">
                   {[
                     { label: 'Total de funis', value: funnels.length, icon: FolderOpen },
