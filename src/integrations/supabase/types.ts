@@ -202,6 +202,8 @@ export type Database = {
           created_at: string
           id: string
           openai_api_key: string | null
+          typebot_api_token: string | null
+          typebot_workspace_id: string | null
           updated_at: string
           user_id: string
         }
@@ -209,6 +211,8 @@ export type Database = {
           created_at?: string
           id?: string
           openai_api_key?: string | null
+          typebot_api_token?: string | null
+          typebot_workspace_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -216,6 +220,8 @@ export type Database = {
           created_at?: string
           id?: string
           openai_api_key?: string | null
+          typebot_api_token?: string | null
+          typebot_workspace_id?: string | null
           updated_at?: string
           user_id?: string
         }
