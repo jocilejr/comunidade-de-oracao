@@ -304,18 +304,18 @@ const Admin = () => {
         </aside>
 
         {/* Main */}
-        <main className="flex-1 overflow-y-auto">
-          <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-md px-6 py-3">
-            <div className="flex items-center justify-between max-w-5xl">
+        <main className="flex-1 overflow-y-auto bg-background">
+          <header className="sticky top-0 z-10 border-b border-border bg-card/95 backdrop-blur-xl px-8 py-4">
+            <div className="flex items-center justify-between max-w-6xl">
               <div>
-                <h2 className="text-base font-bold text-foreground">
+                <h2 className="text-lg font-bold text-foreground tracking-tight">
                   {activeTab === 'funnels' && 'Funis'}
                   
                   {activeTab === 'gallery' && 'Galeria de Avatares'}
                   {activeTab === 'stats' && 'Estatísticas'}
                   {activeTab === 'settings' && 'Configurações'}
                 </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
+                <p className="text-[13px] text-muted-foreground mt-0.5">
                   {activeTab === 'funnels' && 'Gerencie seus funis de conversação'}
                   
                   {activeTab === 'gallery' && 'Fotos de perfil para reutilizar nos funis'}
@@ -324,12 +324,12 @@ const Admin = () => {
                 </p>
               </div>
               <Link to="/">
-                <Button variant="ghost" size="sm" className="text-xs">← Início</Button>
+                <Button variant="outline" size="sm" className="text-xs">← Início</Button>
               </Link>
             </div>
           </header>
 
-          <div className="px-6 py-6">
+          <div className="px-8 py-6">
             {/* ===== FUNNELS TAB ===== */}
             {activeTab === 'funnels' && (
               <div className="space-y-5 max-w-5xl">
