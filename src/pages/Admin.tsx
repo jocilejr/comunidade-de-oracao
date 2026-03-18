@@ -310,12 +310,14 @@ const Admin = () => {
               <div>
                 <h2 className="text-base font-bold text-foreground">
                   {activeTab === 'funnels' && 'Funis'}
+                  {activeTab === 'logs' && 'Logs'}
                   {activeTab === 'gallery' && 'Galeria de Avatares'}
                   {activeTab === 'stats' && 'Estatísticas'}
                   {activeTab === 'settings' && 'Configurações'}
                 </h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {activeTab === 'funnels' && 'Gerencie seus funis de conversação'}
+                  {activeTab === 'logs' && 'Acompanhe as sessões dos visitantes'}
                   {activeTab === 'gallery' && 'Fotos de perfil para reutilizar nos funis'}
                   {activeTab === 'stats' && 'Acompanhe o desempenho dos funis'}
                   {activeTab === 'settings' && 'Configure integrações e chaves de API'}
