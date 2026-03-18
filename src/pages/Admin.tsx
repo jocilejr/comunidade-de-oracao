@@ -465,8 +465,8 @@ const Admin = () => {
                         {/* Preview image */}
                         <div
                           className="relative w-28 shrink-0 bg-muted cursor-pointer group/preview"
-                          onClick={() => { setUploadingPreviewSlug(funnel.slug); previewImageRef.current?.click(); }}
-                          title="Alterar imagem de preview"
+                          onClick={() => openPreviewGallery(funnel)}
+                          title="Gerenciar imagens de preview"
                         >
                           {funnel.previewImage ? (
                             <img src={funnel.previewImage} alt={funnel.name} className="w-full h-full object-cover" />
@@ -477,7 +477,7 @@ const Admin = () => {
                             </div>
                           )}
                           <div className="absolute inset-0 bg-foreground/0 group-hover/preview:bg-foreground/40 flex items-center justify-center transition-all">
-                            <Camera className="w-4 h-4 text-background opacity-0 group-hover/preview:opacity-100 transition-opacity" />
+                            <ImagePlus className="w-4 h-4 text-background opacity-0 group-hover/preview:opacity-100 transition-opacity" />
                           </div>
                         </div>
 
