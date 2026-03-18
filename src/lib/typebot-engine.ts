@@ -667,19 +667,35 @@ export class TypebotEngine {
         }
       }
       // Build tools array for API: strip `code` field, normalize parameters
+      // Auto-detect parameters from code tool source when schema is empty
       const apiTools = allTools
         .map((t: any) => {
           const name = t.function?.name || t.name;
           if (!name) return null;
           const rawParams = t.function?.parameters || t.parameters;
+          let params: Record<string, any> = (rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams))
+            ? { ...rawParams }
+            : { type: 'object', properties: {} };
+
+          // Bug fix #1: Auto-detect parameters used in code tools with empty schemas
+          if (codeToolMap.has(name) && (!params.properties || Object.keys(params.properties).length === 0)) {
+            const code = codeToolMap.get(name) || '';
+            const commonArgs = ['input', 'text', 'message', 'mensagem', 'texto'];
+            const usedArgs = commonArgs.filter(arg => code.includes(arg));
+            if (usedArgs.length > 0) {
+              params = { type: 'object', properties: {} as Record<string, any> };
+              for (const arg of usedArgs) {
+                (params.properties as Record<string, any>)[arg] = { type: 'string', description: `The user's ${arg} to process` };
+              }
+            }
+          }
+
           return {
             type: 'function' as const,
             function: {
               name,
               description: t.function?.description || t.description || '',
-              parameters: (rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams))
-                ? rawParams
-                : { type: 'object', properties: {} },
+              parameters: params,
             },
           };
         })
@@ -730,6 +746,18 @@ export class TypebotEngine {
           if (code) {
             try {
               const args = JSON.parse(tc.function?.arguments || '{}');
+              // Bug fix #2: Fallback — if args.input is missing, inject the last user message
+              if (args.input === undefined || args.input === '') {
+                const lastUserMsg = messages.filter(m => m.role === 'user').pop();
+                args.input = lastUserMsg?.content || '';
+              }
+              // Also handle 'texto', 'text', 'mensagem', 'message' similarly
+              for (const argName of ['texto', 'text', 'mensagem', 'message']) {
+                if (args[argName] === undefined && code.includes(argName)) {
+                  const lastUserMsg = messages.filter(m => m.role === 'user').pop();
+                  args[argName] = lastUserMsg?.content || '';
+                }
+              }
               // Inject tool_call arguments as local variables so code like `input.toLowerCase()` works
               const argDeclarations = Object.keys(args)
                 .map(k => `var ${k} = args[${JSON.stringify(k)}];`)
@@ -788,6 +816,9 @@ export class TypebotEngine {
                 this.setVariable(mapping.variableId, '');
               }
             }
+          } else if (extract === '' && idx > 0) {
+            // Bug fix #3: No tool calls but mapping expects a value — fallback to assistant content
+            this.setVariable(mapping.variableId, assistantContent);
           } else if (toolCalls && toolCalls.length > 0) {
             // Try to extract from tool call arguments by key
             for (const tc of toolCalls) {
