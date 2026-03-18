@@ -355,7 +355,7 @@ export async function getUserSettings(): Promise<UserSettings | null> {
 
   const { data, error } = await supabase
     .from('user_settings')
-    .select('openai_api_key, typebot_api_token, typebot_workspace_id')
+    .select('openai_api_key, typebot_api_token, typebot_workspace_id, typebot_base_url')
     .eq('user_id', user.id)
     .maybeSingle();
 
@@ -364,6 +364,7 @@ export async function getUserSettings(): Promise<UserSettings | null> {
     openai_api_key: data.openai_api_key || '',
     typebot_api_token: (data as any).typebot_api_token || '',
     typebot_workspace_id: (data as any).typebot_workspace_id || '',
+    typebot_base_url: (data as any).typebot_base_url || '',
   };
 }
 
