@@ -824,6 +824,10 @@ export class TypebotEngine {
       if (!choice) return;
 
       const assistantContent = choice.message?.content || '';
+      this.logEvent('gpt_response', block.id, assistantContent, {
+        model: opts.model || 'gpt-4',
+        prompt: messages.map(m => `[${m.role}] ${m.content.substring(0, 200)}`),
+      });
 
       // Execute code tools locally as POST-PROCESSING on GPT's text response
       // Code tools are NOT sent to OpenAI — they process the assistant's reply
