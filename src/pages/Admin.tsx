@@ -310,7 +310,7 @@ const Admin = () => {
               <div>
                 <h2 className="text-base font-bold text-foreground">
                   {activeTab === 'funnels' && 'Funis'}
-                  {activeTab === 'logs' && 'Logs'}
+                  
                   {activeTab === 'gallery' && 'Galeria de Avatares'}
                   {activeTab === 'stats' && 'Estatísticas'}
                   {activeTab === 'settings' && 'Configurações'}
