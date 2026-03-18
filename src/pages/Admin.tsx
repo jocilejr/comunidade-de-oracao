@@ -227,10 +227,12 @@ const Admin = () => {
     e.target.value = '';
   };
 
-  const handleGalleryRemove = async (url: string) => {
-    const updated = await removeFromAvatarGallery(url);
+  const handleGalleryRemove = async (imageId: string, url: string) => {
+    const updated = await removeFromAvatarGallery(imageId);
     setGallery(updated);
-    if (editAvatar === url) setEditAvatar('');
+    if (editAvatar === url && !updated.some(item => item.dataUrl === url)) {
+      setEditAvatar('');
+    }
   };
   const handlePreviewImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
