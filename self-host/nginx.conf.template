@@ -26,7 +26,7 @@ map $http_user_agent $is_crawler {
 
 server {
     listen 80;
-    server_name __PUBLIC_DOMAIN__ www.__PUBLIC_DOMAIN__;
+    server_name __PUBLIC_DOMAIN__;
     return 301 https://$host$request_uri;
 }
 
