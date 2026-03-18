@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     // Get user's Typebot credentials
     const { data: settings, error: settingsError } = await supabase
       .from("user_settings")
-      .select("typebot_api_token, typebot_workspace_id")
+      .select("typebot_api_token, typebot_workspace_id, typebot_base_url")
       .eq("user_id", user.id)
       .maybeSingle();
 
