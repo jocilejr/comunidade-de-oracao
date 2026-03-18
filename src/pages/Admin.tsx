@@ -88,6 +88,7 @@ const Admin = () => {
   useEffect(() => {
     const load = async () => {
       setLoadingFunnels(true);
+      setLoadingSettings(true);
       const [funnelData, galleryData, settingsData] = await Promise.all([
         getAllFunnelsMeta(),
         getAvatarGallery(),
@@ -101,6 +102,7 @@ const Admin = () => {
         setTypebotWorkspaceId(settingsData.typebot_workspace_id);
         setTypebotBaseUrl(settingsData.typebot_base_url);
       }
+      setLoadingSettings(false);
       setLoadingFunnels(false);
     };
     load();
