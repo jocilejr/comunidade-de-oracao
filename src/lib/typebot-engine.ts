@@ -656,7 +656,7 @@ export class TypebotEngine {
         content: this.replaceVariables(m.content || ''),
       }));
 
-      // Build code tools map for local execution, but send ALL tools to OpenAI
+      // Separate code tools (local execution) from API tools (sent to OpenAI)
       const allTools = opts.tools || [];
       const codeToolMap = new Map<string, string>();
       for (const t of allTools) {
@@ -666,30 +666,19 @@ export class TypebotEngine {
           if (name) codeToolMap.set(name, ct.code);
         }
       }
-      // Build tools array for API: strip `code` field, normalize parameters
-      // Auto-detect parameters from code tool source when schema is empty
+      // Only send NON-code tools to OpenAI API — code tools run locally as post-processing
       const apiTools = allTools
+        .filter((t: any) => {
+          const ct = t as any;
+          return ct.code === undefined;
+        })
         .map((t: any) => {
           const name = t.function?.name || t.name;
           if (!name) return null;
           const rawParams = t.function?.parameters || t.parameters;
-          let params: Record<string, any> = (rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams))
+          const params: Record<string, any> = (rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams))
             ? { ...rawParams }
             : { type: 'object', properties: {} };
-
-          // Bug fix #1: Auto-detect parameters used in code tools with empty schemas
-          if (codeToolMap.has(name) && (!params.properties || Object.keys(params.properties).length === 0)) {
-            const code = codeToolMap.get(name) || '';
-            const commonArgs = ['input', 'text', 'message', 'mensagem', 'texto'];
-            const usedArgs = commonArgs.filter(arg => code.includes(arg));
-            if (usedArgs.length > 0) {
-              params = { type: 'object', properties: {} as Record<string, any> };
-              for (const arg of usedArgs) {
-                (params.properties as Record<string, any>)[arg] = { type: 'string', description: `The user's ${arg} to process` };
-              }
-            }
-          }
-
           return {
             type: 'function' as const,
             function: {
