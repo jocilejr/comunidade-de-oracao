@@ -942,7 +942,7 @@ const Admin = () => {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 pt-2">
+          <div className="max-h-[60vh] overflow-y-auto space-y-4 pt-2 pr-1">
             <div className="flex items-center gap-4">
               <div
                 className="w-14 h-14 rounded-full overflow-hidden border border-border shrink-0 cursor-pointer hover:border-primary/40 transition-colors relative group"
@@ -1031,11 +1031,11 @@ const Admin = () => {
                 className="text-xs"
               />
             </div>
-
-            <Button onClick={handleProfileSave} className="w-full" size="sm">
-              <Save className="w-3.5 h-3.5 mr-1.5" /> Salvar perfil
-            </Button>
           </div>
+
+          <Button onClick={handleProfileSave} className="w-full" size="sm">
+            <Save className="w-3.5 h-3.5 mr-1.5" /> Salvar perfil
+          </Button>
         </DialogContent>
       </Dialog>
 
