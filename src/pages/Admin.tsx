@@ -48,6 +48,8 @@ const Admin = () => {
   const [profileDialog, setProfileDialog] = useState<StoredFunnel | null>(null);
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
+  const [editPageTitle, setEditPageTitle] = useState('');
+  const [editPageDescription, setEditPageDescription] = useState('');
   const [gallery, setGallery] = useState<string[]>([]);
   const [loadingFunnels, setLoadingFunnels] = useState(true);
   const [openaiKey, setOpenaiKey] = useState('');
@@ -146,6 +148,8 @@ const Admin = () => {
     setProfileDialog(funnel);
     setEditName(funnel.botName || '');
     setEditAvatar(funnel.botAvatar || '');
+    setEditPageTitle(funnel.pageTitle || '');
+    setEditPageDescription(funnel.pageDescription || '');
   };
 
   const handleInspect = async (funnel: StoredFunnel) => {
@@ -164,7 +168,7 @@ const Admin = () => {
 
   const handleProfileSave = async () => {
     if (!profileDialog) return;
-    const success = await updateFunnelProfile(profileDialog.slug, editName, editAvatar);
+    const success = await updateFunnelProfile(profileDialog.slug, editName, editAvatar, editPageTitle, editPageDescription);
     if (!success) {
       toast({ title: 'Erro', description: 'Não foi possível salvar o perfil do funil.', variant: 'destructive' });
       return;
@@ -814,6 +818,26 @@ const Admin = () => {
                 placeholder="Ex: Assistente Virtual"
                 value={editName}
                 onChange={e => setEditName(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-[11px] text-muted-foreground">Título da página</Label>
+              <Input
+                placeholder="Ex: Fale com nosso assistente"
+                value={editPageTitle}
+                onChange={e => setEditPageTitle(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-[11px] text-muted-foreground">Descrição da página</Label>
+              <Input
+                placeholder="Ex: Tire suas dúvidas rapidamente"
+                value={editPageDescription}
+                onChange={e => setEditPageDescription(e.target.value)}
                 className="text-xs"
               />
             </div>

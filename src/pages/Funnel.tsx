@@ -14,6 +14,22 @@ const Funnel = () => {
     getFunnelBySlug(slug).then(f => setFunnel(f ?? null));
   }, [slug]);
 
+  useEffect(() => {
+    if (!funnel) return;
+    if (funnel.pageTitle) document.title = funnel.pageTitle;
+    const meta = document.querySelector('meta[name="description"]');
+    if (funnel.pageDescription) {
+      if (meta) meta.setAttribute('content', funnel.pageDescription);
+      else {
+        const newMeta = document.createElement('meta');
+        newMeta.name = 'description';
+        newMeta.content = funnel.pageDescription;
+        document.head.appendChild(newMeta);
+      }
+    }
+    return () => { document.title = 'Funil Monitorado — Origem Viva'; };
+  }, [funnel]);
+
   if (funnel === undefined) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">

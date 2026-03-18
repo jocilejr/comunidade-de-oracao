@@ -357,6 +357,8 @@ export interface StoredFunnel {
   botName?: string;
   botAvatar?: string;
   previewImage?: string;
+  pageTitle?: string;
+  pageDescription?: string;
   userId?: string;
 }
 

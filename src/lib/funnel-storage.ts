@@ -10,7 +10,7 @@ export async function getAllFunnels(): Promise<StoredFunnel[]> {
 
    const { data, error } = await supabase
     .from('funnels')
-    .select('id, slug, name, created_at, bot_name, bot_avatar, flow, preview_image')
+    .select('id, slug, name, created_at, bot_name, bot_avatar, flow, preview_image, page_title, page_description')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
@@ -25,6 +25,8 @@ export async function getAllFunnels(): Promise<StoredFunnel[]> {
     botName: row.bot_name || '',
     botAvatar: row.bot_avatar || '',
     previewImage: row.preview_image || '',
+    pageTitle: row.page_title || '',
+    pageDescription: row.page_description || '',
   }));
 }
 
@@ -35,7 +37,7 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
 
   const { data, error } = await supabase
     .from('funnels')
-    .select('id, slug, name, created_at, bot_name, bot_avatar, preview_image')
+    .select('id, slug, name, created_at, bot_name, bot_avatar, preview_image, page_title, page_description')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
@@ -50,6 +52,8 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
     botName: row.bot_name || '',
     botAvatar: row.bot_avatar || '',
     previewImage: row.preview_image || '',
+    pageTitle: row.page_title || '',
+    pageDescription: row.page_description || '',
   }));
 }
 
@@ -72,6 +76,8 @@ export async function getFunnelBySlug(slug: string): Promise<StoredFunnel | unde
     botName: data.bot_name || '',
     botAvatar: data.bot_avatar || '',
     previewImage: data.preview_image || '',
+    pageTitle: data.page_title || '',
+    pageDescription: data.page_description || '',
     userId: data.user_id,
   };
 }
@@ -108,6 +114,8 @@ export async function saveFunnel(name: string, slug: string, flow: TypebotFlow):
     botName: data.bot_name || '',
     botAvatar: data.bot_avatar || '',
     previewImage: data.preview_image || '',
+    pageTitle: data.page_title || '',
+    pageDescription: data.page_description || '',
   };
 }
 
@@ -140,13 +148,18 @@ export async function updateFunnelSlug(oldSlug: string, newSlug: string): Promis
   return !error;
 }
 
-export async function updateFunnelProfile(slug: string, botName?: string, botAvatar?: string): Promise<boolean> {
+export async function updateFunnelProfile(slug: string, botName?: string, botAvatar?: string, pageTitle?: string, pageDescription?: string): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
   const { error } = await supabase
     .from('funnels')
-    .update({ bot_name: botName || '', bot_avatar: botAvatar || '' })
+    .update({
+      bot_name: botName || '',
+      bot_avatar: botAvatar || '',
+      page_title: pageTitle || '',
+      page_description: pageDescription || '',
+    })
     .eq('user_id', user.id)
     .eq('slug', slug);
 
@@ -171,6 +184,8 @@ export async function getFunnelById(id: string): Promise<StoredFunnel | undefine
     botName: data.bot_name || '',
     botAvatar: data.bot_avatar || '',
     previewImage: data.preview_image || '',
+    pageTitle: data.page_title || '',
+    pageDescription: data.page_description || '',
     userId: data.user_id,
   };
 }
