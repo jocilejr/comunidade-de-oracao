@@ -816,6 +816,9 @@ export class TypebotEngine {
                 this.setVariable(mapping.variableId, '');
               }
             }
+          } else if (extract === '' && idx > 0) {
+            // Bug fix #3: No tool calls but mapping expects a value — fallback to assistant content
+            this.setVariable(mapping.variableId, assistantContent);
           } else if (toolCalls && toolCalls.length > 0) {
             // Try to extract from tool call arguments by key
             for (const tc of toolCalls) {
