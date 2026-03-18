@@ -101,12 +101,17 @@ const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true 
   }
 
   if (message.mediaType === 'embed' && message.mediaUrl) {
+    const embedH = message.embedHeight ? `${message.embedHeight}px` : 'auto';
     return (
       <div className="flex items-end animate-in fade-in slide-in-from-bottom-2 duration-200 max-w-[85%]" style={indent}>
         {avatar}
         <div className="relative rounded-[7.5px] overflow-hidden shadow-sm w-full" style={{ backgroundColor: 'hsl(var(--wa-bot-bubble))' }}>
           <div className="p-[3px]">
-            <iframe src={message.mediaUrl} className="w-full h-52 rounded-[4.5px]" />
+            <iframe
+              src={message.mediaUrl}
+              className="w-full rounded-[4.5px]"
+              style={{ height: embedH, minHeight: '200px' }}
+            />
           </div>
           {isLast && <TimeStamp time={time} />}
         </div>
