@@ -6,6 +6,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
+const BOT_UA_REGEX =
+  /whatsapp|facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|googlebot|bingbot|yandex|pinterest|snapchat/i;
+
+function isCrawler(ua: string | null): boolean {
+  return !!ua && BOT_UA_REGEX.test(ua);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -28,7 +35,6 @@ Deno.serve(async (req) => {
     .eq("slug", slug)
     .maybeSingle();
 
-  // Determine the app origin from the request's Referer or a default
   const appOrigin = Deno.env.get("APP_ORIGIN") || "https://comunidade-de-oracao.lovable.app";
   const redirectUrl = `${appOrigin}/f/${slug}`;
 
@@ -36,12 +42,21 @@ Deno.serve(async (req) => {
     return Response.redirect(redirectUrl, 302);
   }
 
+  const ua = req.headers.get("user-agent");
+
+  // For regular browsers, redirect immediately
+  if (!isCrawler(ua)) {
+    return Response.redirect(redirectUrl, 302);
+  }
+
+  // For crawlers: serve full HTML with OG tags, NO redirect
   const title = escapeHtml(funnel.page_title || funnel.name || "Funil");
   const description = escapeHtml(funnel.page_description || "Aperte aqui e Receba");
 
-  // Build a public HTTPS URL for the preview image instead of using base64
+  // Use cache-buster v param for image URL too
+  const v = url.searchParams.get("v") || Date.now().toString();
   const imageUrl = funnel.preview_image
-    ? `${supabaseUrl}/functions/v1/preview-image?slug=${encodeURIComponent(slug)}`
+    ? `${supabaseUrl}/functions/v1/preview-image?slug=${encodeURIComponent(slug)}&v=${v}`
     : "";
 
   const html = `<!DOCTYPE html>
@@ -56,18 +71,18 @@ Deno.serve(async (req) => {
   <meta property="og:title" content="${title}" />
   <meta property="og:description" content="${description}" />
   ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />` : ""}
+  ${imageUrl ? `<meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />` : ""}
+  ${imageUrl ? `<meta property="og:image:width" content="1200" />` : ""}
+  ${imageUrl ? `<meta property="og:image:height" content="630" />` : ""}
   <meta property="og:url" content="${escapeHtml(redirectUrl)}" />
 
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${description}" />
   ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}
-
-  <meta http-equiv="refresh" content="0;url=${escapeHtml(redirectUrl)}" />
 </head>
 <body>
   <p>Redirecionando para <a href="${escapeHtml(redirectUrl)}">${title}</a>...</p>
-  <script>window.location.replace(${JSON.stringify(redirectUrl)});</script>
 </body>
 </html>`;
 
@@ -75,7 +90,8 @@ Deno.serve(async (req) => {
     headers: {
       ...corsHeaders,
       "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "public, max-age=300",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
     },
   });
 });
