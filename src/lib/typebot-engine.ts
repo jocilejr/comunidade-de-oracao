@@ -354,6 +354,7 @@ export class TypebotEngine {
 
   private async* processGroup(group: TypebotGroup, startIndex: number): AsyncGenerator<EngineEvent> {
     const messages: ChatMessage[] = [];
+    this.lastGroupTitle = group.title || group.id;
 
     for (let i = startIndex; i < group.blocks.length; i++) {
       const block = group.blocks[i];
