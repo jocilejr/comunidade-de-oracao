@@ -38,7 +38,11 @@ Deno.serve(async (req) => {
 
   const title = escapeHtml(funnel.page_title || funnel.name || "Funil");
   const description = escapeHtml(funnel.page_description || "Aperte aqui e Receba");
-  const image = funnel.preview_image || "";
+
+  // Build a public HTTPS URL for the preview image instead of using base64
+  const imageUrl = funnel.preview_image
+    ? `${supabaseUrl}/functions/v1/preview-image?slug=${encodeURIComponent(slug)}`
+    : "";
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
