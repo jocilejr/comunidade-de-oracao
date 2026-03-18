@@ -284,14 +284,20 @@ NGINX_TEMP
 
 ln -sf /etc/nginx/sites-available/funnel-app /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
-nginx -t && systemctl reload nginx
+nginx -t && systemctl start nginx
 
-log "Obtendo certificados SSL..."
-certbot --nginx -d "${PUBLIC_DOMAIN}" -d "www.${PUBLIC_DOMAIN}" -d "${DASHBOARD_DOMAIN}" \
+log "Obtendo certificados SSL para domínio público..."
+certbot --nginx -d "${PUBLIC_DOMAIN}" -d "www.${PUBLIC_DOMAIN}" \
   --email "${SSL_EMAIL}" --agree-tos --non-interactive --redirect || {
-  warn "Certbot falhou. Verifique se o DNS dos domínios aponta para este servidor."
-  warn "Após configurar o DNS, execute:"
-  warn "  certbot --nginx -d ${PUBLIC_DOMAIN} -d www.${PUBLIC_DOMAIN} -d ${DASHBOARD_DOMAIN}"
+  warn "Certbot falhou para ${PUBLIC_DOMAIN}. Verifique se o DNS aponta para este servidor."
+  warn "  certbot --nginx -d ${PUBLIC_DOMAIN} -d www.${PUBLIC_DOMAIN}"
+}
+
+log "Obtendo certificados SSL para dashboard..."
+certbot --nginx -d "${DASHBOARD_DOMAIN}" \
+  --email "${SSL_EMAIL}" --agree-tos --non-interactive --redirect || {
+  warn "Certbot falhou para ${DASHBOARD_DOMAIN}. Verifique se o DNS aponta para este servidor."
+  warn "  certbot --nginx -d ${DASHBOARD_DOMAIN}"
 }
 
 # Aplicar config completa com dois domínios
@@ -299,7 +305,7 @@ sed -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
     -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
     "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
 
-nginx -t && systemctl reload nginx
+nginx -t && systemctl restart nginx
 log "Nginx configurado com SSL"
 
 # ══════════════════════════════════════════════════════════
