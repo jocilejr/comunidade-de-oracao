@@ -448,6 +448,9 @@ const Admin = () => {
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openProfileDialog(funnel)} title="Perfil do bot">
                             <CircleUser className="w-3.5 h-3.5" />
                           </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLogsFunnel(funnel)} title="Logs do funil">
+                            <ScrollText className="w-3.5 h-3.5" />
+                          </Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleInspect(funnel)} title="Inspecionar funil">
                             <Settings className="w-3.5 h-3.5" />
                           </Button>
