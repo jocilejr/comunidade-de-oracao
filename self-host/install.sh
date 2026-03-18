@@ -252,7 +252,7 @@ log "Frontend buildado e copiado"
 # ══════════════════════════════════════════════════════════
 log "Verificando portas necessárias..."
 
-for PORT in 3000 4000 9999; do
+for PORT in 3100 4000; do
   PID=$(lsof -ti :"$PORT" 2>/dev/null || true)
   if [ -n "$PID" ]; then
     PROC=$(ps -p "$PID" -o comm= 2>/dev/null || echo "desconhecido")
