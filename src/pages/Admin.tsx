@@ -51,7 +51,7 @@ const Admin = () => {
   const [editAvatar, setEditAvatar] = useState('');
   const [editPageTitle, setEditPageTitle] = useState('');
   const [editPageDescription, setEditPageDescription] = useState('');
-  const [gallery, setGallery] = useState<string[]>([]);
+  const [gallery, setGallery] = useState<AvatarGalleryItem[]>([]);
   const [loadingFunnels, setLoadingFunnels] = useState(true);
   const [openaiKey, setOpenaiKey] = useState('');
   const [typebotToken, setTypebotToken] = useState('');
