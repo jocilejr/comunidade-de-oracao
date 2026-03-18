@@ -413,94 +413,122 @@ const Admin = () => {
                     {funnels.map(funnel => (
                       <div
                         key={funnel.slug}
-                        className="group flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:border-primary/20 hover:shadow-sm transition-all"
+                        className="group flex items-stretch gap-0 rounded-xl border border-border bg-card hover:border-primary/20 hover:shadow-sm transition-all overflow-hidden"
                       >
-                        {/* Avatar */}
+                        {/* Preview image */}
                         <div
-                          className="w-10 h-10 rounded-full overflow-hidden border border-border shrink-0 cursor-pointer hover:border-primary/40 transition-colors"
-                          onClick={() => openProfileDialog(funnel)}
+                          className="relative w-28 shrink-0 bg-muted cursor-pointer group/preview"
+                          onClick={() => { setUploadingPreviewSlug(funnel.slug); previewImageRef.current?.click(); }}
+                          title="Alterar imagem de preview"
                         >
-                          {funnel.botAvatar ? (
-                            <img src={funnel.botAvatar} alt={funnel.botName || funnel.name} className="w-full h-full object-cover" />
+                          {funnel.previewImage ? (
+                            <img src={funnel.previewImage} alt={funnel.name} className="w-full h-full object-cover" />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-muted">
-                              <CircleUser className="w-5 h-5 text-muted-foreground" />
+                            <div className="w-full h-full flex flex-col items-center justify-center gap-1 min-h-[72px]">
+                              <Image className="w-5 h-5 text-muted-foreground/50" />
+                              <span className="text-[9px] text-muted-foreground/50">Preview</span>
                             </div>
                           )}
-                        </div>
-
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-foreground truncate">{funnel.name}</p>
-                            {funnel.botName && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-accent text-accent-foreground shrink-0">
-                                {funnel.botName}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {editingSlug === funnel.slug ? (
-                              <div className="flex items-center gap-1">
-                                <span className="text-[11px] text-muted-foreground">/f/</span>
-                                <Input
-                                  value={newSlug}
-                                  onChange={e => setNewSlug(e.target.value)}
-                                  className="h-5 text-[11px] w-28 px-1"
-                                  autoFocus
-                                  onKeyDown={e => { if (e.key === 'Enter') handleSlugSave(funnel.slug); if (e.key === 'Escape') setEditingSlug(null); }}
-                                />
-                                <button onClick={() => handleSlugSave(funnel.slug)} className="text-primary hover:text-primary/80"><Check className="w-3 h-3" /></button>
-                                <button onClick={() => setEditingSlug(null)} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1">
-                                <span className="text-[11px] text-muted-foreground font-mono">/f/{funnel.slug}</span>
-                                <button
-                                  onClick={() => { setEditingSlug(funnel.slug); setNewSlug(funnel.slug); }}
-                                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
-                                >
-                                  <Pencil className="w-2.5 h-2.5" />
-                                </button>
-                              </div>
-                            )}
-                            <span className="text-[10px] text-muted-foreground">•</span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {new Date(funnel.uploadedAt).toLocaleDateString('pt-BR')}
-                            </span>
+                          <div className="absolute inset-0 bg-foreground/0 group-hover/preview:bg-foreground/40 flex items-center justify-center transition-all">
+                            <Camera className="w-4 h-4 text-background opacity-0 group-hover/preview:opacity-100 transition-opacity" />
                           </div>
                         </div>
 
-                        {/* Actions */}
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openProfileDialog(funnel)} title="Perfil do bot">
-                            <CircleUser className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLogsFunnel(funnel)} title="Logs do funil">
-                            <ScrollText className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleInspect(funnel)} title="Inspecionar funil">
-                            <Settings className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handlePreview(funnel)} title="Simular funil">
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
-                          <Link to={`/f/${funnel.slug}`} target="_blank">
-                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir em nova aba">
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </Button>
-                          </Link>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => handleDelete(funnel.slug, funnel.name)}
+                        <div className="flex items-center gap-3 p-3 flex-1 min-w-0">
+                          {/* Avatar */}
+                          <div
+                            className="w-10 h-10 rounded-full overflow-hidden border border-border shrink-0 cursor-pointer hover:border-primary/40 transition-colors"
+                            onClick={() => openProfileDialog(funnel)}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                            {funnel.botAvatar ? (
+                              <img src={funnel.botAvatar} alt={funnel.botName || funnel.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-muted">
+                                <CircleUser className="w-5 h-5 text-muted-foreground" />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-semibold text-foreground truncate">{funnel.name}</p>
+                              {funnel.botName && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-accent text-accent-foreground shrink-0">
+                                  {funnel.botName}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {editingSlug === funnel.slug ? (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[11px] text-muted-foreground">/f/</span>
+                                  <Input
+                                    value={newSlug}
+                                    onChange={e => setNewSlug(e.target.value)}
+                                    className="h-5 text-[11px] w-28 px-1"
+                                    autoFocus
+                                    onKeyDown={e => { if (e.key === 'Enter') handleSlugSave(funnel.slug); if (e.key === 'Escape') setEditingSlug(null); }}
+                                  />
+                                  <button onClick={() => handleSlugSave(funnel.slug)} className="text-primary hover:text-primary/80"><Check className="w-3 h-3" /></button>
+                                  <button onClick={() => setEditingSlug(null)} className="text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[11px] text-muted-foreground font-mono">/f/{funnel.slug}</span>
+                                  <button
+                                    onClick={() => { setEditingSlug(funnel.slug); setNewSlug(funnel.slug); }}
+                                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                                  >
+                                    <Pencil className="w-2.5 h-2.5" />
+                                  </button>
+                                </div>
+                              )}
+                              <span className="text-[10px] text-muted-foreground">•</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {new Date(funnel.uploadedAt).toLocaleDateString('pt-BR')}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openProfileDialog(funnel)} title="Perfil do bot">
+                              <CircleUser className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLogsFunnel(funnel)} title="Logs do funil">
+                              <ScrollText className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleInspect(funnel)} title="Inspecionar funil">
+                              <Settings className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handlePreview(funnel)} title="Simular funil">
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
+                            <Link to={`/f/${funnel.slug}`} target="_blank">
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir em nova aba">
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </Button>
+                            </Link>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => handleDelete(funnel.slug, funnel.name)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     ))}
+                    <input
+                      ref={previewImageRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handlePreviewImageUpload}
+                    />
                   </div>
                 )}
               </div>
