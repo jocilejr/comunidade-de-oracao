@@ -726,48 +726,42 @@ export class TypebotEngine {
       const assistantContent = choice.message?.content || '';
       const toolCalls = choice.message?.tool_calls;
 
-      // Execute code tools locally if the AI made tool calls matching them
+      // Execute code tools locally as POST-PROCESSING on GPT's text response
+      // Code tools are NOT sent to OpenAI — they process the assistant's reply
       const codeToolResults: Record<string, string> = {};
-      if (toolCalls && codeToolMap.size > 0) {
-        for (const tc of toolCalls) {
-          const fnName = tc.function?.name;
-          const code = codeToolMap.get(fnName);
-          if (code) {
-            try {
-              const args = JSON.parse(tc.function?.arguments || '{}');
-              // Bug fix #2: Fallback — if args.input is missing, inject the last user message
-              if (args.input === undefined || args.input === '') {
-                const lastUserMsg = messages.filter(m => m.role === 'user').pop();
-                args.input = lastUserMsg?.content || '';
+      if (codeToolMap.size > 0) {
+        for (const [fnName, code] of codeToolMap.entries()) {
+          try {
+            // Pass the assistant's text response as `input` to the code tool
+            const input = assistantContent;
+            const args: Record<string, any> = { input };
+            // Also set common aliases
+            for (const alias of ['texto', 'text', 'mensagem', 'message']) {
+              if (code.includes(alias)) {
+                args[alias] = input;
               }
-              // Also handle 'texto', 'text', 'mensagem', 'message' similarly
-              for (const argName of ['texto', 'text', 'mensagem', 'message']) {
-                if (args[argName] === undefined && code.includes(argName)) {
-                  const lastUserMsg = messages.filter(m => m.role === 'user').pop();
-                  args[argName] = lastUserMsg?.content || '';
-                }
-              }
-              // Inject tool_call arguments as local variables so code like `input.toLowerCase()` works
-              const argDeclarations = Object.keys(args)
-                .map(k => `var ${k} = args[${JSON.stringify(k)}];`)
-                .join('\n');
-              const fn = new Function('args', argDeclarations + '\n' + code);
-              const result = fn(args);
-              // Serialize objects as JSON instead of "[object Object]"
-              if (result === undefined || result === null) {
-                codeToolResults[fnName] = '';
-              } else if (typeof result === 'object') {
-                codeToolResults[fnName] = JSON.stringify(result);
-              } else {
-                codeToolResults[fnName] = String(result);
-              }
-              console.log(`Code tool "${fnName}" result:`, codeToolResults[fnName]);
-            } catch (e) {
-              console.warn(`Code tool "${fnName}" execution error:`, e);
             }
+            const argDeclarations = Object.keys(args)
+              .map(k => `var ${k} = args[${JSON.stringify(k)}];`)
+              .join('\n');
+            const fn = new Function('args', argDeclarations + '\n' + code);
+            const result = fn(args);
+            if (result === undefined || result === null) {
+              codeToolResults[fnName] = '';
+            } else if (typeof result === 'object') {
+              codeToolResults[fnName] = JSON.stringify(result);
+            } else {
+              codeToolResults[fnName] = String(result);
+            }
+            console.log(`Code tool "${fnName}" executed on GPT response. Result:`, codeToolResults[fnName]);
+          } catch (e) {
+            console.warn(`Code tool "${fnName}" execution error:`, e);
           }
         }
       }
+
+      // Also handle API tool calls if any
+      const toolCalls = choice.message?.tool_calls;
 
       // Map response to variables
       if (opts.responseMapping) {
