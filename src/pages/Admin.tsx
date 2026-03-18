@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera, Plus, Star, Download, Loader2 } from 'lucide-react';
+import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera, Plus, Star, Download, Loader2, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
@@ -574,6 +574,13 @@ const Admin = () => {
                             </Button>
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handlePreview(funnel)} title="Simular funil">
                               <Eye className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Copiar link de compartilhamento" onClick={() => {
+                              const shareUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${funnel.slug}`;
+                              navigator.clipboard.writeText(shareUrl);
+                              toast({ title: 'Link copiado!', description: 'Cole no WhatsApp ou onde preferir.' });
+                            }}>
+                              <Copy className="w-3.5 h-3.5" />
                             </Button>
                             <Link to={`/f/${funnel.slug}`} target="_blank">
                               <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir em nova aba">
