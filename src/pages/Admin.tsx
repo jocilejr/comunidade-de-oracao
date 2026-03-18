@@ -766,6 +766,102 @@ const Admin = () => {
                     </p>
                   </div>
                 </div>
+
+                {/* Typebot Integration */}
+                <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Download className="w-4 h-4 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">Integração Typebot</h3>
+                      <p className="text-[11px] text-muted-foreground">Importe fluxos diretamente da API do Typebot</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">API Token</Label>
+                      <Input
+                        type="password"
+                        placeholder="Token do Typebot..."
+                        value={typebotToken}
+                        onChange={e => setTypebotToken(e.target.value)}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">Workspace ID</Label>
+                      <Input
+                        placeholder="clxxxxxxxxxxxxxxxx"
+                        value={typebotWorkspaceId}
+                        onChange={e => setTypebotWorkspaceId(e.target.value)}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          setSavingKey(true);
+                          const ok = await saveUserSettings({
+                            typebot_api_token: typebotToken,
+                            typebot_workspace_id: typebotWorkspaceId,
+                          });
+                          setSavingKey(false);
+                          toast({
+                            title: ok ? 'Configurações salvas!' : 'Erro',
+                            description: ok ? 'Token e Workspace ID salvos.' : 'Não foi possível salvar.',
+                            variant: ok ? 'default' : 'destructive',
+                          });
+                        }}
+                        disabled={savingKey}
+                      >
+                        <Save className="w-3.5 h-3.5 mr-1" />
+                        Salvar
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          if (!typebotToken || !typebotWorkspaceId) {
+                            toast({ title: 'Erro', description: 'Configure o Token e Workspace ID primeiro.', variant: 'destructive' });
+                            return;
+                          }
+                          setTypebotImportDialog(true);
+                          setLoadingTypebots(true);
+                          try {
+                            const { data, error } = await supabase.functions.invoke('typebot-proxy', {
+                              body: { action: 'list' },
+                            });
+                            if (error) throw error;
+                            const bots = data?.typebots || [];
+                            setTypebotList(bots.map((b: any) => ({ id: b.id, name: b.name, createdAt: b.createdAt })));
+                          } catch (err: any) {
+                            toast({ title: 'Erro', description: err?.message || 'Não foi possível listar os typebots.', variant: 'destructive' });
+                            setTypebotImportDialog(false);
+                          }
+                          setLoadingTypebots(false);
+                        }}
+                        disabled={!typebotToken || !typebotWorkspaceId}
+                      >
+                        <Download className="w-3.5 h-3.5 mr-1" />
+                        Importar do Typebot
+                      </Button>
+                    </div>
+
+                    <p className="text-[10px] text-muted-foreground">
+                      Obtenha o token em{' '}
+                      <a href="https://typebot.io" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                        typebot.io
+                      </a>
+                      {' '}→ Configurações → API Tokens
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
           </div>
