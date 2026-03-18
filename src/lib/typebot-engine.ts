@@ -247,17 +247,29 @@ export class TypebotEngine {
     // Find the chosen item's edge
     const item = block.items.find(i => i.id === itemId);
     if (item?.outgoingEdgeId) {
+      this.pausedContext = null;
       yield* this.processFromEdge(item.outgoingEdgeId);
       return;
     }
 
     // Fallback to block's outgoing edge
     if (block.outgoingEdgeId) {
+      this.pausedContext = null;
       yield* this.processFromEdge(block.outgoingEdgeId);
     } else {
       const edge = this.findEdgeFromBlock(block.id);
       if (edge) {
+        this.pausedContext = null;
         yield* this.processFromEdge(edge.id);
+      } else if (this.pausedContext) {
+        // Fallback: continue to next block in the same group
+        const { group, nextBlockIndex } = this.pausedContext;
+        this.pausedContext = null;
+        if (nextBlockIndex < group.blocks.length) {
+          yield* this.processGroup(group, nextBlockIndex);
+        } else {
+          yield { type: 'end' };
+        }
       } else {
         yield { type: 'end' };
       }
