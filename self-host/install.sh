@@ -214,7 +214,7 @@ PGRST_DB_URI=postgres://funnel_user:${DB_PASS}@127.0.0.1:5432/funnel_app
 PGRST_DB_SCHEMAS=public
 PGRST_DB_ANON_ROLE=anon
 PGRST_JWT_SECRET=${JWT_SECRET}
-PGRST_SERVER_PORT=3000
+PGRST_SERVER_PORT=3100
 ENVEOF
 
 # PostgREST config
@@ -223,7 +223,7 @@ db-uri = "postgres://funnel_user:${DB_PASS}@127.0.0.1:5432/funnel_app"
 db-schemas = "public"
 db-anon-role = "anon"
 jwt-secret = "${JWT_SECRET}"
-server-port = 3000
+server-port = 3100
 PGCONF
 
 log "Configuração criada"
@@ -252,7 +252,7 @@ log "Frontend buildado e copiado"
 # ══════════════════════════════════════════════════════════
 log "Verificando portas necessárias..."
 
-for PORT in 3000 4000 9999; do
+for PORT in 3100 4000; do
   PID=$(lsof -ti :"$PORT" 2>/dev/null || true)
   if [ -n "$PID" ]; then
     PROC=$(ps -p "$PID" -o comm= 2>/dev/null || echo "desconhecido")
