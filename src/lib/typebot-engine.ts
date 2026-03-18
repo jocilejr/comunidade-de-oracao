@@ -44,11 +44,15 @@ export class TypebotEngine {
   private ownerUserId: string | null = null;
   private pausedContext: { group: TypebotGroup; nextBlockIndex: number } | null = null;
   private conversationHistory: Array<{ role: 'assistant' | 'user'; content: string }> = [];
+  private sessionId: string | null = null;
+  private funnelId: string | null = null;
+  private lastGroupTitle: string = '';
 
-  constructor(flow: TypebotFlow, options?: { ownerUserId?: string }) {
+  constructor(flow: TypebotFlow, options?: { ownerUserId?: string; funnelId?: string }) {
     this.flow = flow;
     this.variables = new Map();
     this.ownerUserId = options?.ownerUserId || null;
+    this.funnelId = options?.funnelId || null;
 
     // Initialize variables
     for (const v of flow.variables || []) {
