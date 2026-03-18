@@ -332,7 +332,7 @@ const Admin = () => {
           <div className="px-8 py-6">
             {/* ===== FUNNELS TAB ===== */}
             {activeTab === 'funnels' && (
-              <div className="space-y-5 max-w-5xl">
+              <div className="space-y-5 max-w-6xl">
                 {/* Upload */}
                 <div
                   className={`rounded-xl border-2 border-dashed transition-all cursor-pointer p-8 text-center ${
