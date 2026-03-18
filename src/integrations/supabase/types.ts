@@ -35,6 +35,88 @@ export type Database = {
         }
         Relationships: []
       }
+      funnel_session_events: {
+        Row: {
+          block_id: string | null
+          content: string | null
+          created_at: string
+          event_type: string
+          group_title: string | null
+          id: string
+          metadata: Json | null
+          session_id: string
+        }
+        Insert: {
+          block_id?: string | null
+          content?: string | null
+          created_at?: string
+          event_type: string
+          group_title?: string | null
+          id?: string
+          metadata?: Json | null
+          session_id: string
+        }
+        Update: {
+          block_id?: string | null
+          content?: string | null
+          created_at?: string
+          event_type?: string
+          group_title?: string | null
+          id?: string
+          metadata?: Json | null
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_session_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      funnel_sessions: {
+        Row: {
+          completed: boolean
+          ended_at: string | null
+          funnel_id: string
+          id: string
+          last_block_id: string | null
+          last_group_title: string | null
+          started_at: string
+          variables: Json | null
+        }
+        Insert: {
+          completed?: boolean
+          ended_at?: string | null
+          funnel_id: string
+          id?: string
+          last_block_id?: string | null
+          last_group_title?: string | null
+          started_at?: string
+          variables?: Json | null
+        }
+        Update: {
+          completed?: boolean
+          ended_at?: string | null
+          funnel_id?: string
+          id?: string
+          last_block_id?: string | null
+          last_group_title?: string | null
+          started_at?: string
+          variables?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_sessions_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "funnels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funnels: {
         Row: {
           bot_avatar: string | null
