@@ -57,6 +57,7 @@ const Admin = () => {
   const [typebotToken, setTypebotToken] = useState('');
   const [typebotWorkspaceId, setTypebotWorkspaceId] = useState('');
   const [typebotBaseUrl, setTypebotBaseUrl] = useState('');
+  const [loadingSettings, setLoadingSettings] = useState(true);
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [typebotImportDialog, setTypebotImportDialog] = useState(false);
@@ -87,6 +88,7 @@ const Admin = () => {
   useEffect(() => {
     const load = async () => {
       setLoadingFunnels(true);
+      setLoadingSettings(true);
       const [funnelData, galleryData, settingsData] = await Promise.all([
         getAllFunnelsMeta(),
         getAvatarGallery(),
@@ -100,6 +102,7 @@ const Admin = () => {
         setTypebotWorkspaceId(settingsData.typebot_workspace_id);
         setTypebotBaseUrl(settingsData.typebot_base_url);
       }
+      setLoadingSettings(false);
       setLoadingFunnels(false);
     };
     load();
@@ -712,6 +715,27 @@ const Admin = () => {
             {/* ===== SETTINGS TAB ===== */}
             {activeTab === 'settings' && (
               <div className="max-w-lg space-y-5">
+                {loadingSettings ? (
+                  <div className="space-y-5">
+                    {[1, 2].map(i => (
+                      <div key={i} className="rounded-xl border border-border bg-card p-5 space-y-4">
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="w-9 h-9 rounded-lg" />
+                          <div className="space-y-1.5">
+                            <Skeleton className="h-4 w-32" />
+                            <Skeleton className="h-3 w-48" />
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <Skeleton className="h-10 w-full rounded-md" />
+                          <Skeleton className="h-10 w-full rounded-md" />
+                          <Skeleton className="h-8 w-20 rounded-md" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                <>
                 <div className="rounded-xl border border-border bg-card p-5 space-y-4">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -876,6 +900,8 @@ const Admin = () => {
                     </p>
                   </div>
                 </div>
+                </>
+                )}
               </div>
             )}
           </div>
