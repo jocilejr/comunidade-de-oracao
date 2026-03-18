@@ -1041,6 +1041,30 @@ const Admin = () => {
                 className="text-xs"
               />
             </div>
+
+            {/* Share link section */}
+            <div className="space-y-1.5 pt-2 border-t border-border">
+              <Label className="text-[11px] text-muted-foreground">Link de compartilhamento (WhatsApp / redes sociais)</Label>
+              <div className="flex gap-1.5">
+                <Input
+                  readOnly
+                  value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${profileDialog?.slug || ''}&v=${Date.now()}`}
+                  className="text-[10px] font-mono bg-muted"
+                  onClick={e => (e.target as HTMLInputElement).select()}
+                />
+                <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => {
+                  const v = Date.now();
+                  const shareUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${profileDialog?.slug || ''}&v=${v}`;
+                  navigator.clipboard.writeText(shareUrl);
+                  toast({ title: 'Link copiado!', description: 'Cole este link no WhatsApp para compartilhar com preview de imagem.' });
+                }}>
+                  <Copy className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Use este link para compartilhar no WhatsApp/redes sociais com preview de imagem.
+              </p>
+            </div>
           </div>
 
           <Button onClick={handleProfileSave} className="w-full" size="sm" disabled={savingProfile}>
