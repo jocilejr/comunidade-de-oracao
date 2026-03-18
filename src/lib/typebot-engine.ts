@@ -43,6 +43,7 @@ export class TypebotEngine {
   private processedBlocks: number = 0;
   private ownerUserId: string | null = null;
   private pausedContext: { group: TypebotGroup; nextBlockIndex: number } | null = null;
+  private conversationHistory: Array<{ role: 'assistant' | 'user'; content: string }> = [];
 
   constructor(flow: TypebotFlow, options?: { ownerUserId?: string }) {
     this.flow = flow;
