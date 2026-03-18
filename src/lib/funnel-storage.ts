@@ -203,6 +203,71 @@ export async function updateFunnelPreviewImage(slug: string, previewImage: strin
   return !error;
 }
 
+// ---- Funnel Preview Images (Supabase) ----
+
+export interface FunnelPreviewImage {
+  id: string;
+  funnelId: string;
+  dataUrl: string;
+  position: number;
+}
+
+export async function getFunnelPreviewImages(funnelId: string): Promise<FunnelPreviewImage[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from('funnel_preview_images')
+    .select('id, funnel_id, data_url, position')
+    .eq('funnel_id', funnelId)
+    .eq('user_id', user.id)
+    .order('position', { ascending: true });
+
+  if (error || !data) return [];
+  return data.map(r => ({ id: r.id, funnelId: r.funnel_id, dataUrl: r.data_url, position: r.position }));
+}
+
+export async function addFunnelPreviewImage(funnelId: string, dataUrl: string): Promise<FunnelPreviewImage[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  // Get next position
+  const existing = await getFunnelPreviewImages(funnelId);
+  const nextPos = existing.length > 0 ? Math.max(...existing.map(e => e.position)) + 1 : 0;
+
+  await supabase.from('funnel_preview_images').insert({
+    funnel_id: funnelId,
+    user_id: user.id,
+    data_url: dataUrl,
+    position: nextPos,
+  });
+
+  // If this is the first image, also set it as the active preview
+  if (existing.length === 0) {
+    await supabase.from('funnels').update({ preview_image: dataUrl }).eq('id', funnelId).eq('user_id', user.id);
+  }
+
+  return getFunnelPreviewImages(funnelId);
+}
+
+export async function removeFunnelPreviewImage(imageId: string, funnelId: string): Promise<FunnelPreviewImage[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  await supabase.from('funnel_preview_images').delete().eq('id', imageId).eq('user_id', user.id);
+
+  const remaining = await getFunnelPreviewImages(funnelId);
+
+  // Update active preview to first remaining or clear it
+  if (remaining.length > 0) {
+    await supabase.from('funnels').update({ preview_image: remaining[0].dataUrl }).eq('id', funnelId).eq('user_id', user.id);
+  } else {
+    await supabase.from('funnels').update({ preview_image: null }).eq('id', funnelId).eq('user_id', user.id);
+  }
+
+  return remaining;
+}
+
 // ---- Avatar Gallery (Supabase) ----
 
 export async function getAvatarGallery(): Promise<string[]> {
