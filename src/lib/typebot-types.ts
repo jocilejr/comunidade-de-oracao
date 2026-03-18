@@ -368,5 +368,6 @@ export interface ChatMessage {
   mediaType?: 'image' | 'video' | 'audio' | 'embed';
   mediaUrl?: string;
   mediaAlt?: string;
+  embedHeight?: number;
   timestamp: number;
 }

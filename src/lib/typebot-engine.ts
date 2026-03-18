@@ -921,6 +921,7 @@ export class TypebotEngine {
             id, type: 'bot', content: '', timestamp,
             mediaType: 'embed',
             mediaUrl: this.replaceVariables(url),
+            embedHeight: content.height || undefined,
           };
         }
 
