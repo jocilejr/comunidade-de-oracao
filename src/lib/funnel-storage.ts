@@ -372,6 +372,7 @@ export async function saveUserSettings(settings: {
   openai_api_key?: string;
   typebot_api_token?: string;
   typebot_workspace_id?: string;
+  typebot_base_url?: string;
 }): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
