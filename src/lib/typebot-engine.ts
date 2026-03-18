@@ -746,6 +746,18 @@ export class TypebotEngine {
           if (code) {
             try {
               const args = JSON.parse(tc.function?.arguments || '{}');
+              // Bug fix #2: Fallback — if args.input is missing, inject the last user message
+              if (args.input === undefined || args.input === '') {
+                const lastUserMsg = messages.filter(m => m.role === 'user').pop();
+                args.input = lastUserMsg?.content || '';
+              }
+              // Also handle 'texto', 'text', 'mensagem', 'message' similarly
+              for (const argName of ['texto', 'text', 'mensagem', 'message']) {
+                if (args[argName] === undefined && code.includes(argName)) {
+                  const lastUserMsg = messages.filter(m => m.role === 'user').pop();
+                  args[argName] = lastUserMsg?.content || '';
+                }
+              }
               // Inject tool_call arguments as local variables so code like `input.toLowerCase()` works
               const argDeclarations = Object.keys(args)
                 .map(k => `var ${k} = args[${JSON.stringify(k)}];`)
