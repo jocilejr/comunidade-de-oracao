@@ -83,8 +83,8 @@ if ! command -v psql &>/dev/null; then
 fi
 log "PostgreSQL $(psql --version | head -1)"
 
-# Nginx + Certbot + PM2
-apt-get install -y -qq nginx certbot python3-certbot-nginx uuid-runtime
+# Nginx + Certbot + PM2 + dnsutils
+apt-get install -y -qq nginx certbot python3-certbot-nginx uuid-runtime dnsutils
 npm install -g pm2 2>/dev/null || true
 log "Nginx, Certbot, PM2 instalados"
 
@@ -157,11 +157,11 @@ log "Migrations executadas"
 # ══════════════════════════════════════════════════════════
 log "Criando usuário administrador..."
 
-# Instalar bcryptjs localmente no APP_DIR
+# Instalar bcryptjs + jsonwebtoken localmente no APP_DIR
 mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 npm init -y 2>/dev/null || true
-npm install bcryptjs pg 2>/dev/null
+npm install bcryptjs jsonwebtoken pg 2>/dev/null
 
 ADMIN_ID=$(uuidgen)
 ADMIN_HASH=$(node -e "const b=require('$APP_DIR/node_modules/bcryptjs');b.hash(process.argv[1],10).then(h=>console.log(h))" "$ADMIN_PASS")
@@ -189,18 +189,7 @@ if [ ! -f /usr/local/bin/postgrest ]; then
 fi
 log "PostgREST instalado"
 
-log "Instalando GoTrue..."
-GOTRUE_VERSION="v2.158.1"
-if [ ! -f /usr/local/bin/gotrue ]; then
-  if [ "$ARCH" = "amd64" ]; then
-    GOTRUE_URL="https://github.com/supabase/auth/releases/download/${GOTRUE_VERSION}/auth-${GOTRUE_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-  else
-    GOTRUE_URL="https://github.com/supabase/auth/releases/download/${GOTRUE_VERSION}/auth-${GOTRUE_VERSION}-aarch64-unknown-linux-gnu.tar.gz"
-  fi
-  curl -fsSL "$GOTRUE_URL" | tar xzf - -C /usr/local/bin/ 2>/dev/null || \
-    warn "GoTrue binário não encontrado. Auth será via API server."
-  [ -f /usr/local/bin/gotrue ] && chmod +x /usr/local/bin/gotrue
-fi
+log "Auth será gerenciado diretamente pelo API server (sem GoTrue)"
 
 # ══════════════════════════════════════════════════════════
 # 6. CONFIGURAR APLICAÇÃO
@@ -226,14 +215,6 @@ PGRST_DB_SCHEMAS=public
 PGRST_DB_ANON_ROLE=anon
 PGRST_JWT_SECRET=${JWT_SECRET}
 PGRST_SERVER_PORT=3000
-GOTRUE_DB_DATABASE_URL=postgres://funnel_user:${DB_PASS}@127.0.0.1:5432/funnel_app
-GOTRUE_JWT_SECRET=${JWT_SECRET}
-GOTRUE_JWT_EXP=3600
-GOTRUE_JWT_AUD=authenticated
-GOTRUE_SITE_URL=https://${DASHBOARD_DOMAIN}
-GOTRUE_API_HOST=0.0.0.0
-GOTRUE_PORT=9999
-GOTRUE_MAILER_AUTOCONFIRM=true
 ENVEOF
 
 # PostgREST config
@@ -340,22 +321,54 @@ reload_nginx() {
 reload_nginx
 log "Nginx recarregado com sucesso"
 
-# Obter certificados via webroot (NÃO modifica configs existentes do Nginx)
-log "Obtendo certificados SSL para domínio público..."
-certbot certonly --webroot -w "$ACME_ROOT" \
-  -d "${PUBLIC_DOMAIN}" -d "www.${PUBLIC_DOMAIN}" \
-  --email "${SSL_EMAIL}" --agree-tos --non-interactive || {
-  warn "Certbot falhou para ${PUBLIC_DOMAIN}. Verifique se o DNS aponta para este servidor."
-  warn "  Tente manualmente: certbot certonly --webroot -w ${ACME_ROOT} -d ${PUBLIC_DOMAIN}"
+# Função para obter SSL com fallback standalone
+obtain_cert() {
+  local DOMAINS="$1"
+  local LABEL="$2"
+
+  # Tentar webroot primeiro
+  if certbot certonly --webroot -w "$ACME_ROOT" \
+    $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive 2>/dev/null; then
+    log "SSL obtido via webroot para ${LABEL}"
+    return 0
+  fi
+
+  warn "Webroot falhou para ${LABEL}. Tentando standalone (Nginx será pausado brevemente)..."
+
+  # Fallback: standalone (precisa parar Nginx momentaneamente)
+  if pidof nginx > /dev/null 2>&1; then
+    nginx -s stop 2>/dev/null || kill $(pidof -s nginx) 2>/dev/null || true
+    sleep 1
+  fi
+
+  if certbot certonly --standalone \
+    $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive 2>/dev/null; then
+    log "SSL obtido via standalone para ${LABEL}"
+    # Reiniciar Nginx
+    nginx
+    return 0
+  fi
+
+  # Reiniciar Nginx mesmo se falhou
+  nginx 2>/dev/null || true
+  warn "Certbot falhou para ${LABEL}. Verifique se o DNS aponta para este servidor."
+  warn "  Tente manualmente: certbot certonly --standalone $DOMAINS"
+  return 1
 }
 
+# Verificar se www resolve antes de incluí-lo
+log "Obtendo certificados SSL para domínio público..."
+PUBLIC_CERT_DOMAINS="-d ${PUBLIC_DOMAIN}"
+if dig +short "www.${PUBLIC_DOMAIN}" A 2>/dev/null | grep -q .; then
+  PUBLIC_CERT_DOMAINS="$PUBLIC_CERT_DOMAINS -d www.${PUBLIC_DOMAIN}"
+  log "DNS para www.${PUBLIC_DOMAIN} encontrado, incluindo no certificado"
+else
+  warn "www.${PUBLIC_DOMAIN} não resolve no DNS. Certificado será apenas para ${PUBLIC_DOMAIN}"
+fi
+obtain_cert "$PUBLIC_CERT_DOMAINS" "${PUBLIC_DOMAIN}" || true
+
 log "Obtendo certificados SSL para dashboard..."
-certbot certonly --webroot -w "$ACME_ROOT" \
-  -d "${DASHBOARD_DOMAIN}" \
-  --email "${SSL_EMAIL}" --agree-tos --non-interactive || {
-  warn "Certbot falhou para ${DASHBOARD_DOMAIN}. Verifique se o DNS aponta para este servidor."
-  warn "  Tente manualmente: certbot certonly --webroot -w ${ACME_ROOT} -d ${DASHBOARD_DOMAIN}"
-}
+obtain_cert "-d ${DASHBOARD_DOMAIN}" "${DASHBOARD_DOMAIN}" || true
 
 # Aplicar config completa com dois domínios (apenas se certs existem)
 if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
@@ -391,7 +404,7 @@ pm2 save
 if ! pm2 startup systemd -u root --hp /root 2>&1 | grep -q "already"; then
   pm2 startup systemd -u root --hp /root 2>/dev/null || true
 fi
-log "Serviços iniciados"
+log "Serviços iniciados (API + PostgREST)"
 
 # ══════════════════════════════════════════════════════════
 # 10. CRON PARA ROTAÇÃO DE IMAGENS

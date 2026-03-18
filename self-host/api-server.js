@@ -12,6 +12,8 @@
 
 const http = require("http");
 const { Pool } = require("pg");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 // ── Configuração ──────────────────────────────────────────
 const PORT = parseInt(process.env.API_PORT || "4000", 10);
@@ -19,6 +21,8 @@ const PUBLIC_DOMAIN = process.env.PUBLIC_DOMAIN || process.env.DOMAIN || "localh
 const DASHBOARD_DOMAIN = process.env.DASHBOARD_DOMAIN || process.env.DOMAIN || "localhost";
 const PUBLIC_ORIGIN = `https://${PUBLIC_DOMAIN}`;
 const DASHBOARD_ORIGIN = `https://${DASHBOARD_DOMAIN}`;
+const JWT_SECRET = process.env.API_JWT_SECRET || process.env.PGRST_JWT_SECRET || "super-secret";
+const JWT_EXP = parseInt(process.env.GOTRUE_JWT_EXP || "3600", 10);
 
 const pool = new Pool({
   host: process.env.DB_HOST || "127.0.0.1",
@@ -263,6 +267,84 @@ async function handleRotateImages(req, res) {
   json(res, { message: `Rotated ${updated} funnels`, hour: currentHour });
 }
 
+// ── Auth: signup ──────────────────────────────────────────
+async function handleSignup(req, res) {
+  const body = JSON.parse(await readBody(req));
+  const { email, password } = body;
+  if (!email || !password) return json(res, { error: "email and password required" }, 400);
+  if (password.length < 8) return json(res, { error: "Password must be at least 8 characters" }, 400);
+
+  const { rows: existing } = await pool.query("SELECT id FROM auth.users WHERE email = $1", [email]);
+  if (existing.length) return json(res, { error: "User already registered" }, 400);
+
+  const hash = await bcrypt.hash(password, 10);
+  const { rows } = await pool.query(
+    "INSERT INTO auth.users (email, encrypted_password) VALUES ($1, $2) RETURNING id, email, created_at",
+    [email, hash]
+  );
+  const user = rows[0];
+  const token = generateToken(user);
+  json(res, { access_token: token, token_type: "bearer", expires_in: JWT_EXP, user: { id: user.id, email: user.email } });
+}
+
+// ── Auth: login (token) ──────────────────────────────────
+async function handleToken(req, res) {
+  const body = JSON.parse(await readBody(req));
+  const { email, password, grant_type } = body;
+
+  if (grant_type === "refresh_token") {
+    // Para refresh, decodificar o token antigo e gerar um novo
+    try {
+      const decoded = jwt.verify(body.refresh_token || "", JWT_SECRET, { algorithms: ["HS256"] });
+      const { rows } = await pool.query("SELECT id, email FROM auth.users WHERE id = $1", [decoded.sub]);
+      if (!rows.length) return json(res, { error: "User not found" }, 404);
+      const token = generateToken(rows[0]);
+      return json(res, { access_token: token, token_type: "bearer", expires_in: JWT_EXP, user: { id: rows[0].id, email: rows[0].email } });
+    } catch (e) {
+      return json(res, { error: "Invalid refresh token" }, 401);
+    }
+  }
+
+  if (!email || !password) return json(res, { error: "email and password required" }, 400);
+
+  const { rows } = await pool.query("SELECT id, email, encrypted_password FROM auth.users WHERE email = $1", [email]);
+  if (!rows.length) return json(res, { error: "Invalid login credentials" }, 401);
+
+  const valid = await bcrypt.compare(password, rows[0].encrypted_password);
+  if (!valid) return json(res, { error: "Invalid login credentials" }, 401);
+
+  const user = rows[0];
+  const token = generateToken(user);
+  json(res, { access_token: token, token_type: "bearer", expires_in: JWT_EXP, refresh_token: token, user: { id: user.id, email: user.email } });
+}
+
+// ── Auth: get user ───────────────────────────────────────
+async function handleGetUser(req, res) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return json(res, { error: "Missing token" }, 401);
+  try {
+    const decoded = jwt.verify(authHeader.replace("Bearer ", ""), JWT_SECRET, { algorithms: ["HS256"] });
+    const { rows } = await pool.query("SELECT id, email, created_at FROM auth.users WHERE id = $1", [decoded.sub]);
+    if (!rows.length) return json(res, { error: "User not found" }, 404);
+    json(res, { id: rows[0].id, email: rows[0].email, created_at: rows[0].created_at, role: "authenticated", aud: "authenticated" });
+  } catch (e) {
+    json(res, { error: "Invalid token" }, 401);
+  }
+}
+
+// ── Auth: logout (no-op, client just discards token) ─────
+async function handleLogout(req, res) {
+  json(res, {});
+}
+
+function generateToken(user) {
+  return jwt.sign(
+    { sub: user.id, email: user.email, role: "authenticated", aud: "authenticated" },
+    JWT_SECRET,
+    { algorithm: "HS256", expiresIn: JWT_EXP }
+  );
+}
+
 // ── Router ────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") {
@@ -273,6 +355,12 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const path = url.pathname;
+
+    // Auth endpoints (GoTrue-compatible)
+    if (path === "/auth/v1/signup" && req.method === "POST") return await handleSignup(req, res);
+    if (path === "/auth/v1/token" && req.method === "POST") return await handleToken(req, res);
+    if (path === "/auth/v1/user" && req.method === "GET") return await handleGetUser(req, res);
+    if (path === "/auth/v1/logout" && req.method === "POST") return await handleLogout(req, res);
 
     if (path === "/share" || path === "/share/") {
       const slug = url.searchParams.get("slug");
