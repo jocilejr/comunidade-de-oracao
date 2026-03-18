@@ -98,6 +98,7 @@ const Admin = () => {
         setOpenaiKey(settingsData.openai_api_key);
         setTypebotToken(settingsData.typebot_api_token);
         setTypebotWorkspaceId(settingsData.typebot_workspace_id);
+        setTypebotBaseUrl(settingsData.typebot_base_url);
       }
       setLoadingFunnels(false);
     };
