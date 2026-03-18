@@ -671,10 +671,19 @@ export class TypebotEngine {
       }
 
       // Build messages with variable replacement
-      const messages = opts.messages.map(m => ({
+      const rawMessages = opts.messages.map(m => ({
         role: m.role || 'user',
         content: this.replaceVariables(m.content || ''),
       }));
+
+      // Inject conversation history between system prompt and user messages
+      const messages: Array<{ role: string; content: string }> = [];
+      const systemMessages = rawMessages.filter(m => m.role === 'system');
+      const nonSystemMessages = rawMessages.filter(m => m.role !== 'system');
+
+      messages.push(...systemMessages);
+      messages.push(...this.conversationHistory);
+      messages.push(...nonSystemMessages);
 
       // Separate code tools (local execution) from API tools (sent to OpenAI)
       const allTools = opts.tools || [];
