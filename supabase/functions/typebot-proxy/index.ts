@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
       }
 
       const res = await fetch(
-        `https://typebot.io/api/v1/typebots?workspaceId=${encodeURIComponent(typebot_workspace_id)}`,
+        `${baseUrl}/api/v1/typebots?workspaceId=${encodeURIComponent(typebot_workspace_id)}`,
         {
           headers: {
             Authorization: `Bearer ${typebot_api_token}`,
