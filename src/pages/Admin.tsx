@@ -822,6 +822,26 @@ const Admin = () => {
               />
             </div>
 
+            <div className="space-y-1">
+              <Label className="text-[11px] text-muted-foreground">Título da página</Label>
+              <Input
+                placeholder="Ex: Fale com nosso assistente"
+                value={editPageTitle}
+                onChange={e => setEditPageTitle(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-[11px] text-muted-foreground">Descrição da página</Label>
+              <Input
+                placeholder="Ex: Tire suas dúvidas rapidamente"
+                value={editPageDescription}
+                onChange={e => setEditPageDescription(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+
             <Button onClick={handleProfileSave} className="w-full" size="sm">
               <Save className="w-3.5 h-3.5 mr-1.5" /> Salvar perfil
             </Button>
