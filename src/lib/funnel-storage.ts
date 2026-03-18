@@ -76,6 +76,8 @@ export async function getFunnelBySlug(slug: string): Promise<StoredFunnel | unde
     botName: data.bot_name || '',
     botAvatar: data.bot_avatar || '',
     previewImage: data.preview_image || '',
+    pageTitle: data.page_title || '',
+    pageDescription: data.page_description || '',
     userId: data.user_id,
   };
 }
