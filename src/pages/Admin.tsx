@@ -478,10 +478,17 @@ const Admin = () => {
               </div>
             )}
 
-            {/* ===== LOGS TAB ===== */}
-            {activeTab === 'logs' && (
-              <SessionLogs funnels={funnels.map(f => ({ id: f.id, name: f.name, slug: f.slug }))} />
-            )}
+            {/* Logs Dialog */}
+            <Dialog open={!!logsFunnel} onOpenChange={open => { if (!open) setLogsFunnel(null); }}>
+              <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Logs — {logsFunnel?.name}</DialogTitle>
+                </DialogHeader>
+                {logsFunnel && (
+                  <SessionLogs funnels={[{ id: logsFunnel.id, name: logsFunnel.name, slug: logsFunnel.slug }]} defaultFunnel={logsFunnel.id} />
+                )}
+              </DialogContent>
+            </Dialog>
 
             {/* ===== GALLERY TAB ===== */}
             {activeTab === 'gallery' && (
