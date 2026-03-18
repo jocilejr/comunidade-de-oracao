@@ -42,6 +42,7 @@ export class TypebotEngine {
   private totalBlocks: number = 0;
   private processedBlocks: number = 0;
   private ownerUserId: string | null = null;
+  private pausedContext: { group: TypebotGroup; nextBlockIndex: number } | null = null;
 
   constructor(flow: TypebotFlow, options?: { ownerUserId?: string }) {
     this.flow = flow;
@@ -212,11 +213,22 @@ export class TypebotEngine {
     // Follow outgoing edge
     const edgeId = block.outgoingEdgeId;
     if (edgeId) {
+      this.pausedContext = null;
       yield* this.processFromEdge(edgeId);
     } else {
       const edge = this.findEdgeFromBlock(block.id);
       if (edge) {
+        this.pausedContext = null;
         yield* this.processFromEdge(edge.id);
+      } else if (this.pausedContext) {
+        // Fallback: continue to next block in the same group
+        const { group, nextBlockIndex } = this.pausedContext;
+        this.pausedContext = null;
+        if (nextBlockIndex < group.blocks.length) {
+          yield* this.processGroup(group, nextBlockIndex);
+        } else {
+          yield { type: 'end' };
+        }
       } else {
         yield { type: 'end' };
       }
@@ -235,17 +247,29 @@ export class TypebotEngine {
     // Find the chosen item's edge
     const item = block.items.find(i => i.id === itemId);
     if (item?.outgoingEdgeId) {
+      this.pausedContext = null;
       yield* this.processFromEdge(item.outgoingEdgeId);
       return;
     }
 
     // Fallback to block's outgoing edge
     if (block.outgoingEdgeId) {
+      this.pausedContext = null;
       yield* this.processFromEdge(block.outgoingEdgeId);
     } else {
       const edge = this.findEdgeFromBlock(block.id);
       if (edge) {
+        this.pausedContext = null;
         yield* this.processFromEdge(edge.id);
+      } else if (this.pausedContext) {
+        // Fallback: continue to next block in the same group
+        const { group, nextBlockIndex } = this.pausedContext;
+        this.pausedContext = null;
+        if (nextBlockIndex < group.blocks.length) {
+          yield* this.processGroup(group, nextBlockIndex);
+        } else {
+          yield { type: 'end' };
+        }
       } else {
         yield { type: 'end' };
       }
@@ -276,12 +300,14 @@ export class TypebotEngine {
 
       // Input blocks — pause and wait for user
       if (this.isInputBlock(blockType)) {
+        // Save context so we can resume at the next block in this group
+        this.pausedContext = { group, nextBlockIndex: i + 1 };
         if (blockType === 'choice' || blockType === 'picturechoice') {
           yield { type: 'choices', block: block as ChoiceInputBlock };
         } else {
           yield { type: 'input', block };
         }
-        return; // Pause — will resume via continueAfterInput
+        return; // Pause — will resume via continueAfterInput/continueAfterChoice
       }
 
       // Logic blocks — process immediately
