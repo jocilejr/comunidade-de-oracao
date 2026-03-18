@@ -8,3 +8,9 @@ verify_jwt = false
 
 [functions.typebot-proxy]
 verify_jwt = false
+
+[functions.preview-image]
+verify_jwt = false
+
+[functions.share]
+verify_jwt = false

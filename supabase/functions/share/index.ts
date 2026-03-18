@@ -38,7 +38,11 @@ Deno.serve(async (req) => {
 
   const title = escapeHtml(funnel.page_title || funnel.name || "Funil");
   const description = escapeHtml(funnel.page_description || "Aperte aqui e Receba");
-  const image = funnel.preview_image || "";
+
+  // Build a public HTTPS URL for the preview image instead of using base64
+  const imageUrl = funnel.preview_image
+    ? `${supabaseUrl}/functions/v1/preview-image?slug=${encodeURIComponent(slug)}`
+    : "";
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -51,13 +55,13 @@ Deno.serve(async (req) => {
   <meta property="og:type" content="website" />
   <meta property="og:title" content="${title}" />
   <meta property="og:description" content="${description}" />
-  ${image ? `<meta property="og:image" content="${escapeHtml(image)}" />` : ""}
+  ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />` : ""}
   <meta property="og:url" content="${escapeHtml(redirectUrl)}" />
 
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${description}" />
-  ${image ? `<meta name="twitter:image" content="${escapeHtml(image)}" />` : ""}
+  ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}
 
   <meta http-equiv="refresh" content="0;url=${escapeHtml(redirectUrl)}" />
 </head>
