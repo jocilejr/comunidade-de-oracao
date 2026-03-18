@@ -8,9 +8,9 @@ export async function getAllFunnels(): Promise<StoredFunnel[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data, error } = await supabase
+   const { data, error } = await supabase
     .from('funnels')
-    .select('id, slug, name, created_at, bot_name, bot_avatar, flow')
+    .select('id, slug, name, created_at, bot_name, bot_avatar, flow, preview_image')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
@@ -24,6 +24,7 @@ export async function getAllFunnels(): Promise<StoredFunnel[]> {
     flow: row.flow as unknown as TypebotFlow,
     botName: row.bot_name || '',
     botAvatar: row.bot_avatar || '',
+    previewImage: row.preview_image || '',
   }));
 }
 
