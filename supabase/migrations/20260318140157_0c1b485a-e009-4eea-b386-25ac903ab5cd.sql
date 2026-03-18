@@ -1,0 +1,1 @@
+ALTER TABLE public.funnels ADD COLUMN preview_image text;
