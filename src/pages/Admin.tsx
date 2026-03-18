@@ -744,7 +744,7 @@ const Admin = () => {
                         size="sm"
                         onClick={async () => {
                           setSavingKey(true);
-                          const ok = await saveUserSettings(openaiKey);
+                          const ok = await saveUserSettings({ openai_api_key: openaiKey });
                           setSavingKey(false);
                           toast({
                             title: ok ? 'Chave salva!' : 'Erro',
