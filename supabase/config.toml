@@ -2,3 +2,6 @@ project_id = "exvfzbkhdclukfrhkvtf"
 
 [functions.openai-proxy]
 verify_jwt = false
+
+[functions.rotate-preview-images]
+verify_jwt = false

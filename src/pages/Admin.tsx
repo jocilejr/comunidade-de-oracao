@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById } from '@/lib/funnel-storage';
+import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, FunnelPreviewImage } from '@/lib/funnel-storage';
 import FunnelInspector from '@/components/admin/FunnelInspector';
 import SessionLogs from '@/components/admin/SessionLogs';
 import { StoredFunnel } from '@/lib/typebot-types';
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera } from 'lucide-react';
+import { Upload, Trash2, ExternalLink, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera, Plus, Star } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
@@ -62,7 +62,11 @@ const Admin = () => {
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const previewImageRef = useRef<HTMLInputElement>(null);
+  const previewGalleryRef = useRef<HTMLInputElement>(null);
   const [uploadingPreviewSlug, setUploadingPreviewSlug] = useState<string | null>(null);
+  const [previewGalleryDialog, setPreviewGalleryDialog] = useState<StoredFunnel | null>(null);
+  const [previewImages, setPreviewImages] = useState<FunnelPreviewImage[]>([]);
+  const [loadingPreviews, setLoadingPreviews] = useState(false);
   const { toast } = useToast();
   const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -234,6 +238,45 @@ const Admin = () => {
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const openPreviewGallery = async (funnel: StoredFunnel) => {
+    setPreviewGalleryDialog(funnel);
+    setLoadingPreviews(true);
+    const imgs = await getFunnelPreviewImages(funnel.id);
+    setPreviewImages(imgs);
+    setLoadingPreviews(false);
+  };
+
+  const handlePreviewGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !previewGalleryDialog) return;
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Erro', description: 'Selecione uma imagem válida.', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: 'Erro', description: 'Imagem deve ter no máximo 2MB.', variant: 'destructive' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      const updated = await addFunnelPreviewImage(previewGalleryDialog.id, dataUrl);
+      setPreviewImages(updated);
+      await refresh();
+      toast({ title: 'Preview adicionado!' });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleRemovePreviewImage = async (imageId: string) => {
+    if (!previewGalleryDialog) return;
+    const updated = await removeFunnelPreviewImage(imageId, previewGalleryDialog.id);
+    setPreviewImages(updated);
+    await refresh();
+    toast({ title: 'Preview removido!' });
   };
 
 
@@ -422,8 +465,8 @@ const Admin = () => {
                         {/* Preview image */}
                         <div
                           className="relative w-28 shrink-0 bg-muted cursor-pointer group/preview"
-                          onClick={() => { setUploadingPreviewSlug(funnel.slug); previewImageRef.current?.click(); }}
-                          title="Alterar imagem de preview"
+                          onClick={() => openPreviewGallery(funnel)}
+                          title="Gerenciar imagens de preview"
                         >
                           {funnel.previewImage ? (
                             <img src={funnel.previewImage} alt={funnel.name} className="w-full h-full object-cover" />
@@ -434,7 +477,7 @@ const Admin = () => {
                             </div>
                           )}
                           <div className="absolute inset-0 bg-foreground/0 group-hover/preview:bg-foreground/40 flex items-center justify-center transition-all">
-                            <Camera className="w-4 h-4 text-background opacity-0 group-hover/preview:opacity-100 transition-opacity" />
+                            <ImagePlus className="w-4 h-4 text-background opacity-0 group-hover/preview:opacity-100 transition-opacity" />
                           </div>
                         </div>
 
@@ -845,6 +888,64 @@ const Admin = () => {
             <Button onClick={handleProfileSave} className="w-full" size="sm">
               <Save className="w-3.5 h-3.5 mr-1.5" /> Salvar perfil
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview Gallery Dialog */}
+      <Dialog open={!!previewGalleryDialog} onOpenChange={open => { if (!open) setPreviewGalleryDialog(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm">
+              <ImagePlus className="w-4 h-4" />
+              Previews — {previewGalleryDialog?.name}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            <p className="text-[11px] text-muted-foreground">
+              Adicione múltiplas imagens de preview. A cada hora o sistema alterna automaticamente qual imagem será exibida.
+            </p>
+
+            {loadingPreviews ? (
+              <div className="grid grid-cols-3 gap-2">
+                <Skeleton className="aspect-video rounded-lg" />
+                <Skeleton className="aspect-video rounded-lg" />
+                <Skeleton className="aspect-video rounded-lg" />
+              </div>
+            ) : previewImages.length === 0 ? (
+              <div className="text-center py-8 border-2 border-dashed border-border rounded-xl">
+                <Image className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">Nenhuma imagem de preview</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {previewImages.map((img) => {
+                  const isActive = previewGalleryDialog?.previewImage === img.dataUrl;
+                  return (
+                    <div key={img.id} className="relative group aspect-video rounded-lg overflow-hidden border border-border hover:border-primary/30 transition-colors">
+                      <img src={img.dataUrl} alt={`Preview ${img.position + 1}`} className="w-full h-full object-cover" />
+                      {isActive && (
+                        <div className="absolute top-1 left-1 bg-primary text-primary-foreground rounded-full p-0.5">
+                          <Star className="w-2.5 h-2.5 fill-current" />
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleRemovePreviewImage(img.id)}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <Button variant="outline" size="sm" className="w-full" onClick={() => previewGalleryRef.current?.click()}>
+              <Plus className="w-3.5 h-3.5 mr-1.5" /> Adicionar imagem
+            </Button>
+            <input ref={previewGalleryRef} type="file" accept="image/*" className="hidden" onChange={handlePreviewGalleryUpload} />
           </div>
         </DialogContent>
       </Dialog>
