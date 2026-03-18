@@ -48,6 +48,8 @@ const Admin = () => {
   const [profileDialog, setProfileDialog] = useState<StoredFunnel | null>(null);
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
+  const [editPageTitle, setEditPageTitle] = useState('');
+  const [editPageDescription, setEditPageDescription] = useState('');
   const [gallery, setGallery] = useState<string[]>([]);
   const [loadingFunnels, setLoadingFunnels] = useState(true);
   const [openaiKey, setOpenaiKey] = useState('');
