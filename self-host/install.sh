@@ -284,7 +284,7 @@ mkdir -p "$ACME_ROOT"
 cat > /etc/nginx/sites-available/funnel-app <<NGINX_TEMP
 server {
     listen 80;
-    server_name ${PUBLIC_DOMAIN} www.${PUBLIC_DOMAIN} ${DASHBOARD_DOMAIN};
+    server_name ${PUBLIC_DOMAIN} ${DASHBOARD_DOMAIN};
 
     # Validação SSL (Let's Encrypt)
     location /.well-known/acme-challenge/ {
