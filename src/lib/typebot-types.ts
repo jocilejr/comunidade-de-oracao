@@ -356,6 +356,7 @@ export interface StoredFunnel {
   flow: TypebotFlow;
   botName?: string;
   botAvatar?: string;
+  previewImage?: string;
   userId?: string;
 }
 

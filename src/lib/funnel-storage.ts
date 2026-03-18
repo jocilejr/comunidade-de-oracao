@@ -8,9 +8,9 @@ export async function getAllFunnels(): Promise<StoredFunnel[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data, error } = await supabase
+   const { data, error } = await supabase
     .from('funnels')
-    .select('id, slug, name, created_at, bot_name, bot_avatar, flow')
+    .select('id, slug, name, created_at, bot_name, bot_avatar, flow, preview_image')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
@@ -24,6 +24,7 @@ export async function getAllFunnels(): Promise<StoredFunnel[]> {
     flow: row.flow as unknown as TypebotFlow,
     botName: row.bot_name || '',
     botAvatar: row.bot_avatar || '',
+    previewImage: row.preview_image || '',
   }));
 }
 
@@ -34,7 +35,7 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
 
   const { data, error } = await supabase
     .from('funnels')
-    .select('id, slug, name, created_at, bot_name, bot_avatar')
+    .select('id, slug, name, created_at, bot_name, bot_avatar, preview_image')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
@@ -48,6 +49,7 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
     flow: { id: '', name: '', groups: [], edges: [] } as unknown as TypebotFlow,
     botName: row.bot_name || '',
     botAvatar: row.bot_avatar || '',
+    previewImage: row.preview_image || '',
   }));
 }
 
@@ -69,6 +71,7 @@ export async function getFunnelBySlug(slug: string): Promise<StoredFunnel | unde
     flow: data.flow as unknown as TypebotFlow,
     botName: data.bot_name || '',
     botAvatar: data.bot_avatar || '',
+    previewImage: data.preview_image || '',
     userId: data.user_id,
   };
 }
@@ -104,6 +107,7 @@ export async function saveFunnel(name: string, slug: string, flow: TypebotFlow):
     flow: data.flow as unknown as TypebotFlow,
     botName: data.bot_name || '',
     botAvatar: data.bot_avatar || '',
+    previewImage: data.preview_image || '',
   };
 }
 
@@ -166,8 +170,22 @@ export async function getFunnelById(id: string): Promise<StoredFunnel | undefine
     flow: data.flow as unknown as TypebotFlow,
     botName: data.bot_name || '',
     botAvatar: data.bot_avatar || '',
+    previewImage: data.preview_image || '',
     userId: data.user_id,
   };
+}
+
+export async function updateFunnelPreviewImage(slug: string, previewImage: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { error } = await supabase
+    .from('funnels')
+    .update({ preview_image: previewImage })
+    .eq('user_id', user.id)
+    .eq('slug', slug);
+
+  return !error;
 }
 
 // ---- Avatar Gallery (Supabase) ----
