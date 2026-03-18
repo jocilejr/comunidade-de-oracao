@@ -512,21 +512,25 @@ export class TypebotEngine {
     return logicalOp === 'AND' ? results.every(Boolean) : results.some(Boolean);
   }
 
+  private normalize(s: string): string {
+    return s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
   private compare(a: string, op: ComparisonOperator, b: string): boolean {
-    const aLower = a.toLowerCase();
-    const bLower = b.toLowerCase();
+    const aN = this.normalize(a);
+    const bN = this.normalize(b);
 
     switch (op) {
-      case 'Equal to': return aLower === bLower;
-      case 'Not equal': return aLower !== bLower;
-      case 'Contains': return aLower.includes(bLower);
-      case 'Does not contain': return !aLower.includes(bLower);
+      case 'Equal to': return aN === bN;
+      case 'Not equal': return aN !== bN;
+      case 'Contains': return aN.includes(bN);
+      case 'Does not contain': return !aN.includes(bN);
       case 'Greater than': return Number(a) > Number(b);
       case 'Less than': return Number(a) < Number(b);
       case 'Is set': return a !== '' && a !== undefined && a !== null;
       case 'Is empty': return a === '' || a === undefined || a === null;
-      case 'Starts with': return aLower.startsWith(bLower);
-      case 'Ends with': return aLower.endsWith(bLower);
+      case 'Starts with': return aN.startsWith(bN);
+      case 'Ends with': return aN.endsWith(bN);
       case 'Matches regex': try { return new RegExp(b).test(a); } catch { return false; }
       case 'Does not match regex': try { return !new RegExp(b).test(a); } catch { return true; }
       default: return false;
