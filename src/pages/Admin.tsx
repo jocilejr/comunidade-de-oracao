@@ -575,19 +575,14 @@ const Admin = () => {
                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handlePreview(funnel)} title="Simular funil">
                               <Eye className="w-3.5 h-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" title="Copiar link para WhatsApp (com preview)" onClick={() => {
+                            <Button variant="outline" size="sm" className="h-8 px-2.5 gap-1.5 text-[11px] font-medium" title="Copiar link para WhatsApp (com preview)" onClick={() => {
                               const v = Date.now();
                               const shareUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${funnel.slug}&v=${v}`;
                               navigator.clipboard.writeText(shareUrl);
-                              toast({ title: 'Link copiado!', description: 'Use este link para compartilhar no WhatsApp com preview de imagem.' });
+                              toast({ title: 'Link copiado!', description: 'Cole este link no WhatsApp para compartilhar com preview de imagem.' });
                             }}>
-                              <Copy className="w-3.5 h-3.5" />
+                              <Copy className="w-3.5 h-3.5" /> Compartilhar
                             </Button>
-                            <Link to={`/f/${funnel.slug}`} target="_blank">
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Abrir em nova aba">
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </Button>
-                            </Link>
                             <Button
                               variant="ghost"
                               size="icon"
