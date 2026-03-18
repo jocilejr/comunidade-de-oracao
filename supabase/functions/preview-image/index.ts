@@ -37,7 +37,6 @@ Deno.serve(async (req) => {
   // Parse data URL: data:<mime>;base64,<data>
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) {
-    // If it's already an HTTPS URL, redirect to it
     if (dataUrl.startsWith("http")) {
       return Response.redirect(dataUrl, 302);
     }
@@ -47,7 +46,6 @@ Deno.serve(async (req) => {
   const mimeType = match[1];
   const base64Data = match[2];
 
-  // Decode base64 to binary
   const binaryString = atob(base64Data);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
@@ -58,7 +56,7 @@ Deno.serve(async (req) => {
     headers: {
       ...corsHeaders,
       "Content-Type": mimeType,
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "public, max-age=300, s-maxage=60",
     },
   });
 });
