@@ -54,8 +54,14 @@ const Admin = () => {
   const [gallery, setGallery] = useState<string[]>([]);
   const [loadingFunnels, setLoadingFunnels] = useState(true);
   const [openaiKey, setOpenaiKey] = useState('');
+  const [typebotToken, setTypebotToken] = useState('');
+  const [typebotWorkspaceId, setTypebotWorkspaceId] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
+  const [typebotImportDialog, setTypebotImportDialog] = useState(false);
+  const [typebotList, setTypebotList] = useState<Array<{ id: string; name: string; createdAt?: string }>>([]);
+  const [loadingTypebots, setLoadingTypebots] = useState(false);
+  const [importingTypebotId, setImportingTypebotId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [inspectFunnel, setInspectFunnel] = useState<StoredFunnel | null>(null);
   const [logsFunnel, setLogsFunnel] = useState<StoredFunnel | null>(null);
