@@ -295,7 +295,7 @@ const Admin = () => {
             </button>
             <button
               onClick={() => logout()}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] text-red-400 hover:bg-red-500/10 transition-all"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] text-destructive hover:bg-destructive/10 transition-all"
             >
               <LogOut className="w-4 h-4" />
               Sair
