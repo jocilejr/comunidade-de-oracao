@@ -695,20 +695,19 @@ export class TypebotEngine {
       const assistantContent = choice.message?.content || '';
       const toolCalls = choice.message?.tool_calls;
 
-      // Execute Typebot code tools if the AI made tool calls matching them
+      // Execute code tools locally if the AI made tool calls matching them
       const codeToolResults: Record<string, string> = {};
-      if (toolCalls && codeTools.length > 0) {
+      if (toolCalls && codeToolMap.size > 0) {
         for (const tc of toolCalls) {
           const fnName = tc.function?.name;
-          const codeTool = codeTools.find((ct: any) => (ct.function?.name || ct.name) === fnName);
-          if (codeTool && (codeTool as any).code) {
+          const code = codeToolMap.get(fnName);
+          if (code) {
             try {
               const args = JSON.parse(tc.function?.arguments || '{}');
               // Inject tool_call arguments as local variables so code like `input.toLowerCase()` works
               const argDeclarations = Object.keys(args)
                 .map(k => `var ${k} = args[${JSON.stringify(k)}];`)
                 .join('\n');
-              const code = (codeTool as any).code;
               const fn = new Function('args', argDeclarations + '\n' + code);
               const result = fn(args);
               // Serialize objects as JSON instead of "[object Object]"
@@ -719,6 +718,7 @@ export class TypebotEngine {
               } else {
                 codeToolResults[fnName] = String(result);
               }
+              console.log(`Code tool "${fnName}" result:`, codeToolResults[fnName]);
             } catch (e) {
               console.warn(`Code tool "${fnName}" execution error:`, e);
             }
