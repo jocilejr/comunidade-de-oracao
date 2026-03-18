@@ -71,6 +71,7 @@ export async function getFunnelBySlug(slug: string): Promise<StoredFunnel | unde
     flow: data.flow as unknown as TypebotFlow,
     botName: data.bot_name || '',
     botAvatar: data.bot_avatar || '',
+    previewImage: data.preview_image || '',
     userId: data.user_id,
   };
 }
