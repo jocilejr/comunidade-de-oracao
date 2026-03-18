@@ -15,8 +15,10 @@ const { Pool } = require("pg");
 
 // ── Configuração ──────────────────────────────────────────
 const PORT = parseInt(process.env.API_PORT || "4000", 10);
-const DOMAIN = process.env.DOMAIN || "localhost";
-const APP_ORIGIN = `https://${DOMAIN}`;
+const PUBLIC_DOMAIN = process.env.PUBLIC_DOMAIN || process.env.DOMAIN || "localhost";
+const DASHBOARD_DOMAIN = process.env.DASHBOARD_DOMAIN || process.env.DOMAIN || "localhost";
+const PUBLIC_ORIGIN = `https://${PUBLIC_DOMAIN}`;
+const DASHBOARD_ORIGIN = `https://${DASHBOARD_DOMAIN}`;
 
 const pool = new Pool({
   host: process.env.DB_HOST || "127.0.0.1",
@@ -30,17 +32,11 @@ const pool = new Pool({
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 function escapeHtml(str) {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
 function json(res, data, status = 200) {
@@ -64,22 +60,24 @@ async function handleShare(req, res, slug) {
     [slug]
   );
 
-  const redirectUrl = `${APP_ORIGIN}/f/${slug}`;
+  // URL canônica: domínio público com slug limpo
+  const canonicalUrl = `${PUBLIC_ORIGIN}/${slug}`;
+  // Redirect humanos para o SPA no dashboard
+  const spaUrl = `${DASHBOARD_ORIGIN}/f/${slug}`;
 
   if (!rows.length) {
-    res.writeHead(302, { Location: redirectUrl });
+    res.writeHead(302, { Location: spaUrl });
     return res.end();
   }
 
   const funnel = rows[0];
   const title = escapeHtml(funnel.page_title || funnel.name || "Funil");
-  const description = escapeHtml(
-    funnel.page_description || "Aperte aqui e Receba"
-  );
+  const description = escapeHtml(funnel.page_description || "Aperte aqui e Receba");
 
   const v = Date.now().toString();
+  // Imagem servida pelo domínio público para crawlers
   const imageUrl = funnel.preview_image
-    ? `${APP_ORIGIN}/api/preview-image?slug=${encodeURIComponent(slug)}&v=${v}`
+    ? `${PUBLIC_ORIGIN}/api/preview-image?slug=${encodeURIComponent(slug)}&v=${v}`
     : "";
 
   const html = `<!DOCTYPE html>
@@ -95,14 +93,15 @@ async function handleShare(req, res, slug) {
   ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />` : ""}
   ${imageUrl ? `<meta property="og:image:width" content="1200" />` : ""}
   ${imageUrl ? `<meta property="og:image:height" content="630" />` : ""}
-  <meta property="og:url" content="${escapeHtml(redirectUrl)}" />
+  <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${description}" />
   ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}
+  <meta http-equiv="refresh" content="0;url=${escapeHtml(spaUrl)}" />
 </head>
 <body>
-  <p>Redirecionando para <a href="${escapeHtml(redirectUrl)}">${title}</a>...</p>
+  <p>Redirecionando para <a href="${escapeHtml(spaUrl)}">${title}</a>...</p>
 </body>
 </html>`;
 
@@ -126,8 +125,6 @@ async function handlePreviewImage(req, res, slug) {
   }
 
   const dataUrl = rows[0].preview_image;
-
-  // data:<mime>;base64,<data>
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) {
     if (dataUrl.startsWith("http")) {
@@ -161,9 +158,7 @@ async function handleOpenaiProxy(req, res) {
   );
 
   const apiKey = rows[0]?.openai_api_key;
-  if (!apiKey) {
-    return json(res, { error: "OpenAI API key not configured." }, 400);
-  }
+  if (!apiKey) return json(res, { error: "OpenAI API key not configured." }, 400);
 
   const payload = { model: model || "gpt-4", messages, stream: false };
 
@@ -172,8 +167,7 @@ async function handleOpenaiProxy(req, res) {
       .map((tool) => {
         if (tool.type === "function" && tool.function?.name) {
           const params = tool.function.parameters;
-          if (!params || Array.isArray(params))
-            tool.function.parameters = { type: "object", properties: {} };
+          if (!params || Array.isArray(params)) tool.function.parameters = { type: "object", properties: {} };
           const { code, ...cleanFn } = tool.function;
           return { type: "function", function: cleanFn };
         }
@@ -185,25 +179,18 @@ async function handleOpenaiProxy(req, res) {
           function: {
             name,
             description: tool.description || tool.function?.description || "",
-            parameters:
-              rawParams && typeof rawParams === "object" && !Array.isArray(rawParams)
-                ? rawParams
-                : { type: "object", properties: {} },
+            parameters: rawParams && typeof rawParams === "object" && !Array.isArray(rawParams) ? rawParams : { type: "object", properties: {} },
           },
         };
       })
       .filter(Boolean);
-
     if (payload.tools.length > 0) payload.tool_choice = "auto";
     else delete payload.tools;
   }
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
@@ -216,11 +203,8 @@ async function handleTypebotProxy(req, res) {
   const authHeader = req.headers.authorization;
   if (!authHeader) return json(res, { error: "Missing authorization" }, 401);
 
-  // Em self-host, validamos JWT via GoTrue ou simplesmente confiamos no proxy
-  // Para simplicidade, extraímos user_id do body ou fazemos lookup
   const body = JSON.parse(await readBody(req));
   const { action, typebotId, userId } = body;
-
   if (!userId) return json(res, { error: "Missing userId" }, 400);
 
   const { rows } = await pool.query(
@@ -230,31 +214,23 @@ async function handleTypebotProxy(req, res) {
   );
 
   const settings = rows[0];
-  if (!settings?.typebot_api_token) {
-    return json(res, { error: "Token do Typebot não configurado." }, 400);
-  }
+  if (!settings?.typebot_api_token) return json(res, { error: "Token do Typebot não configurado." }, 400);
 
   const baseUrl = (settings.typebot_base_url || "https://typebot.io").replace(/\/+$/, "");
 
   if (action === "list") {
-    if (!settings.typebot_workspace_id) {
-      return json(res, { error: "Workspace ID do Typebot não configurado." }, 400);
-    }
-    const r = await fetch(
-      `${baseUrl}/api/v1/typebots?workspaceId=${encodeURIComponent(settings.typebot_workspace_id)}`,
-      { headers: { Authorization: `Bearer ${settings.typebot_api_token}`, Accept: "application/json" } }
-    );
-    const data = await r.json();
-    return json(res, data, r.status);
+    if (!settings.typebot_workspace_id) return json(res, { error: "Workspace ID do Typebot não configurado." }, 400);
+    const r = await fetch(`${baseUrl}/api/v1/typebots?workspaceId=${encodeURIComponent(settings.typebot_workspace_id)}`, {
+      headers: { Authorization: `Bearer ${settings.typebot_api_token}`, Accept: "application/json" },
+    });
+    return json(res, await r.json(), r.status);
   }
 
   if (action === "get" && typebotId) {
-    const r = await fetch(
-      `${baseUrl}/api/v1/typebots/${encodeURIComponent(typebotId)}`,
-      { headers: { Authorization: `Bearer ${settings.typebot_api_token}`, Accept: "application/json" } }
-    );
-    const data = await r.json();
-    return json(res, data, r.status);
+    const r = await fetch(`${baseUrl}/api/v1/typebots/${encodeURIComponent(typebotId)}`, {
+      headers: { Authorization: `Bearer ${settings.typebot_api_token}`, Accept: "application/json" },
+    });
+    return json(res, await r.json(), r.status);
   }
 
   json(res, { error: "Ação inválida. Use 'list' ou 'get'." }, 400);
@@ -263,8 +239,7 @@ async function handleTypebotProxy(req, res) {
 // ── Route: /rotate-preview-images ─────────────────────────
 async function handleRotateImages(req, res) {
   const { rows: images } = await pool.query(
-    `SELECT id, funnel_id, data_url, position
-     FROM funnel_preview_images ORDER BY position ASC`
+    `SELECT id, funnel_id, data_url, position FROM funnel_preview_images ORDER BY position ASC`
   );
 
   if (!images.length) return json(res, { message: "No preview images to rotate" });
@@ -281,11 +256,7 @@ async function handleRotateImages(req, res) {
   for (const [funnelId, funnelImages] of Object.entries(byFunnel)) {
     if (funnelImages.length <= 1) continue;
     const idx = currentHour % funnelImages.length;
-    const activeImage = funnelImages[idx];
-    await pool.query(
-      `UPDATE funnels SET preview_image = $1 WHERE id = $2`,
-      [activeImage.data_url, funnelId]
-    );
+    await pool.query(`UPDATE funnels SET preview_image = $1 WHERE id = $2`, [funnelImages[idx].data_url, funnelId]);
     updated++;
   }
 
@@ -294,7 +265,6 @@ async function handleRotateImages(req, res) {
 
 // ── Router ────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
-  // CORS preflight
   if (req.method === "OPTIONS") {
     res.writeHead(204, corsHeaders);
     return res.end();
@@ -316,22 +286,10 @@ const server = http.createServer(async (req, res) => {
       return await handlePreviewImage(req, res, slug);
     }
 
-    if (path === "/openai-proxy" && req.method === "POST") {
-      return await handleOpenaiProxy(req, res);
-    }
-
-    if (path === "/typebot-proxy" && req.method === "POST") {
-      return await handleTypebotProxy(req, res);
-    }
-
-    if (path === "/rotate-preview-images" && req.method === "POST") {
-      return await handleRotateImages(req, res);
-    }
-
-    // Health check
-    if (path === "/health") {
-      return json(res, { status: "ok", timestamp: new Date().toISOString() });
-    }
+    if (path === "/openai-proxy" && req.method === "POST") return await handleOpenaiProxy(req, res);
+    if (path === "/typebot-proxy" && req.method === "POST") return await handleTypebotProxy(req, res);
+    if (path === "/rotate-preview-images" && req.method === "POST") return await handleRotateImages(req, res);
+    if (path === "/health") return json(res, { status: "ok", timestamp: new Date().toISOString() });
 
     json(res, { error: "Not found" }, 404);
   } catch (err) {
@@ -342,4 +300,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`✅ API server running on http://127.0.0.1:${PORT}`);
+  console.log(`   Public domain:    https://${PUBLIC_DOMAIN}`);
+  console.log(`   Dashboard domain: https://${DASHBOARD_DOMAIN}`);
 });

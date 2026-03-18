@@ -6,7 +6,9 @@ Instale a aplicação completa na sua VPS com um único comando.
 
 - **Ubuntu 22.04+** ou Debian 12+ (x86_64 ou ARM64)
 - **1 GB RAM** mínimo (2 GB recomendado)
-- **Domínio** com DNS apontando para o IP da VPS (registros A para `@` e `www`)
+- **2 domínios** com DNS apontando para o IP da VPS:
+  - **Domínio público** (ex: `meulink.com.br`) — URLs de compartilhamento com preview
+  - **Domínio do dashboard** (ex: `admin.meusite.com.br`) — painel admin + API
 - **Portas 80 e 443** abertas no firewall
 
 ## Instalação
@@ -20,70 +22,57 @@ cd /tmp/funnel-app
 sudo bash self-host/install.sh
 ```
 
-O script pedirá interativamente:
+O script pedirá:
 
 | Campo | Exemplo |
 |-------|---------|
-| Domínio | `meusite.com.br` |
+| Domínio público | `meulink.com.br` |
+| Domínio dashboard | `admin.meusite.com.br` |
 | Email admin | `admin@email.com` |
 | Senha admin | `SuaSenhaForte123` |
 | Email SSL | `ssl@email.com` |
 
-Tudo mais é automático.
-
-## O que é instalado
-
-- **PostgreSQL 16** — banco de dados
-- **PostgREST** — API REST compatível com SDK Supabase
-- **GoTrue** — autenticação compatível com SDK Supabase
-- **Node.js 20** — API server customizada
-- **Nginx** — reverse proxy com SSL automático
-- **PM2** — gerenciador de processos
-- **Certbot** — SSL Let's Encrypt automático
-
 ## Arquitetura
 
 ```
-Internet → Nginx (SSL)
-              │
-              ├─ /f/:slug (crawler) → API server → HTML com OG tags
-              ├─ /f/:slug (humano)  → SPA React
-              ├─ /api/*             → API server
-              ├─ /rest/v1/*         → PostgREST
-              ├─ /auth/v1/*         → GoTrue
-              └─ /*                 → SPA React
+Internet
+   │
+   ├── meulink.com.br (domínio público)
+   │     ├── /meu-slug (crawler) → API → HTML com OG tags + preview
+   │     ├── /meu-slug (humano)  → redirect → dashboard/f/meu-slug
+   │     └── /api/preview-image  → imagem binária
+   │
+   └── admin.meusite.com.br (dashboard)
+         ├── /            → SPA React (painel admin)
+         ├── /f/:slug     → SPA React (renderização do funil)
+         ├── /login       → SPA React (tela de login)
+         ├── /api/*       → API server
+         ├── /rest/v1/*   → PostgREST
+         └── /auth/v1/*   → GoTrue
 ```
 
-### Preview social limpo
+### Como funciona o preview social
 
-Quando alguém compartilha `https://meusite.com.br/f/meu-funil` no WhatsApp, Facebook, Twitter etc., o Nginx detecta o User-Agent do crawler e retorna HTML com OG tags (título, descrição, imagem). Para humanos, serve o SPA normalmente.
+Quando alguém compartilha `https://meulink.com.br/meu-funil` no WhatsApp:
 
-**Resultado**: URLs limpas com preview funcional, sem URLs estranhas de edge functions.
+1. **Crawler** (WhatsApp bot) acessa a URL → Nginx detecta o User-Agent → proxy para API → retorna HTML com OG tags (título, descrição, imagem)
+2. **Humano** clica no link → Nginx redireciona para `https://admin.meusite.com.br/f/meu-funil` → SPA renderiza o funil
+
+**Resultado**: URLs limpas (`dominio.com/slug`) com preview funcional em todas as redes sociais.
 
 ## Gerenciamento
 
 ```bash
-# Ver status dos serviços
-pm2 status
-
-# Ver logs em tempo real
-pm2 logs
-
-# Reiniciar tudo
-pm2 restart all
-
-# Reiniciar serviço específico
-pm2 restart api-server
-
-# Renovar SSL (automático via cron do Certbot)
-certbot renew
+pm2 status          # Ver status dos serviços
+pm2 logs            # Logs em tempo real
+pm2 restart all     # Reiniciar tudo
+certbot renew       # Renovar SSL (automático via cron)
 ```
 
 ## Atualização
 
 ```bash
-cd /tmp/funnel-app
-git pull
+cd /tmp/funnel-app && git pull
 
 # Rebuild frontend
 npm ci && npm run build
@@ -93,39 +82,8 @@ cp -r dist /opt/funnel-app/dist
 cp self-host/api-server.js /opt/funnel-app/
 pm2 restart api-server
 
-# Rodar novas migrations (se houver)
+# Novas migrations
 for f in supabase/migrations/*.sql; do
   sudo -u postgres psql -d funnel_app -f "$f" 2>/dev/null
 done
-```
-
-## Estrutura de arquivos na VPS
-
-```
-/opt/funnel-app/
-├── .env                  # Variáveis de ambiente
-├── api-server.js         # API (preview, proxy OpenAI/Typebot)
-├── ecosystem.config.js   # Config PM2
-├── postgrest.conf        # Config PostgREST
-├── dist/                 # Frontend buildado
-└── node_modules/         # Dependências Node
-```
-
-## Resolução de problemas
-
-### SSL não funciona
-Verifique se o DNS do domínio aponta para o IP da VPS:
-```bash
-dig +short meusite.com.br
-```
-Depois rode: `sudo certbot --nginx -d meusite.com.br -d www.meusite.com.br`
-
-### Preview não aparece no WhatsApp
-Teste com: `curl -A "WhatsApp" https://meusite.com.br/f/slug`
-Deve retornar HTML com tags `og:title`, `og:image` etc.
-
-### Erro de conexão com banco
-```bash
-sudo -u postgres psql -d funnel_app -c "SELECT 1;"
-pm2 restart postgrest
 ```

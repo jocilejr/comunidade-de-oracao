@@ -3,8 +3,7 @@ set -euo pipefail
 
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  Instalador Self-Host — Funil App                            ║
-# ║  Instala: PostgreSQL 16, PostgREST, GoTrue, Node.js 20,     ║
-# ║           Nginx + SSL, PM2, API Server                       ║
+# ║  Dois domínios: público (links) + dashboard (admin/API)      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 APP_DIR="/opt/funnel-app"
@@ -22,20 +21,23 @@ err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 ask()  { echo -en "${CYAN}[?]${NC} $1: "; }
 
 # ── Verificar root ────────────────────────────────────────
-if [ "$EUID" -ne 0 ]; then
-  err "Execute como root: sudo bash install.sh"
-fi
+[ "$EUID" -ne 0 ] && err "Execute como root: sudo bash install.sh"
 
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║       Instalador Self-Host — Funil App           ║${NC}"
+echo -e "${CYAN}║     Dois domínios: público + dashboard           ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
 
 # ── Coletar informações ──────────────────────────────────
-ask "Domínio (ex: meusite.com.br)"
-read -r DOMAIN
-[ -z "$DOMAIN" ] && err "Domínio obrigatório"
+ask "Domínio PÚBLICO (links de compartilhamento, ex: meulink.com.br)"
+read -r PUBLIC_DOMAIN
+[ -z "$PUBLIC_DOMAIN" ] && err "Domínio público obrigatório"
+
+ask "Domínio do DASHBOARD/API (painel admin, ex: admin.meusite.com.br)"
+read -r DASHBOARD_DOMAIN
+[ -z "$DASHBOARD_DOMAIN" ] && err "Domínio do dashboard obrigatório"
 
 ask "Email do administrador"
 read -r ADMIN_EMAIL
@@ -81,17 +83,10 @@ if ! command -v psql &>/dev/null; then
 fi
 log "PostgreSQL $(psql --version | head -1)"
 
-# Nginx
-apt-get install -y -qq nginx
-log "Nginx instalado"
-
-# Certbot
-apt-get install -y -qq certbot python3-certbot-nginx
-log "Certbot instalado"
-
-# PM2
+# Nginx + Certbot + PM2
+apt-get install -y -qq nginx certbot python3-certbot-nginx uuid-runtime
 npm install -g pm2 2>/dev/null || true
-log "PM2 instalado"
+log "Nginx, Certbot, PM2 instalados"
 
 # ══════════════════════════════════════════════════════════
 # 2. POSTGRESQL — BANCO E USUARIO
@@ -104,26 +99,17 @@ sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='funnel_user'" |
 sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='funnel_app'" | grep -q 1 || \
   sudo -u postgres psql -c "CREATE DATABASE funnel_app OWNER funnel_user;"
 
-# Criar roles anon e authenticated (compatível com PostgREST/GoTrue)
 sudo -u postgres psql -d funnel_app -c "
 DO \$\$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-    CREATE ROLE anon NOLOGIN;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-    CREATE ROLE authenticated NOLOGIN;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-    CREATE ROLE service_role NOLOGIN;
-  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
 END
 \$\$;
-
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT anon, authenticated, service_role TO funnel_user;
 "
-
 log "Banco de dados configurado"
 
 # ══════════════════════════════════════════════════════════
@@ -131,11 +117,8 @@ log "Banco de dados configurado"
 # ══════════════════════════════════════════════════════════
 log "Executando migrations..."
 
-# Criar schema auth simulado para compatibilidade com as migrations
 sudo -u postgres psql -d funnel_app -c "
 CREATE SCHEMA IF NOT EXISTS auth;
-
--- Tabela auth.users simplificada (GoTrue cuida do real)
 CREATE TABLE IF NOT EXISTS auth.users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT UNIQUE,
@@ -143,30 +126,22 @@ CREATE TABLE IF NOT EXISTS auth.users (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
-
--- Função auth.uid() para compatibilidade com RLS
 CREATE OR REPLACE FUNCTION auth.uid()
-RETURNS UUID
-LANGUAGE sql
-STABLE
+RETURNS UUID LANGUAGE sql STABLE
 AS \$\$ SELECT NULLIF(current_setting('request.jwt.claims', true)::json->>'sub', '')::uuid \$\$;
-
 GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role, funnel_user;
 GRANT SELECT ON auth.users TO anon, authenticated, service_role, funnel_user;
 "
 
-# Executar cada migration na ordem
 for migration in "$REPO_DIR"/supabase/migrations/*.sql; do
   if [ -f "$migration" ]; then
     filename=$(basename "$migration")
-    # Pular extensões que não existem em PostgreSQL padrão (pg_cron, pg_net)
     FILTERED=$(sed '/pg_cron/d; /pg_net/d' "$migration")
     echo "$FILTERED" | sudo -u postgres psql -d funnel_app -v ON_ERROR_STOP=0 2>/dev/null || true
     log "Migration: $filename"
   fi
 done
 
-# Conceder permissões nas tabelas criadas
 sudo -u postgres psql -d funnel_app -c "
 GRANT ALL ON ALL TABLES IN SCHEMA public TO funnel_user, authenticated, service_role;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon;
@@ -175,7 +150,6 @@ GRANT UPDATE ON public.funnel_sessions TO anon;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO funnel_user, anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO funnel_user;
 "
-
 log "Migrations executadas"
 
 # ══════════════════════════════════════════════════════════
@@ -183,31 +157,20 @@ log "Migrations executadas"
 # ══════════════════════════════════════════════════════════
 log "Criando usuário administrador..."
 
-ADMIN_ID=$(uuidgen)
-# Hash bcrypt da senha (usando Node.js)
-ADMIN_HASH=$(node -e "
-const crypto = require('crypto');
-// bcrypt-compatible hash via Node
-const bcrypt = require('bcrypt' + 'js');
-if (typeof bcrypt === 'undefined') {
-  // Fallback: install bcryptjs
-  process.exit(1);
-}
-bcrypt.hash('${ADMIN_PASS}', 10).then(h => console.log(h));
-" 2>/dev/null || echo "")
+# Instalar bcryptjs localmente no APP_DIR
+mkdir -p "$APP_DIR"
+cd "$APP_DIR"
+npm init -y 2>/dev/null || true
+npm install bcryptjs pg 2>/dev/null
 
-# Instalar bcryptjs se necessário
-if [ -z "$ADMIN_HASH" ]; then
-  npm install -g bcryptjs 2>/dev/null
-  ADMIN_HASH=$(node -e "const b=require('bcryptjs');b.hash('${ADMIN_PASS}',10).then(h=>console.log(h))")
-fi
+ADMIN_ID=$(uuidgen)
+ADMIN_HASH=$(node -e "const b=require('$APP_DIR/node_modules/bcryptjs');b.hash(process.argv[1],10).then(h=>console.log(h))" "$ADMIN_PASS")
 
 sudo -u postgres psql -d funnel_app -c "
 INSERT INTO auth.users (id, email, encrypted_password)
 VALUES ('${ADMIN_ID}', '${ADMIN_EMAIL}', '${ADMIN_HASH}')
 ON CONFLICT (email) DO UPDATE SET encrypted_password = EXCLUDED.encrypted_password;
 "
-
 log "Admin criado: ${ADMIN_EMAIL}"
 
 # ══════════════════════════════════════════════════════════
@@ -227,7 +190,6 @@ fi
 log "PostgREST instalado"
 
 log "Instalando GoTrue..."
-
 GOTRUE_VERSION="v2.158.1"
 if [ ! -f /usr/local/bin/gotrue ]; then
   if [ "$ARCH" = "amd64" ]; then
@@ -235,9 +197,8 @@ if [ ! -f /usr/local/bin/gotrue ]; then
   else
     GOTRUE_URL="https://github.com/supabase/auth/releases/download/${GOTRUE_VERSION}/auth-${GOTRUE_VERSION}-aarch64-unknown-linux-gnu.tar.gz"
   fi
-  curl -fsSL "$GOTRUE_URL" | tar xzf - -C /usr/local/bin/ 2>/dev/null || {
-    warn "GoTrue binário não encontrado para esta arquitetura. Auth será via API server."
-  }
+  curl -fsSL "$GOTRUE_URL" | tar xzf - -C /usr/local/bin/ 2>/dev/null || \
+    warn "GoTrue binário não encontrado. Auth será via API server."
   [ -f /usr/local/bin/gotrue ] && chmod +x /usr/local/bin/gotrue
 fi
 
@@ -246,20 +207,13 @@ fi
 # ══════════════════════════════════════════════════════════
 log "Configurando aplicação..."
 
-mkdir -p "$APP_DIR"
-
-# Copiar API server
 cp "$REPO_DIR/self-host/api-server.js" "$APP_DIR/"
 cp "$REPO_DIR/self-host/ecosystem.config.js" "$APP_DIR/"
 
-# Instalar dependências do API server
-cd "$APP_DIR"
-npm init -y 2>/dev/null
-npm install pg 2>/dev/null
-
-# Criar arquivo .env
+# Criar .env
 cat > "$APP_DIR/.env" <<ENVEOF
-DOMAIN=${DOMAIN}
+PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
+DASHBOARD_DOMAIN=${DASHBOARD_DOMAIN}
 DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_NAME=funnel_app
@@ -276,7 +230,7 @@ GOTRUE_DB_DATABASE_URL=postgres://funnel_user:${DB_PASS}@127.0.0.1:5432/funnel_a
 GOTRUE_JWT_SECRET=${JWT_SECRET}
 GOTRUE_JWT_EXP=3600
 GOTRUE_JWT_AUD=authenticated
-GOTRUE_SITE_URL=https://${DOMAIN}
+GOTRUE_SITE_URL=https://${DASHBOARD_DOMAIN}
 GOTRUE_API_HOST=0.0.0.0
 GOTRUE_PORT=9999
 GOTRUE_MAILER_AUTOCONFIRM=true
@@ -301,18 +255,15 @@ log "Buildando frontend..."
 cd "$REPO_DIR"
 npm ci 2>/dev/null || npm install 2>/dev/null
 
-# Criar .env de build
 cat > "$REPO_DIR/.env.local" <<BUILDENV
-VITE_SUPABASE_URL=https://${DOMAIN}
+VITE_SUPABASE_URL=https://${DASHBOARD_DOMAIN}
 VITE_SUPABASE_PUBLISHABLE_KEY=${ANON_KEY}
 VITE_SUPABASE_PROJECT_ID=self-hosted
+VITE_PUBLIC_DOMAIN=https://${PUBLIC_DOMAIN}
 BUILDENV
 
 npm run build
-
-# Copiar dist
 cp -r "$REPO_DIR/dist" "$APP_DIR/dist"
-
 log "Frontend buildado e copiado"
 
 # ══════════════════════════════════════════════════════════
@@ -320,11 +271,11 @@ log "Frontend buildado e copiado"
 # ══════════════════════════════════════════════════════════
 log "Configurando Nginx..."
 
-# Primeiro, config HTTP only para Certbot
+# Config HTTP temporária para Certbot
 cat > /etc/nginx/sites-available/funnel-app <<NGINX_TEMP
 server {
     listen 80;
-    server_name ${DOMAIN} www.${DOMAIN};
+    server_name ${PUBLIC_DOMAIN} www.${PUBLIC_DOMAIN} ${DASHBOARD_DOMAIN};
     root ${APP_DIR}/dist;
     index index.html;
     location / { try_files \$uri \$uri/ /index.html; }
@@ -335,17 +286,20 @@ ln -sf /etc/nginx/sites-available/funnel-app /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
-log "Obtendo certificado SSL..."
-certbot --nginx -d "${DOMAIN}" -d "www.${DOMAIN}" --email "${SSL_EMAIL}" --agree-tos --non-interactive --redirect || {
-  warn "Certbot falhou. Verifique se o DNS do domínio aponta para este servidor."
-  warn "Após configurar o DNS, execute: certbot --nginx -d ${DOMAIN} -d www.${DOMAIN}"
+log "Obtendo certificados SSL..."
+certbot --nginx -d "${PUBLIC_DOMAIN}" -d "www.${PUBLIC_DOMAIN}" -d "${DASHBOARD_DOMAIN}" \
+  --email "${SSL_EMAIL}" --agree-tos --non-interactive --redirect || {
+  warn "Certbot falhou. Verifique se o DNS dos domínios aponta para este servidor."
+  warn "Após configurar o DNS, execute:"
+  warn "  certbot --nginx -d ${PUBLIC_DOMAIN} -d www.${PUBLIC_DOMAIN} -d ${DASHBOARD_DOMAIN}"
 }
 
-# Agora aplicar config completa com proxy
-sed "s/__DOMAIN__/${DOMAIN}/g" "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
+# Aplicar config completa com dois domínios
+sed -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
+    -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
+    "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
 
 nginx -t && systemctl reload nginx
-
 log "Nginx configurado com SSL"
 
 # ══════════════════════════════════════════════════════════
@@ -354,25 +308,19 @@ log "Nginx configurado com SSL"
 log "Iniciando serviços..."
 
 cd "$APP_DIR"
-
-# Carregar variáveis de ambiente
 set -a; source "$APP_DIR/.env"; set +a
 
 pm2 start ecosystem.config.js
 pm2 save
 pm2 startup systemd -u root --hp /root 2>/dev/null || true
-
 log "Serviços iniciados"
 
 # ══════════════════════════════════════════════════════════
 # 10. CRON PARA ROTAÇÃO DE IMAGENS
 # ══════════════════════════════════════════════════════════
-log "Configurando cron de rotação de imagens..."
-
 CRON_CMD="0 * * * * curl -s -X POST http://127.0.0.1:4000/rotate-preview-images > /dev/null 2>&1"
 (crontab -l 2>/dev/null | grep -v "rotate-preview-images"; echo "$CRON_CMD") | crontab -
-
-log "Cron configurado (a cada hora)"
+log "Cron de rotação configurado (a cada hora)"
 
 # ══════════════════════════════════════════════════════════
 # PRONTO!
@@ -382,16 +330,14 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║          ✅ Instalação concluída!                ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  Dashboard:     ${CYAN}https://${DOMAIN}${NC}"
-echo -e "  Login:         ${CYAN}https://${DOMAIN}/login${NC}"
-echo -e "  Admin email:   ${CYAN}${ADMIN_EMAIL}${NC}"
+echo -e "  ${CYAN}Domínio público:${NC}     https://${PUBLIC_DOMAIN}"
+echo -e "  ${CYAN}Dashboard:${NC}           https://${DASHBOARD_DOMAIN}"
+echo -e "  ${CYAN}Login:${NC}               https://${DASHBOARD_DOMAIN}/login"
+echo -e "  ${CYAN}Admin email:${NC}         ${ADMIN_EMAIL}"
 echo ""
-echo -e "  Links de funil: ${CYAN}https://${DOMAIN}/f/seu-slug${NC}"
+echo -e "  ${CYAN}Links de funil:${NC}      https://${PUBLIC_DOMAIN}/meu-slug"
 echo -e "  (Preview social funciona automaticamente!)"
 echo ""
-echo -e "  Serviços:      ${CYAN}pm2 status${NC}"
-echo -e "  Logs:          ${CYAN}pm2 logs${NC}"
-echo -e "  Reiniciar:     ${CYAN}pm2 restart all${NC}"
-echo ""
-echo -e "  Dados em:      ${CYAN}${APP_DIR}${NC}"
+echo -e "  ${CYAN}Serviços:${NC}  pm2 status | pm2 logs | pm2 restart all"
+echo -e "  ${CYAN}Dados em:${NC}  ${APP_DIR}"
 echo ""
