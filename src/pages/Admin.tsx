@@ -634,11 +634,11 @@ const Admin = () => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
-                    {gallery.map((url, i) => (
-                      <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-border hover:border-primary/30 transition-colors">
-                        <img src={url} alt={`Avatar ${i + 1}`} className="w-full h-full object-cover" />
+                    {gallery.map((item, i) => (
+                      <div key={item.id} className="relative group aspect-square rounded-lg overflow-hidden border border-border hover:border-primary/30 transition-colors">
+                        <img src={item.dataUrl} alt={`Avatar ${i + 1}`} className="w-full h-full object-cover" />
                         <button
-                          onClick={() => handleGalleryRemove(url)}
+                          onClick={() => handleGalleryRemove(item.id, item.dataUrl)}
                           className="absolute top-1 right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X className="w-2.5 h-2.5" />
