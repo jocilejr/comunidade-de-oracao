@@ -205,8 +205,34 @@ const Admin = () => {
     setGallery(updated);
     if (editAvatar === url) setEditAvatar('');
   };
+  const handlePreviewImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !uploadingPreviewSlug) return;
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Erro', description: 'Selecione uma imagem válida.', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: 'Erro', description: 'Imagem deve ter no máximo 2MB.', variant: 'destructive' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      const success = await updateFunnelPreviewImage(uploadingPreviewSlug, dataUrl);
+      if (success) {
+        await refresh();
+        toast({ title: 'Imagem de preview salva!' });
+      } else {
+        toast({ title: 'Erro', description: 'Não foi possível salvar a imagem.', variant: 'destructive' });
+      }
+      setUploadingPreviewSlug(null);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
-  // Preview mode — mobile frame
+
   if (previewFunnel) {
     const pf = previewFunnel;
     return (
