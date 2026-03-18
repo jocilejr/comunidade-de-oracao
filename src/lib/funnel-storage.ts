@@ -140,13 +140,18 @@ export async function updateFunnelSlug(oldSlug: string, newSlug: string): Promis
   return !error;
 }
 
-export async function updateFunnelProfile(slug: string, botName?: string, botAvatar?: string): Promise<boolean> {
+export async function updateFunnelProfile(slug: string, botName?: string, botAvatar?: string, pageTitle?: string, pageDescription?: string): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
   const { error } = await supabase
     .from('funnels')
-    .update({ bot_name: botName || '', bot_avatar: botAvatar || '' })
+    .update({
+      bot_name: botName || '',
+      bot_avatar: botAvatar || '',
+      page_title: pageTitle || '',
+      page_description: pageDescription || '',
+    })
     .eq('user_id', user.id)
     .eq('slug', slug);
 
