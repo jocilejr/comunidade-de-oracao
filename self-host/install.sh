@@ -290,6 +290,7 @@ server {
     location /.well-known/acme-challenge/ {
         root ${ACME_ROOT};
         allow all;
+        try_files \$uri =404;
     }
 
     # Temporário: servir SPA até SSL ser configurado
