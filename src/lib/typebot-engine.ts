@@ -299,8 +299,15 @@ export class TypebotEngine {
 
       // Bubble blocks — collect messages
       if (this.isBubbleBlock(blockType)) {
-        const msg = this.blockToMessage(block);
-        if (msg) messages.push(msg);
+          const msg = this.blockToMessage(block);
+          if (msg) {
+            messages.push(msg);
+            // Track bot text messages in conversation history
+            if (msg.content && !msg.mediaType) {
+              const plainText = msg.content.replace(/<[^>]*>/g, '').trim();
+              if (plainText) this.pushHistory('assistant', plainText);
+            }
+          }
         this.processedBlocks++;
         continue;
       }
