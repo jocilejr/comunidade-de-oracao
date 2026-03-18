@@ -1,0 +1,1 @@
+ALTER TABLE public.funnels ADD COLUMN page_title text, ADD COLUMN page_description text;

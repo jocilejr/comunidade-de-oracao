@@ -125,6 +125,8 @@ export type Database = {
           flow: Json
           id: string
           name: string
+          page_description: string | null
+          page_title: string | null
           preview_image: string | null
           slug: string
           updated_at: string
@@ -137,6 +139,8 @@ export type Database = {
           flow: Json
           id?: string
           name: string
+          page_description?: string | null
+          page_title?: string | null
           preview_image?: string | null
           slug: string
           updated_at?: string
@@ -149,6 +153,8 @@ export type Database = {
           flow?: Json
           id?: string
           name?: string
+          page_description?: string | null
+          page_title?: string | null
           preview_image?: string | null
           slug?: string
           updated_at?: string
