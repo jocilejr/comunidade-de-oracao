@@ -279,6 +279,7 @@ export class TypebotEngine {
     }
 
     this.pushHistory('user', value);
+    this.logEvent('user_input', block.id, value, options?.variableId ? { variableId: options.variableId } : {});
 
     this.processedBlocks++;
 
