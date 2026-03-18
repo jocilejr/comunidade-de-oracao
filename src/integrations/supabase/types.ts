@@ -203,6 +203,7 @@ export type Database = {
           id: string
           openai_api_key: string | null
           typebot_api_token: string | null
+          typebot_base_url: string | null
           typebot_workspace_id: string | null
           updated_at: string
           user_id: string
@@ -212,6 +213,7 @@ export type Database = {
           id?: string
           openai_api_key?: string | null
           typebot_api_token?: string | null
+          typebot_base_url?: string | null
           typebot_workspace_id?: string | null
           updated_at?: string
           user_id: string
@@ -221,6 +223,7 @@ export type Database = {
           id?: string
           openai_api_key?: string | null
           typebot_api_token?: string | null
+          typebot_base_url?: string | null
           typebot_workspace_id?: string | null
           updated_at?: string
           user_id?: string

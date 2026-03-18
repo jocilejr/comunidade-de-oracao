@@ -346,6 +346,7 @@ export interface UserSettings {
   openai_api_key: string;
   typebot_api_token: string;
   typebot_workspace_id: string;
+  typebot_base_url: string;
 }
 
 export async function getUserSettings(): Promise<UserSettings | null> {
@@ -354,7 +355,7 @@ export async function getUserSettings(): Promise<UserSettings | null> {
 
   const { data, error } = await supabase
     .from('user_settings')
-    .select('openai_api_key, typebot_api_token, typebot_workspace_id')
+    .select('openai_api_key, typebot_api_token, typebot_workspace_id, typebot_base_url')
     .eq('user_id', user.id)
     .maybeSingle();
 
@@ -363,6 +364,7 @@ export async function getUserSettings(): Promise<UserSettings | null> {
     openai_api_key: data.openai_api_key || '',
     typebot_api_token: (data as any).typebot_api_token || '',
     typebot_workspace_id: (data as any).typebot_workspace_id || '',
+    typebot_base_url: (data as any).typebot_base_url || '',
   };
 }
 
@@ -370,6 +372,7 @@ export async function saveUserSettings(settings: {
   openai_api_key?: string;
   typebot_api_token?: string;
   typebot_workspace_id?: string;
+  typebot_base_url?: string;
 }): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
@@ -378,6 +381,7 @@ export async function saveUserSettings(settings: {
   if (settings.openai_api_key !== undefined) payload.openai_api_key = settings.openai_api_key;
   if (settings.typebot_api_token !== undefined) payload.typebot_api_token = settings.typebot_api_token;
   if (settings.typebot_workspace_id !== undefined) payload.typebot_workspace_id = settings.typebot_workspace_id;
+  if (settings.typebot_base_url !== undefined) payload.typebot_base_url = settings.typebot_base_url;
 
   const { error } = await supabase
     .from('user_settings')

@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     // Get user's Typebot credentials
     const { data: settings, error: settingsError } = await supabase
       .from("user_settings")
-      .select("typebot_api_token, typebot_workspace_id")
+      .select("typebot_api_token, typebot_workspace_id, typebot_base_url")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -48,7 +48,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { typebot_api_token, typebot_workspace_id } = settings;
+    const { typebot_api_token, typebot_workspace_id, typebot_base_url } = settings;
+    const baseUrl = (typebot_base_url || "https://typebot.io").replace(/\/+$/, "");
     const body = await req.json();
     const { action, typebotId } = body;
 
@@ -61,7 +62,7 @@ Deno.serve(async (req) => {
       }
 
       const res = await fetch(
-        `https://typebot.io/api/v1/typebots?workspaceId=${encodeURIComponent(typebot_workspace_id)}`,
+        `${baseUrl}/api/v1/typebots?workspaceId=${encodeURIComponent(typebot_workspace_id)}`,
         {
           headers: {
             Authorization: `Bearer ${typebot_api_token}`,
@@ -86,7 +87,7 @@ Deno.serve(async (req) => {
 
     if (action === "get" && typebotId) {
       const res = await fetch(
-        `https://typebot.io/api/v1/typebots/${encodeURIComponent(typebotId)}`,
+        `${baseUrl}/api/v1/typebots/${encodeURIComponent(typebotId)}`,
         {
           headers: {
             Authorization: `Bearer ${typebot_api_token}`,
