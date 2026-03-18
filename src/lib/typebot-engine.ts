@@ -656,7 +656,7 @@ export class TypebotEngine {
         content: this.replaceVariables(m.content || ''),
       }));
 
-      // Build code tools map for local execution, but send ALL tools to OpenAI
+      // Separate code tools (local execution) from API tools (sent to OpenAI)
       const allTools = opts.tools || [];
       const codeToolMap = new Map<string, string>();
       for (const t of allTools) {
@@ -666,30 +666,19 @@ export class TypebotEngine {
           if (name) codeToolMap.set(name, ct.code);
         }
       }
-      // Build tools array for API: strip `code` field, normalize parameters
-      // Auto-detect parameters from code tool source when schema is empty
+      // Only send NON-code tools to OpenAI API — code tools run locally as post-processing
       const apiTools = allTools
+        .filter((t: any) => {
+          const ct = t as any;
+          return ct.code === undefined;
+        })
         .map((t: any) => {
           const name = t.function?.name || t.name;
           if (!name) return null;
           const rawParams = t.function?.parameters || t.parameters;
-          let params: Record<string, any> = (rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams))
+          const params: Record<string, any> = (rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams))
             ? { ...rawParams }
             : { type: 'object', properties: {} };
-
-          // Bug fix #1: Auto-detect parameters used in code tools with empty schemas
-          if (codeToolMap.has(name) && (!params.properties || Object.keys(params.properties).length === 0)) {
-            const code = codeToolMap.get(name) || '';
-            const commonArgs = ['input', 'text', 'message', 'mensagem', 'texto'];
-            const usedArgs = commonArgs.filter(arg => code.includes(arg));
-            if (usedArgs.length > 0) {
-              params = { type: 'object', properties: {} as Record<string, any> };
-              for (const arg of usedArgs) {
-                (params.properties as Record<string, any>)[arg] = { type: 'string', description: `The user's ${arg} to process` };
-              }
-            }
-          }
-
           return {
             type: 'function' as const,
             function: {
@@ -735,53 +724,46 @@ export class TypebotEngine {
       if (!choice) return;
 
       const assistantContent = choice.message?.content || '';
-      const toolCalls = choice.message?.tool_calls;
 
-      // Execute code tools locally if the AI made tool calls matching them
+      // Execute code tools locally as POST-PROCESSING on GPT's text response
+      // Code tools are NOT sent to OpenAI — they process the assistant's reply
       const codeToolResults: Record<string, string> = {};
-      if (toolCalls && codeToolMap.size > 0) {
-        for (const tc of toolCalls) {
-          const fnName = tc.function?.name;
-          const code = codeToolMap.get(fnName);
-          if (code) {
-            try {
-              const args = JSON.parse(tc.function?.arguments || '{}');
-              // Bug fix #2: Fallback — if args.input is missing, inject the last user message
-              if (args.input === undefined || args.input === '') {
-                const lastUserMsg = messages.filter(m => m.role === 'user').pop();
-                args.input = lastUserMsg?.content || '';
+      if (codeToolMap.size > 0) {
+        for (const [fnName, code] of codeToolMap.entries()) {
+          try {
+            const input = assistantContent;
+            const args: Record<string, any> = { input };
+            for (const alias of ['texto', 'text', 'mensagem', 'message']) {
+              if (code.includes(alias)) {
+                args[alias] = input;
               }
-              // Also handle 'texto', 'text', 'mensagem', 'message' similarly
-              for (const argName of ['texto', 'text', 'mensagem', 'message']) {
-                if (args[argName] === undefined && code.includes(argName)) {
-                  const lastUserMsg = messages.filter(m => m.role === 'user').pop();
-                  args[argName] = lastUserMsg?.content || '';
-                }
-              }
-              // Inject tool_call arguments as local variables so code like `input.toLowerCase()` works
-              const argDeclarations = Object.keys(args)
-                .map(k => `var ${k} = args[${JSON.stringify(k)}];`)
-                .join('\n');
-              const fn = new Function('args', argDeclarations + '\n' + code);
-              const result = fn(args);
-              // Serialize objects as JSON instead of "[object Object]"
-              if (result === undefined || result === null) {
-                codeToolResults[fnName] = '';
-              } else if (typeof result === 'object') {
-                codeToolResults[fnName] = JSON.stringify(result);
-              } else {
-                codeToolResults[fnName] = String(result);
-              }
-              console.log(`Code tool "${fnName}" result:`, codeToolResults[fnName]);
-            } catch (e) {
-              console.warn(`Code tool "${fnName}" execution error:`, e);
             }
+            const argDeclarations = Object.keys(args)
+              .map(k => `var ${k} = args[${JSON.stringify(k)}];`)
+              .join('\n');
+            const fn = new Function('args', argDeclarations + '\n' + code);
+            const result = fn(args);
+            if (result === undefined || result === null) {
+              codeToolResults[fnName] = '';
+            } else if (typeof result === 'object') {
+              codeToolResults[fnName] = JSON.stringify(result);
+            } else {
+              codeToolResults[fnName] = String(result);
+            }
+            console.log(`Code tool "${fnName}" executed on GPT response. Result:`, codeToolResults[fnName]);
+          } catch (e) {
+            console.warn(`Code tool "${fnName}" execution error:`, e);
           }
         }
       }
 
+      const toolCalls = choice.message?.tool_calls;
+
       // Map response to variables
       if (opts.responseMapping) {
+        // Get code tool result names for quick lookup
+        const codeToolNames = Object.keys(codeToolResults);
+
         for (let idx = 0; idx < opts.responseMapping.length; idx++) {
           const mapping = opts.responseMapping[idx];
           if (!mapping.variableId) continue;
@@ -789,38 +771,25 @@ export class TypebotEngine {
           const extract = mapping.valueToExtract || '';
 
           if (extract === 'Message content' || extract === 'Message Content' || (extract === '' && idx === 0)) {
-            // First mapping without valueToExtract defaults to message content
             this.setVariable(mapping.variableId, assistantContent);
-          } else if (extract === '' && toolCalls && toolCalls.length > 0) {
-            // Subsequent mappings without valueToExtract: try tool call results
-            const tc = toolCalls[0];
-            const fnName = tc.function?.name;
-            if (codeToolResults[fnName] !== undefined) {
-              // If code tool result is a JSON object with a single field, extract that value
-              let finalValue = codeToolResults[fnName];
-              try {
-                const parsed = JSON.parse(finalValue);
-                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                  const values = Object.values(parsed);
-                  if (values.length === 1) {
-                    finalValue = String(values[0]);
-                  }
+          } else if (extract === '' && idx > 0 && codeToolNames.length > 0) {
+            // Subsequent mapping: use code tool result (post-processing of GPT response)
+            const firstResult = codeToolResults[codeToolNames[0] as string];
+            let finalValue = firstResult || '';
+            try {
+              const parsed = JSON.parse(finalValue);
+              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                const values = Object.values(parsed);
+                if (values.length === 1) {
+                  finalValue = String(values[0]);
                 }
-              } catch { /* use raw string */ }
-              this.setVariable(mapping.variableId, finalValue);
-            } else {
-              try {
-                const args = JSON.parse(tc.function?.arguments || '{}');
-                this.setVariable(mapping.variableId, JSON.stringify(args));
-              } catch {
-                this.setVariable(mapping.variableId, '');
               }
-            }
+            } catch { /* use raw string */ }
+            this.setVariable(mapping.variableId, finalValue);
           } else if (extract === '' && idx > 0) {
-            // Bug fix #3: No tool calls but mapping expects a value — fallback to assistant content
+            // No code tools, no API tool calls — fallback to assistant content
             this.setVariable(mapping.variableId, assistantContent);
           } else if (toolCalls && toolCalls.length > 0) {
-            // Try to extract from tool call arguments by key
             for (const tc of toolCalls) {
               try {
                 const args = JSON.parse(tc.function?.arguments || '{}');
