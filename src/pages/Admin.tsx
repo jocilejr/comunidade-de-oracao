@@ -240,6 +240,45 @@ const Admin = () => {
     e.target.value = '';
   };
 
+  const openPreviewGallery = async (funnel: StoredFunnel) => {
+    setPreviewGalleryDialog(funnel);
+    setLoadingPreviews(true);
+    const imgs = await getFunnelPreviewImages(funnel.id);
+    setPreviewImages(imgs);
+    setLoadingPreviews(false);
+  };
+
+  const handlePreviewGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !previewGalleryDialog) return;
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Erro', description: 'Selecione uma imagem válida.', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: 'Erro', description: 'Imagem deve ter no máximo 2MB.', variant: 'destructive' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      const updated = await addFunnelPreviewImage(previewGalleryDialog.id, dataUrl);
+      setPreviewImages(updated);
+      await refresh();
+      toast({ title: 'Preview adicionado!' });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleRemovePreviewImage = async (imageId: string) => {
+    if (!previewGalleryDialog) return;
+    const updated = await removeFunnelPreviewImage(imageId, previewGalleryDialog.id);
+    setPreviewImages(updated);
+    await refresh();
+    toast({ title: 'Preview removido!' });
+  };
+
 
   if (previewFunnel) {
     const pf = previewFunnel;
