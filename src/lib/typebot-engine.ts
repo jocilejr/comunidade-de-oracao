@@ -630,10 +630,34 @@ export class TypebotEngine {
         content: this.replaceVariables(m.content || ''),
       }));
 
-      // Separate Typebot "code tools" from real OpenAI function tools
+      // Build code tools map for local execution, but send ALL tools to OpenAI
       const allTools = opts.tools || [];
-      const codeTools = allTools.filter((t: any) => t.code !== undefined);
-      const apiTools = allTools.filter((t: any) => t.code === undefined);
+      const codeToolMap = new Map<string, string>();
+      for (const t of allTools) {
+        const ct = t as any;
+        if (ct.code !== undefined) {
+          const name = ct.function?.name || ct.name;
+          if (name) codeToolMap.set(name, ct.code);
+        }
+      }
+      // Build tools array for API: strip `code` field, normalize parameters
+      const apiTools = allTools
+        .map((t: any) => {
+          const name = t.function?.name || t.name;
+          if (!name) return null;
+          const rawParams = t.function?.parameters || t.parameters;
+          return {
+            type: 'function' as const,
+            function: {
+              name,
+              description: t.function?.description || t.description || '',
+              parameters: (rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams))
+                ? rawParams
+                : { type: 'object', properties: {} },
+            },
+          };
+        })
+        .filter(Boolean);
       const tools = apiTools.length > 0 ? apiTools : undefined;
 
       if (!this.ownerUserId) {
