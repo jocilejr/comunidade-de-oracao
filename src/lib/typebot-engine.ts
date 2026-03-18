@@ -724,7 +724,6 @@ export class TypebotEngine {
       if (!choice) return;
 
       const assistantContent = choice.message?.content || '';
-      const toolCalls = choice.message?.tool_calls;
 
       // Execute code tools locally as POST-PROCESSING on GPT's text response
       // Code tools are NOT sent to OpenAI — they process the assistant's reply
@@ -732,10 +731,8 @@ export class TypebotEngine {
       if (codeToolMap.size > 0) {
         for (const [fnName, code] of codeToolMap.entries()) {
           try {
-            // Pass the assistant's text response as `input` to the code tool
             const input = assistantContent;
             const args: Record<string, any> = { input };
-            // Also set common aliases
             for (const alias of ['texto', 'text', 'mensagem', 'message']) {
               if (code.includes(alias)) {
                 args[alias] = input;
@@ -760,7 +757,6 @@ export class TypebotEngine {
         }
       }
 
-      // Also handle API tool calls if any
       const toolCalls = choice.message?.tool_calls;
 
       // Map response to variables
