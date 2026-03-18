@@ -43,6 +43,7 @@ export class TypebotEngine {
   private processedBlocks: number = 0;
   private ownerUserId: string | null = null;
   private pausedContext: { group: TypebotGroup; nextBlockIndex: number } | null = null;
+  private conversationHistory: Array<{ role: 'assistant' | 'user'; content: string }> = [];
 
   constructor(flow: TypebotFlow, options?: { ownerUserId?: string }) {
     this.flow = flow;
@@ -201,12 +202,22 @@ export class TypebotEngine {
     yield* this.processGroup(group, blockIndex);
   }
 
+  private pushHistory(role: 'assistant' | 'user', content: string): void {
+    if (!content.trim()) return;
+    this.conversationHistory.push({ role, content });
+    if (this.conversationHistory.length > 5) {
+      this.conversationHistory.shift();
+    }
+  }
+
   async* continueAfterInput(block: TypebotBlock, value: string): AsyncGenerator<EngineEvent> {
     // Store value in variable if configured
     const options = (block as any).options;
     if (options?.variableId) {
       this.setVariable(options.variableId, value);
     }
+
+    this.pushHistory('user', value);
 
     this.processedBlocks++;
 
@@ -241,6 +252,8 @@ export class TypebotEngine {
     if (options?.variableId) {
       this.setVariable(options.variableId, value);
     }
+
+    this.pushHistory('user', value);
 
     this.processedBlocks++;
 
@@ -286,8 +299,15 @@ export class TypebotEngine {
 
       // Bubble blocks — collect messages
       if (this.isBubbleBlock(blockType)) {
-        const msg = this.blockToMessage(block);
-        if (msg) messages.push(msg);
+          const msg = this.blockToMessage(block);
+          if (msg) {
+            messages.push(msg);
+            // Track bot text messages in conversation history
+            if (msg.content && !msg.mediaType) {
+              const plainText = msg.content.replace(/<[^>]*>/g, '').trim();
+              if (plainText) this.pushHistory('assistant', plainText);
+            }
+          }
         this.processedBlocks++;
         continue;
       }
@@ -651,10 +671,19 @@ export class TypebotEngine {
       }
 
       // Build messages with variable replacement
-      const messages = opts.messages.map(m => ({
+      const rawMessages = opts.messages.map(m => ({
         role: m.role || 'user',
         content: this.replaceVariables(m.content || ''),
       }));
+
+      // Inject conversation history between system prompt and user messages
+      const messages: Array<{ role: string; content: string }> = [];
+      const systemMessages = rawMessages.filter(m => m.role === 'system');
+      const nonSystemMessages = rawMessages.filter(m => m.role !== 'system');
+
+      messages.push(...systemMessages);
+      messages.push(...this.conversationHistory);
+      messages.push(...nonSystemMessages);
 
       // Separate code tools (local execution) from API tools (sent to OpenAI)
       const allTools = opts.tools || [];
