@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 
 const NAV_ITEMS = [
   { id: 'funnels', label: 'Funis', icon: FolderOpen },
+  { id: 'logs', label: 'Logs', icon: ScrollText },
   { id: 'gallery', label: 'Avatares', icon: ImagePlus },
   { id: 'stats', label: 'Estatísticas', icon: BarChart3 },
   { id: 'settings', label: 'Configurações', icon: Settings },
