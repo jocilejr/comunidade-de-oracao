@@ -342,30 +342,46 @@ export function validateTypebotJson(json: unknown): { valid: boolean; flow?: Typ
 
 // ---- User Settings ----
 
-export async function getUserSettings(): Promise<{ openai_api_key: string } | null> {
+export interface UserSettings {
+  openai_api_key: string;
+  typebot_api_token: string;
+  typebot_workspace_id: string;
+}
+
+export async function getUserSettings(): Promise<UserSettings | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
   const { data, error } = await supabase
     .from('user_settings')
-    .select('openai_api_key')
+    .select('openai_api_key, typebot_api_token, typebot_workspace_id')
     .eq('user_id', user.id)
     .maybeSingle();
 
   if (error || !data) return null;
-  return { openai_api_key: data.openai_api_key || '' };
+  return {
+    openai_api_key: data.openai_api_key || '',
+    typebot_api_token: (data as any).typebot_api_token || '',
+    typebot_workspace_id: (data as any).typebot_workspace_id || '',
+  };
 }
 
-export async function saveUserSettings(openaiApiKey: string): Promise<boolean> {
+export async function saveUserSettings(settings: {
+  openai_api_key?: string;
+  typebot_api_token?: string;
+  typebot_workspace_id?: string;
+}): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
+  const payload: Record<string, unknown> = { user_id: user.id };
+  if (settings.openai_api_key !== undefined) payload.openai_api_key = settings.openai_api_key;
+  if (settings.typebot_api_token !== undefined) payload.typebot_api_token = settings.typebot_api_token;
+  if (settings.typebot_workspace_id !== undefined) payload.typebot_workspace_id = settings.typebot_workspace_id;
+
   const { error } = await supabase
     .from('user_settings')
-    .upsert(
-      { user_id: user.id, openai_api_key: openaiApiKey },
-      { onConflict: 'user_id' }
-    );
+    .upsert(payload as any, { onConflict: 'user_id' });
 
   return !error;
 }
