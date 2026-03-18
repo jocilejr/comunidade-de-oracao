@@ -216,22 +216,31 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   // List view
   return (
     <div className="max-w-5xl space-y-4">
-      {/* Filter */}
-      <div className="flex items-center gap-3">
-        <select
-          value={selectedFunnel}
-          onChange={e => setSelectedFunnel(e.target.value)}
-          className="text-xs rounded-lg border border-border bg-card px-3 py-1.5 text-foreground"
-        >
-          <option value="all">Todos os funis</option>
-          {funnels.map(f => (
-            <option key={f.id} value={f.id}>{f.name}</option>
-          ))}
-        </select>
-        <Button variant="outline" size="sm" onClick={loadSessions}>
-          Atualizar
-        </Button>
-      </div>
+      {/* Filter — only show if no default funnel */}
+      {!defaultFunnel && (
+        <div className="flex items-center gap-3">
+          <select
+            value={selectedFunnel}
+            onChange={e => setSelectedFunnel(e.target.value)}
+            className="text-xs rounded-lg border border-border bg-card px-3 py-1.5 text-foreground"
+          >
+            <option value="all">Todos os funis</option>
+            {funnels.map(f => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+          <Button variant="outline" size="sm" onClick={loadSessions}>
+            Atualizar
+          </Button>
+        </div>
+      )}
+      {defaultFunnel && (
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={loadSessions}>
+            Atualizar
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-2">
