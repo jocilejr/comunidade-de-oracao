@@ -107,6 +107,7 @@ export async function saveFunnel(name: string, slug: string, flow: TypebotFlow):
     flow: data.flow as unknown as TypebotFlow,
     botName: data.bot_name || '',
     botAvatar: data.bot_avatar || '',
+    previewImage: data.preview_image || '',
   };
 }
 
