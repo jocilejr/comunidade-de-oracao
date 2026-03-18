@@ -17,16 +17,28 @@ const Funnel = () => {
   useEffect(() => {
     if (!funnel) return;
     if (funnel.pageTitle) document.title = funnel.pageTitle;
-    const meta = document.querySelector('meta[name="description"]');
-    if (funnel.pageDescription) {
-      if (meta) meta.setAttribute('content', funnel.pageDescription);
-      else {
-        const newMeta = document.createElement('meta');
-        newMeta.name = 'description';
-        newMeta.content = funnel.pageDescription;
-        document.head.appendChild(newMeta);
+
+    const setMeta = (selector: string, attr: string, value: string) => {
+      let el = document.querySelector(selector);
+      if (value) {
+        if (!el) {
+          el = document.createElement('meta');
+          const [key, val] = selector.match(/\[(.+?)="(.+?)"\]/)?.slice(1) || [];
+          if (key && val) el.setAttribute(key, val);
+          document.head.appendChild(el);
+        }
+        el.setAttribute(attr, value);
       }
-    }
+    };
+
+    setMeta('meta[name="description"]', 'content', funnel.pageDescription || '');
+    setMeta('meta[property="og:title"]', 'content', funnel.pageTitle || funnel.name || '');
+    setMeta('meta[property="og:description"]', 'content', funnel.pageDescription || '');
+    setMeta('meta[property="og:image"]', 'content', funnel.previewImage || '');
+    setMeta('meta[name="twitter:title"]', 'content', funnel.pageTitle || funnel.name || '');
+    setMeta('meta[name="twitter:description"]', 'content', funnel.pageDescription || '');
+    setMeta('meta[name="twitter:image"]', 'content', funnel.previewImage || '');
+
     return () => { document.title = 'Funil Monitorado — Origem Viva'; };
   }, [funnel]);
 
