@@ -982,15 +982,15 @@ const Admin = () => {
               <div className="space-y-1.5">
                 <Label className="text-[11px] text-muted-foreground">Selecione da galeria</Label>
                 <div className="grid grid-cols-6 gap-1.5 max-h-28 overflow-y-auto">
-                  {gallery.map((url, i) => (
+                  {gallery.map((item, i) => (
                     <button
-                      key={i}
-                      onClick={() => setEditAvatar(url)}
+                      key={item.id}
+                      onClick={() => setEditAvatar(item.dataUrl)}
                       className={`aspect-square rounded-lg overflow-hidden border-2 transition-all ${
-                        editAvatar === url ? 'border-primary ring-1 ring-primary/30' : 'border-border hover:border-primary/30'
+                        editAvatar === item.dataUrl ? 'border-primary ring-1 ring-primary/30' : 'border-border hover:border-primary/30'
                       }`}
                     >
-                      <img src={url} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" />
+                      <img src={item.dataUrl} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>
