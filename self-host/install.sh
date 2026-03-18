@@ -267,15 +267,51 @@ cp -r "$REPO_DIR/dist" "$APP_DIR/dist"
 log "Frontend buildado e copiado"
 
 # ══════════════════════════════════════════════════════════
-# 8. NGINX + SSL
+# 8. VERIFICAR CONFLITOS DE PORTAS
+# ══════════════════════════════════════════════════════════
+log "Verificando portas necessárias..."
+
+for PORT in 3000 4000 9999; do
+  PID=$(lsof -ti :"$PORT" 2>/dev/null || true)
+  if [ -n "$PID" ]; then
+    PROC=$(ps -p "$PID" -o comm= 2>/dev/null || echo "desconhecido")
+    warn "Porta $PORT já está em uso pelo processo '$PROC' (PID $PID)."
+    ask "Deseja continuar mesmo assim? (s/N)"
+    read -r CONFIRM
+    [ "$CONFIRM" != "s" ] && [ "$CONFIRM" != "S" ] && err "Instalação cancelada. Libere a porta $PORT primeiro."
+  fi
+done
+log "Portas disponíveis (ou confirmadas pelo usuário)"
+
+# ══════════════════════════════════════════════════════════
+# 9. NGINX + SSL (não-destrutivo)
 # ══════════════════════════════════════════════════════════
 log "Configurando Nginx..."
 
-# Config HTTP temporária para Certbot
+# Detectar sites existentes e avisar
+EXISTING_SITES=$(ls /etc/nginx/sites-enabled/ 2>/dev/null | grep -v funnel-app || true)
+if [ -n "$EXISTING_SITES" ]; then
+  warn "Sites Nginx existentes detectados (NÃO serão modificados):"
+  for s in $EXISTING_SITES; do echo "       - $s"; done
+fi
+
+# Criar diretório para validação SSL via webroot
+ACME_ROOT="/var/www/acme-challenge"
+mkdir -p "$ACME_ROOT"
+
+# Config HTTP mínima apenas para os domínios da app + ACME challenge
 cat > /etc/nginx/sites-available/funnel-app <<NGINX_TEMP
 server {
     listen 80;
     server_name ${PUBLIC_DOMAIN} www.${PUBLIC_DOMAIN} ${DASHBOARD_DOMAIN};
+
+    # Validação SSL (Let's Encrypt)
+    location /.well-known/acme-challenge/ {
+        root ${ACME_ROOT};
+        allow all;
+    }
+
+    # Temporário: servir SPA até SSL ser configurado
     root ${APP_DIR}/dist;
     index index.html;
     location / { try_files \$uri \$uri/ /index.html; }
@@ -283,42 +319,70 @@ server {
 NGINX_TEMP
 
 ln -sf /etc/nginx/sites-available/funnel-app /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default
-nginx -t && systemctl start nginx
 
+# Validar config antes de recarregar — NÃO derruba conexões de outras apps
+if nginx -t 2>/dev/null; then
+  systemctl reload nginx 2>/dev/null || systemctl start nginx
+  log "Nginx recarregado com sucesso"
+else
+  err "Configuração Nginx inválida! Verifique /etc/nginx/sites-available/funnel-app"
+fi
+
+# Obter certificados via webroot (NÃO modifica configs existentes do Nginx)
 log "Obtendo certificados SSL para domínio público..."
-certbot --nginx -d "${PUBLIC_DOMAIN}" -d "www.${PUBLIC_DOMAIN}" \
-  --email "${SSL_EMAIL}" --agree-tos --non-interactive --redirect || {
+certbot certonly --webroot -w "$ACME_ROOT" \
+  -d "${PUBLIC_DOMAIN}" -d "www.${PUBLIC_DOMAIN}" \
+  --email "${SSL_EMAIL}" --agree-tos --non-interactive || {
   warn "Certbot falhou para ${PUBLIC_DOMAIN}. Verifique se o DNS aponta para este servidor."
-  warn "  certbot --nginx -d ${PUBLIC_DOMAIN} -d www.${PUBLIC_DOMAIN}"
+  warn "  Tente manualmente: certbot certonly --webroot -w ${ACME_ROOT} -d ${PUBLIC_DOMAIN}"
 }
 
 log "Obtendo certificados SSL para dashboard..."
-certbot --nginx -d "${DASHBOARD_DOMAIN}" \
-  --email "${SSL_EMAIL}" --agree-tos --non-interactive --redirect || {
+certbot certonly --webroot -w "$ACME_ROOT" \
+  -d "${DASHBOARD_DOMAIN}" \
+  --email "${SSL_EMAIL}" --agree-tos --non-interactive || {
   warn "Certbot falhou para ${DASHBOARD_DOMAIN}. Verifique se o DNS aponta para este servidor."
-  warn "  certbot --nginx -d ${DASHBOARD_DOMAIN}"
+  warn "  Tente manualmente: certbot certonly --webroot -w ${ACME_ROOT} -d ${DASHBOARD_DOMAIN}"
 }
 
-# Aplicar config completa com dois domínios
-sed -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
-    -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
-    "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
+# Aplicar config completa com dois domínios (apenas se certs existem)
+if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
+   [ -f "/etc/letsencrypt/live/${DASHBOARD_DOMAIN}/fullchain.pem" ]; then
+  sed -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
+      -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
+      "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
 
-nginx -t && systemctl restart nginx
-log "Nginx configurado com SSL"
+  if nginx -t 2>/dev/null; then
+    systemctl reload nginx
+    log "Nginx configurado com SSL"
+  else
+    err "Config final do Nginx inválida! Restaure manualmente."
+  fi
+else
+  warn "Certificados SSL incompletos. Nginx rodando apenas em HTTP."
+  warn "Após configurar DNS, rode: certbot certonly --webroot -w ${ACME_ROOT} -d DOMINIO"
+fi
 
 # ══════════════════════════════════════════════════════════
-# 9. INICIAR SERVIÇOS COM PM2
+# 10. INICIAR SERVIÇOS COM PM2
 # ══════════════════════════════════════════════════════════
 log "Iniciando serviços..."
 
 cd "$APP_DIR"
 set -a; source "$APP_DIR/.env"; set +a
 
+# Parar processos anteriores desta app (se existirem), sem tocar em outros
+pm2 delete funnel-api 2>/dev/null || true
+pm2 delete funnel-postgrest 2>/dev/null || true
+pm2 delete funnel-gotrue 2>/dev/null || true
+
 pm2 start ecosystem.config.js
 pm2 save
-pm2 startup systemd -u root --hp /root 2>/dev/null || true
+
+# Só configurar startup se não houver um já configurado
+if ! pm2 startup systemd -u root --hp /root 2>&1 | grep -q "already"; then
+  pm2 startup systemd -u root --hp /root 2>/dev/null || true
+fi
 log "Serviços iniciados"
 
 # ══════════════════════════════════════════════════════════
