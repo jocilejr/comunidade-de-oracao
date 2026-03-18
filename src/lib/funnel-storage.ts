@@ -270,34 +270,45 @@ export async function removeFunnelPreviewImage(imageId: string, funnelId: string
 
 // ---- Avatar Gallery (Supabase) ----
 
-export async function getAvatarGallery(): Promise<string[]> {
+export interface AvatarGalleryItem {
+  id: string;
+  dataUrl: string;
+}
+
+export async function getAvatarGallery(): Promise<AvatarGalleryItem[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
   const { data, error } = await supabase
     .from('avatar_gallery')
-    .select('data_url')
+    .select('id, data_url')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
-    .limit(20);
+    .limit(50);
 
   if (error || !data) return [];
-  return data.map(r => r.data_url);
+  return data.map(r => ({ id: r.id, dataUrl: r.data_url }));
 }
 
-export async function addToAvatarGallery(dataUrl: string): Promise<string[]> {
+export async function addToAvatarGallery(dataUrl: string): Promise<AvatarGalleryItem[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  await supabase.from('avatar_gallery').insert({ user_id: user.id, data_url: dataUrl });
+  const current = await getAvatarGallery();
+  const alreadyExists = current.some(item => item.dataUrl === dataUrl);
+
+  if (!alreadyExists) {
+    await supabase.from('avatar_gallery').insert({ user_id: user.id, data_url: dataUrl });
+  }
+
   return getAvatarGallery();
 }
 
-export async function removeFromAvatarGallery(dataUrl: string): Promise<string[]> {
+export async function removeFromAvatarGallery(imageId: string): Promise<AvatarGalleryItem[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  await supabase.from('avatar_gallery').delete().eq('user_id', user.id).eq('data_url', dataUrl);
+  await supabase.from('avatar_gallery').delete().eq('user_id', user.id).eq('id', imageId);
   return getAvatarGallery();
 }
 

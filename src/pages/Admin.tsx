@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, FunnelPreviewImage, UserSettings } from '@/lib/funnel-storage';
+import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, FunnelPreviewImage, UserSettings, AvatarGalleryItem } from '@/lib/funnel-storage';
 import { supabase } from '@/integrations/supabase/client';
 import FunnelInspector from '@/components/admin/FunnelInspector';
 import SessionLogs from '@/components/admin/SessionLogs';
@@ -51,7 +51,7 @@ const Admin = () => {
   const [editAvatar, setEditAvatar] = useState('');
   const [editPageTitle, setEditPageTitle] = useState('');
   const [editPageDescription, setEditPageDescription] = useState('');
-  const [gallery, setGallery] = useState<string[]>([]);
+  const [gallery, setGallery] = useState<AvatarGalleryItem[]>([]);
   const [loadingFunnels, setLoadingFunnels] = useState(true);
   const [openaiKey, setOpenaiKey] = useState('');
   const [typebotToken, setTypebotToken] = useState('');
@@ -227,10 +227,12 @@ const Admin = () => {
     e.target.value = '';
   };
 
-  const handleGalleryRemove = async (url: string) => {
-    const updated = await removeFromAvatarGallery(url);
+  const handleGalleryRemove = async (imageId: string, url: string) => {
+    const updated = await removeFromAvatarGallery(imageId);
     setGallery(updated);
-    if (editAvatar === url) setEditAvatar('');
+    if (editAvatar === url && !updated.some(item => item.dataUrl === url)) {
+      setEditAvatar('');
+    }
   };
   const handlePreviewImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -632,11 +634,11 @@ const Admin = () => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
-                    {gallery.map((url, i) => (
-                      <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-border hover:border-primary/30 transition-colors">
-                        <img src={url} alt={`Avatar ${i + 1}`} className="w-full h-full object-cover" />
+                    {gallery.map((item, i) => (
+                      <div key={item.id} className="relative group aspect-square rounded-lg overflow-hidden border border-border hover:border-primary/30 transition-colors">
+                        <img src={item.dataUrl} alt={`Avatar ${i + 1}`} className="w-full h-full object-cover" />
                         <button
-                          onClick={() => handleGalleryRemove(url)}
+                          onClick={() => handleGalleryRemove(item.id, item.dataUrl)}
                           className="absolute top-1 right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X className="w-2.5 h-2.5" />
@@ -980,15 +982,15 @@ const Admin = () => {
               <div className="space-y-1.5">
                 <Label className="text-[11px] text-muted-foreground">Selecione da galeria</Label>
                 <div className="grid grid-cols-6 gap-1.5 max-h-28 overflow-y-auto">
-                  {gallery.map((url, i) => (
+                  {gallery.map((item, i) => (
                     <button
-                      key={i}
-                      onClick={() => setEditAvatar(url)}
+                      key={item.id}
+                      onClick={() => setEditAvatar(item.dataUrl)}
                       className={`aspect-square rounded-lg overflow-hidden border-2 transition-all ${
-                        editAvatar === url ? 'border-primary ring-1 ring-primary/30' : 'border-border hover:border-primary/30'
+                        editAvatar === item.dataUrl ? 'border-primary ring-1 ring-primary/30' : 'border-border hover:border-primary/30'
                       }`}
                     >
-                      <img src={url} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" />
+                      <img src={item.dataUrl} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>
