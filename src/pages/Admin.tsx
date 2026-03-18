@@ -528,7 +528,7 @@ const Admin = () => {
 
             {/* ===== STATS TAB ===== */}
             {activeTab === 'stats' && (
-              <div className="max-w-5xl">
+              <div className="max-w-6xl">
                 <div className="grid grid-cols-3 gap-3 mb-6">
                   {[
                     { label: 'Total de funis', value: funnels.length, icon: FolderOpen },
