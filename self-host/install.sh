@@ -157,11 +157,11 @@ log "Migrations executadas"
 # ══════════════════════════════════════════════════════════
 log "Criando usuário administrador..."
 
-# Instalar bcryptjs localmente no APP_DIR
+# Instalar bcryptjs + jsonwebtoken localmente no APP_DIR
 mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 npm init -y 2>/dev/null || true
-npm install bcryptjs pg 2>/dev/null
+npm install bcryptjs jsonwebtoken pg 2>/dev/null
 
 ADMIN_ID=$(uuidgen)
 ADMIN_HASH=$(node -e "const b=require('$APP_DIR/node_modules/bcryptjs');b.hash(process.argv[1],10).then(h=>console.log(h))" "$ADMIN_PASS")
