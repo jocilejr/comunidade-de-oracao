@@ -512,21 +512,25 @@ export class TypebotEngine {
     return logicalOp === 'AND' ? results.every(Boolean) : results.some(Boolean);
   }
 
+  private normalize(s: string): string {
+    return s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
   private compare(a: string, op: ComparisonOperator, b: string): boolean {
-    const aLower = a.toLowerCase();
-    const bLower = b.toLowerCase();
+    const aN = this.normalize(a);
+    const bN = this.normalize(b);
 
     switch (op) {
-      case 'Equal to': return aLower === bLower;
-      case 'Not equal': return aLower !== bLower;
-      case 'Contains': return aLower.includes(bLower);
-      case 'Does not contain': return !aLower.includes(bLower);
+      case 'Equal to': return aN === bN;
+      case 'Not equal': return aN !== bN;
+      case 'Contains': return aN.includes(bN);
+      case 'Does not contain': return !aN.includes(bN);
       case 'Greater than': return Number(a) > Number(b);
       case 'Less than': return Number(a) < Number(b);
       case 'Is set': return a !== '' && a !== undefined && a !== null;
       case 'Is empty': return a === '' || a === undefined || a === null;
-      case 'Starts with': return aLower.startsWith(bLower);
-      case 'Ends with': return aLower.endsWith(bLower);
+      case 'Starts with': return aN.startsWith(bN);
+      case 'Ends with': return aN.endsWith(bN);
       case 'Matches regex': try { return new RegExp(b).test(a); } catch { return false; }
       case 'Does not match regex': try { return !new RegExp(b).test(a); } catch { return true; }
       default: return false;
@@ -626,10 +630,34 @@ export class TypebotEngine {
         content: this.replaceVariables(m.content || ''),
       }));
 
-      // Separate Typebot "code tools" from real OpenAI function tools
+      // Build code tools map for local execution, but send ALL tools to OpenAI
       const allTools = opts.tools || [];
-      const codeTools = allTools.filter((t: any) => t.code !== undefined);
-      const apiTools = allTools.filter((t: any) => t.code === undefined);
+      const codeToolMap = new Map<string, string>();
+      for (const t of allTools) {
+        const ct = t as any;
+        if (ct.code !== undefined) {
+          const name = ct.function?.name || ct.name;
+          if (name) codeToolMap.set(name, ct.code);
+        }
+      }
+      // Build tools array for API: strip `code` field, normalize parameters
+      const apiTools = allTools
+        .map((t: any) => {
+          const name = t.function?.name || t.name;
+          if (!name) return null;
+          const rawParams = t.function?.parameters || t.parameters;
+          return {
+            type: 'function' as const,
+            function: {
+              name,
+              description: t.function?.description || t.description || '',
+              parameters: (rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams))
+                ? rawParams
+                : { type: 'object', properties: {} },
+            },
+          };
+        })
+        .filter(Boolean);
       const tools = apiTools.length > 0 ? apiTools : undefined;
 
       if (!this.ownerUserId) {
@@ -667,20 +695,19 @@ export class TypebotEngine {
       const assistantContent = choice.message?.content || '';
       const toolCalls = choice.message?.tool_calls;
 
-      // Execute Typebot code tools if the AI made tool calls matching them
+      // Execute code tools locally if the AI made tool calls matching them
       const codeToolResults: Record<string, string> = {};
-      if (toolCalls && codeTools.length > 0) {
+      if (toolCalls && codeToolMap.size > 0) {
         for (const tc of toolCalls) {
           const fnName = tc.function?.name;
-          const codeTool = codeTools.find((ct: any) => (ct.function?.name || ct.name) === fnName);
-          if (codeTool && (codeTool as any).code) {
+          const code = codeToolMap.get(fnName);
+          if (code) {
             try {
               const args = JSON.parse(tc.function?.arguments || '{}');
               // Inject tool_call arguments as local variables so code like `input.toLowerCase()` works
               const argDeclarations = Object.keys(args)
                 .map(k => `var ${k} = args[${JSON.stringify(k)}];`)
                 .join('\n');
-              const code = (codeTool as any).code;
               const fn = new Function('args', argDeclarations + '\n' + code);
               const result = fn(args);
               // Serialize objects as JSON instead of "[object Object]"
@@ -691,6 +718,7 @@ export class TypebotEngine {
               } else {
                 codeToolResults[fnName] = String(result);
               }
+              console.log(`Code tool "${fnName}" result:`, codeToolResults[fnName]);
             } catch (e) {
               console.warn(`Code tool "${fnName}" execution error:`, e);
             }

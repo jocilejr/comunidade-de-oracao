@@ -56,37 +56,33 @@ serve(async (req) => {
     };
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
-      // Normalize tools: Typebot may send tools without the required `function` wrapper
-      // Filter out Typebot "code tools" which have a `code` property — those are for local execution
+      // Normalize all tools to valid OpenAI format (do NOT skip code tools — client handles execution)
       body.tools = tools
         .map((tool: any) => {
-          // Skip Typebot code tools (they have inline JS, not OpenAI functions)
-          if (tool.code !== undefined) return null;
-
           // Already valid OpenAI format
-          if (tool.type === "function" && tool.function) {
-            // Fix parameters: must be an object, not an array
+          if (tool.type === "function" && tool.function?.name) {
             const params = tool.function.parameters;
             if (!params || Array.isArray(params)) {
               tool.function.parameters = { type: "object", properties: {} };
             }
-            return tool;
+            // Strip non-OpenAI fields
+            const { code, ...cleanFn } = tool.function;
+            return { type: "function", function: cleanFn };
           }
-          // Typebot format: { name, description, parameters, ... } without function wrapper
-          if (tool.name || tool.function?.name) {
-            const rawParams = tool.parameters || tool.function?.parameters;
-            return {
-              type: "function",
-              function: {
-                name: tool.name || tool.function?.name,
-                description: tool.description || tool.function?.description || "",
-                parameters: (rawParams && typeof rawParams === "object" && !Array.isArray(rawParams))
-                  ? rawParams
-                  : { type: "object", properties: {} },
-              },
-            };
-          }
-          return null; // skip malformed tools
+          // Typebot format or other: normalize
+          const name = tool.name || tool.function?.name;
+          if (!name) return null;
+          const rawParams = tool.parameters || tool.function?.parameters;
+          return {
+            type: "function",
+            function: {
+              name,
+              description: tool.description || tool.function?.description || "",
+              parameters: (rawParams && typeof rawParams === "object" && !Array.isArray(rawParams))
+                ? rawParams
+                : { type: "object", properties: {} },
+            },
+          };
         })
         .filter(Boolean);
 
