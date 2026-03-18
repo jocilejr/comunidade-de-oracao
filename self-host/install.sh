@@ -361,12 +361,8 @@ if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
       -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
       "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
 
-  if nginx -t 2>/dev/null; then
-    systemctl reload nginx
-    log "Nginx configurado com SSL"
-  else
-    err "Config final do Nginx inválida! Restaure manualmente."
-  fi
+  reload_nginx
+  log "Nginx configurado com SSL"
 else
   warn "Certificados SSL incompletos. Nginx rodando apenas em HTTP."
   warn "Após configurar DNS, rode: certbot certonly --webroot -w ${ACME_ROOT} -d DOMINIO"
