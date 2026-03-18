@@ -328,7 +328,10 @@ reload_nginx() {
   if systemctl is-active --quiet nginx; then
     systemctl reload nginx
   elif pidof nginx > /dev/null 2>&1; then
-    nginx -s reload
+    # Nginx rodando fora do systemd ou com PID file corrompido
+    NGINX_PID=$(pidof -s nginx)
+    echo "$NGINX_PID" > /run/nginx.pid
+    kill -HUP "$NGINX_PID"
   else
     systemctl start nginx
   fi
