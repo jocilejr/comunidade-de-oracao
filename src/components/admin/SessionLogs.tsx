@@ -47,11 +47,11 @@ const EVENT_LABELS: Record<string, string> = {
   end: 'Fim da conversa',
 };
 
-const SessionLogs = ({ funnels }: { funnels: FunnelMeta[] }) => {
+const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaultFunnel?: string }) => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [events, setEvents] = useState<SessionEvent[]>([]);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
-  const [selectedFunnel, setSelectedFunnel] = useState<string>('all');
+  const [selectedFunnel, setSelectedFunnel] = useState<string>(defaultFunnel || 'all');
   const [loading, setLoading] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(false);
 
