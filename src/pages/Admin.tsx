@@ -1056,6 +1056,85 @@ const Admin = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Typebot Import Dialog */}
+      <Dialog open={typebotImportDialog} onOpenChange={open => { if (!open) setTypebotImportDialog(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm">
+              <Download className="w-4 h-4" />
+              Importar do Typebot
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 pt-2">
+            {loadingTypebots ? (
+              <div className="flex flex-col items-center py-8 gap-2">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <p className="text-xs text-muted-foreground">Carregando fluxos...</p>
+              </div>
+            ) : typebotList.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-muted-foreground">Nenhum fluxo encontrado no workspace.</p>
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-80 overflow-y-auto">
+                {typebotList.map(bot => (
+                  <div
+                    key={bot.id}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border hover:border-primary/30 hover:bg-accent/30 transition-all"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">{bot.name}</p>
+                      {bot.createdAt && (
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(bot.createdAt).toLocaleDateString('pt-BR')}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={importingTypebotId === bot.id}
+                      onClick={async () => {
+                        setImportingTypebotId(bot.id);
+                        try {
+                          const { data, error } = await supabase.functions.invoke('typebot-proxy', {
+                            body: { action: 'get', typebotId: bot.id },
+                          });
+                          if (error) throw error;
+                          const flow = data?.typebot || data;
+                          const result = validateTypebotJson(flow);
+                          if (!result.valid || !result.flow) {
+                            toast({ title: 'Erro', description: result.error || 'Fluxo inválido.', variant: 'destructive' });
+                            return;
+                          }
+                          const name = result.flow.name || bot.name;
+                          const slug = slugify(name) || 'funil-' + Date.now();
+                          await saveFunnel(name, slug, result.flow);
+                          await refresh();
+                          toast({ title: 'Importado!', description: `"${name}" disponível em /f/${slug}` });
+                          setTypebotImportDialog(false);
+                        } catch (err: any) {
+                          toast({ title: 'Erro', description: err?.message || 'Falha ao importar.', variant: 'destructive' });
+                        } finally {
+                          setImportingTypebotId(null);
+                        }
+                      }}
+                    >
+                      {importingTypebotId === bot.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
