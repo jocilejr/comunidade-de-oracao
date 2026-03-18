@@ -62,7 +62,11 @@ const Admin = () => {
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
   const previewImageRef = useRef<HTMLInputElement>(null);
+  const previewGalleryRef = useRef<HTMLInputElement>(null);
   const [uploadingPreviewSlug, setUploadingPreviewSlug] = useState<string | null>(null);
+  const [previewGalleryDialog, setPreviewGalleryDialog] = useState<StoredFunnel | null>(null);
+  const [previewImages, setPreviewImages] = useState<FunnelPreviewImage[]>([]);
+  const [loadingPreviews, setLoadingPreviews] = useState(false);
   const { toast } = useToast();
   const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
