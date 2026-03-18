@@ -213,11 +213,22 @@ export class TypebotEngine {
     // Follow outgoing edge
     const edgeId = block.outgoingEdgeId;
     if (edgeId) {
+      this.pausedContext = null;
       yield* this.processFromEdge(edgeId);
     } else {
       const edge = this.findEdgeFromBlock(block.id);
       if (edge) {
+        this.pausedContext = null;
         yield* this.processFromEdge(edge.id);
+      } else if (this.pausedContext) {
+        // Fallback: continue to next block in the same group
+        const { group, nextBlockIndex } = this.pausedContext;
+        this.pausedContext = null;
+        if (nextBlockIndex < group.blocks.length) {
+          yield* this.processGroup(group, nextBlockIndex);
+        } else {
+          yield { type: 'end' };
+        }
       } else {
         yield { type: 'end' };
       }
