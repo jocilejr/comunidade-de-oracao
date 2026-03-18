@@ -316,6 +316,7 @@ export class TypebotEngine {
     }
 
     this.pushHistory('user', value);
+    this.logEvent('choice', block.id, value, { itemId });
 
     this.processedBlocks++;
 
