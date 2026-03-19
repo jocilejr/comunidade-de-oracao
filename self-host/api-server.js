@@ -437,6 +437,66 @@ const server = http.createServer(async (req, res) => {
     if (path === "/rotate-preview-images" && req.method === "POST") return await handleRotateImages(req, res);
     if (path === "/health") return json(res, { status: "ok", timestamp: new Date().toISOString() });
 
+    // ── Static file serving (for public domain SPA) ──────────
+    const DIST_DIR = process.env.DIST_DIR || "/opt/funnel-app/dist";
+    const MIME_TYPES = {
+      ".html": "text/html; charset=utf-8",
+      ".js": "application/javascript",
+      ".css": "text/css",
+      ".json": "application/json",
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".gif": "image/gif",
+      ".svg": "image/svg+xml",
+      ".ico": "image/x-icon",
+      ".woff": "font/woff",
+      ".woff2": "font/woff2",
+      ".ttf": "font/ttf",
+      ".mp3": "audio/mpeg",
+      ".webp": "image/webp",
+    };
+
+    // Serve static assets (/assets/*, /favicon.ico, etc.)
+    if (path.startsWith("/assets/") || path === "/favicon.ico" || path === "/robots.txt" || path.startsWith("/images/") || path.startsWith("/sounds/")) {
+      const filePath = nodePath.join(DIST_DIR, path);
+      const safePath = nodePath.resolve(filePath);
+      if (!safePath.startsWith(nodePath.resolve(DIST_DIR))) return json(res, { error: "Forbidden" }, 403);
+      try {
+        const data = fs.readFileSync(safePath);
+        const ext = nodePath.extname(safePath).toLowerCase();
+        const mime = MIME_TYPES[ext] || "application/octet-stream";
+        res.writeHead(200, { "Content-Type": mime, "Cache-Control": "public, max-age=31536000, immutable" });
+        return res.end(data);
+      } catch {
+        return json(res, { error: "Not found" }, 404);
+      }
+    }
+
+    // ── Public domain catch-all: /{slug} with bot detection ──
+    const BOT_UA = /whatsapp|facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|googlebot|bingbot|yandex|pinterest|snapchat/i;
+    const slugMatch = path.match(/^\/([a-zA-Z0-9_-]+)\/?$/);
+    if (slugMatch && req.method === "GET") {
+      const slug = slugMatch[1];
+      const ua = req.headers["user-agent"] || "";
+
+      if (BOT_UA.test(ua)) {
+        // Crawler: retornar HTML com OG tags
+        return await handleShare(req, res, slug, null);
+      }
+
+      // Humano: servir index.html (SPA client-side routing)
+      try {
+        const indexHtml = fs.readFileSync(nodePath.join(DIST_DIR, "index.html"), "utf-8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        return res.end(indexHtml);
+      } catch {
+        // fallback: redirect para dashboard
+        res.writeHead(302, { Location: `${DASHBOARD_ORIGIN}/f/${slug}` });
+        return res.end();
+      }
+    }
+
     json(res, { error: "Not found" }, 404);
   } catch (err) {
     console.error("API Error:", err);
