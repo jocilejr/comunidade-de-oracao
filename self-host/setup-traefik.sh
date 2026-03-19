@@ -216,9 +216,10 @@ info "Testando rotas públicas via Traefik..."
 sleep 2
 
 test_route() {
-  local label="$1" url="$2" expected="$3" extra="${4:-}"
+  local label="$1" url="$2" expected="$3"
+  shift 3
   local code
-  code=$(curl -s -o /dev/null -w "%{http_code}" $extra "$url" 2>/dev/null || echo "000")
+  code=$(curl -s -o /dev/null -w "%{http_code}" "$@" "$url" 2>/dev/null || echo "000")
   if echo "$expected" | grep -qw "$code"; then
     echo -e "  ${GREEN}✅${NC} ${label} → HTTP ${code}"
     return 0
