@@ -245,7 +245,7 @@ async function handleTypebotProxy(req, res) {
   const body = JSON.parse(await readBody(req));
   const { action, typebotId } = body;
 
-  const { rows } = await pool.query(
+  const { rows } = await queryWithRLS(userId,
     `SELECT typebot_api_token, typebot_workspace_id, typebot_base_url
      FROM user_settings WHERE user_id = $1 LIMIT 1`,
     [userId]
