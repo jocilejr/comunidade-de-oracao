@@ -361,6 +361,10 @@ async function handleGetUser(req, res) {
     if (!rows.length) return json(res, { error: "User not found" }, 404);
     json(res, { id: rows[0].id, email: rows[0].email, created_at: rows[0].created_at, role: "authenticated", aud: "authenticated" });
   } catch (e) {
+    if (e.code === 'XX000' || e.severity === 'FATAL') {
+      console.error("DB auth error (getUser):", e.message);
+      return json(res, { error: "Database error - check funnel_user permissions on auth schema" }, 500);
+    }
     json(res, { error: "Invalid token" }, 401);
   }
 }
