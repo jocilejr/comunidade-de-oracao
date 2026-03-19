@@ -399,6 +399,20 @@ export type UserSettingsResult =
 
 export async function getUserSettings(): Promise<UserSettingsResult> {
   try {
+    // VPS: use api-server endpoint directly (bypasses PostgREST)
+    const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+    if (publicDomain) {
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!session?.access_token) return { status: 'empty' };
+      const res = await fetch('/functions/v1/user-settings', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) return { status: 'error', message: `HTTP ${res.status}` };
+      const result = await res.json();
+      if (result.status === 'empty') return { status: 'empty' };
+      return { status: 'ok', data: result.data };
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { status: 'empty' };
 
@@ -436,6 +450,22 @@ export async function saveUserSettings(settings: {
   typebot_workspace_id?: string;
   typebot_base_url?: string;
 }): Promise<boolean> {
+  // VPS: use api-server endpoint directly (bypasses PostgREST)
+  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+  if (publicDomain) {
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session?.access_token) return false;
+    const res = await fetch('/functions/v1/user-settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(settings),
+    });
+    return res.ok;
+  }
+
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
