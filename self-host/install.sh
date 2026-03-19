@@ -227,7 +227,7 @@ ENVEOF
 
 # PostgREST config
 cat > "$APP_DIR/postgrest.conf" <<PGCONF
-db-uri = "postgres://funnel_user:${DB_PASS}@127.0.0.1:5432/funnel_app"
+db-uri = "postgres://funnel_user:${DB_PASS}@127.0.0.1:${PG_PORT}/funnel_app"
 db-schemas = "public"
 db-anon-role = "anon"
 jwt-secret = "${JWT_SECRET}"
