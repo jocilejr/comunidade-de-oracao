@@ -407,15 +407,29 @@ export async function saveUserSettings(settings: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
 
-  const payload: Record<string, unknown> = { user_id: user.id };
-  if (settings.openai_api_key !== undefined) payload.openai_api_key = settings.openai_api_key;
-  if (settings.typebot_api_token !== undefined) payload.typebot_api_token = settings.typebot_api_token;
-  if (settings.typebot_workspace_id !== undefined) payload.typebot_workspace_id = settings.typebot_workspace_id;
-  if (settings.typebot_base_url !== undefined) payload.typebot_base_url = settings.typebot_base_url;
+  const updateFields: Record<string, unknown> = {};
+  if (settings.openai_api_key !== undefined) updateFields.openai_api_key = settings.openai_api_key;
+  if (settings.typebot_api_token !== undefined) updateFields.typebot_api_token = settings.typebot_api_token;
+  if (settings.typebot_workspace_id !== undefined) updateFields.typebot_workspace_id = settings.typebot_workspace_id;
+  if (settings.typebot_base_url !== undefined) updateFields.typebot_base_url = settings.typebot_base_url;
 
-  const { error } = await supabase
+  // Check if row already exists (avoids upsert which can fail on self-hosted PostgREST)
+  const { data: existing } = await supabase
     .from('user_settings')
-    .upsert(payload as any, { onConflict: 'user_id' });
+    .select('id')
+    .eq('user_id', user.id)
+    .maybeSingle();
 
-  return !error;
+  if (existing) {
+    const { error } = await supabase
+      .from('user_settings')
+      .update(updateFields as any)
+      .eq('user_id', user.id);
+    return !error;
+  } else {
+    const { error } = await supabase
+      .from('user_settings')
+      .insert({ user_id: user.id, ...updateFields } as any);
+    return !error;
+  }
 }
