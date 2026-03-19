@@ -1,63 +1,31 @@
 
 
-# Fix: Typebot proxy retorna 400 na VPS
+# Fix: RLS bloqueia funnel_user na tabela user_settings
 
-## Diagnóstico
-O erro 400 significa "Token do Typebot não configurado" — o `api-server.js` não encontra `typebot_api_token` na tabela `user_settings` do PostgreSQL local da VPS.
-
-**Causa raiz**: `saveUserSettings()` usa o Supabase client → PostgREST. Se o PostgREST na VPS está rejeitando requests (problema de JWT/auth que já vimos), o save falha silenciosamente e as credenciais nunca são gravadas no banco local.
+## Causa raiz
+O `api-server.js` conecta como `funnel_user` via `pool.query`. A tabela `user_settings` tem RLS ativo com políticas que verificam `auth.uid() = user_id`. Como o pool não define claims JWT, `auth.uid()` = NULL → RLS bloqueia INSERT e UPDATE.
 
 ## Solução
-Fazer o save de configurações passar pelo `api-server.js` em vez do PostgREST, assim como já fizemos com o `/share`. Criar um endpoint `/user-settings` no api-server que faz upsert direto via `pool.query`.
+Conceder `BYPASSRLS` ao role `funnel_user`. O api-server já valida o JWT e filtra por `user_id` explicitamente em todas as queries — o RLS é redundante nesse contexto.
 
-### 1. `self-host/api-server.js` — Novo endpoint `/user-settings`
+### Arquivos alterados
 
-```js
-// GET /user-settings — retorna settings do user autenticado
-// POST /user-settings — salva/atualiza settings
-async function handleUserSettings(req, res) {
-  // Validar JWT, extrair userId
-  // GET: SELECT from user_settings WHERE user_id = $1
-  // POST: UPSERT into user_settings
-}
+**1. `self-host/install.sh`** — Na criação do role, adicionar BYPASSRLS:
+```sql
+CREATE ROLE funnel_user WITH LOGIN PASSWORD '...' BYPASSRLS;
+```
+E para instalações existentes, adicionar após a criação:
+```sql
+ALTER ROLE funnel_user BYPASSRLS;
 ```
 
-Adicionar no router:
-```js
-if (path === "/user-settings" && req.method === "GET") return await handleUserSettings(req, res);
-if (path === "/user-settings" && req.method === "POST") return await handleUserSettings(req, res);
+**2. `self-host/update.sh`** — Adicionar no bloco de grants (seção 6b):
+```sql
+ALTER ROLE funnel_user BYPASSRLS;
 ```
 
-### 2. `src/lib/funnel-storage.ts` — Detectar VPS e usar api-server
-
-Na `saveUserSettings()` e `getUserSettings()`, quando `VITE_PUBLIC_DOMAIN` está definido (ambiente VPS), fazer fetch para `/functions/v1/user-settings` em vez de usar o Supabase client. Isso segue o mesmo padrão do `getFunnelBySlug`.
-
-```ts
-export async function saveUserSettings(settings: {...}): Promise<boolean> {
-  // Se estiver na VPS, usa o api-server via /functions/v1/user-settings
-  const isVPS = !!import.meta.env.VITE_PUBLIC_DOMAIN;
-  if (isVPS) {
-    const token = (await supabase.auth.getSession()).data.session?.access_token;
-    const res = await fetch('/functions/v1/user-settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify(settings),
-    });
-    return res.ok;
-  }
-  // ... código existente do Supabase client
-}
-```
-
-Mesma lógica para `getUserSettings()`.
-
-### 3. Resultado
-- Settings são salvos diretamente no PostgreSQL da VPS via api-server
-- Typebot proxy encontra as credenciais e funciona
-- Lovable Cloud continua usando Supabase client normalmente
-- Zero dependência do PostgREST para operações autenticadas na VPS
-
-### 4. Deploy na VPS
-1. Atualizar `api-server.js` e rebuild do frontend
-2. `pm2 restart all`
+### Deploy
+1. Rodar `update.sh` na VPS (aplica o ALTER ROLE)
+2. `pm2 restart funnel-api`
+3. Testar salvar configurações
 
