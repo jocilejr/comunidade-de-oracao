@@ -58,28 +58,18 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
 }
 
 export async function getFunnelBySlug(slug: string): Promise<StoredFunnel | undefined> {
-  // On public domain, use same-origin fetch to avoid CORS with dashboard API
+  // On public domain, use api-server /share endpoint to avoid CORS and PostgREST auth issues
   const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
   if (publicDomain) {
     try {
       const publicOrigin = new URL(publicDomain).origin;
       if (window.location.origin === publicOrigin) {
-        const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
         const res = await fetch(
-          `/rest/v1/funnels?slug=eq.${encodeURIComponent(slug)}&limit=1`,
-          {
-            headers: {
-              'apikey': apiKey,
-              'Authorization': `Bearer ${apiKey}`,
-              'Accept': 'application/json',
-              'Accept-Profile': 'public',
-            },
-          }
+          `/functions/v1/share?slug=${encodeURIComponent(slug)}&format=json`
         );
         if (!res.ok) return undefined;
-        const rows = await res.json();
-        if (!Array.isArray(rows) || rows.length === 0) return undefined;
-        const data = rows[0];
+        const data = await res.json();
+        if (!data || data.error) return undefined;
         return {
           id: data.id,
           slug: data.slug,
