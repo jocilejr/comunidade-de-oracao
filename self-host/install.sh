@@ -102,7 +102,8 @@ PG_PORT=$(sudo -u postgres psql -tAc "SHOW port;" 2>/dev/null | tr -d '[:space:]
 log "Porta do PostgreSQL detectada: ${PG_PORT}"
 
 sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='funnel_user'" | grep -q 1 || \
-  sudo -u postgres psql -c "CREATE ROLE funnel_user WITH LOGIN PASSWORD '${DB_PASS}';"
+  sudo -u postgres psql -c "CREATE ROLE funnel_user WITH LOGIN PASSWORD '${DB_PASS}' BYPASSRLS;"
+sudo -u postgres psql -c "ALTER ROLE funnel_user BYPASSRLS;" 2>/dev/null
 
 sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='funnel_app'" | grep -q 1 || \
   sudo -u postgres psql -c "CREATE DATABASE funnel_app OWNER funnel_user;"

@@ -97,14 +97,15 @@ AS \$\$ SELECT CASE WHEN NULLIF(current_setting('request.jwt.claims', true), '')
 log "auth.uid() atualizada"
 
 # ── 6b. Garantir grants diretos para funnel_user ────────
-log "Aplicando grants para funnel_user em user_settings..."
+log "Aplicando grants e BYPASSRLS para funnel_user..."
 sudo -u postgres psql -d "${DB_NAME}" -c "
+ALTER ROLE funnel_user BYPASSRLS;
 GRANT USAGE ON SCHEMA public TO funnel_user;
 GRANT SELECT, INSERT, UPDATE ON public.user_settings TO funnel_user;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO funnel_user;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO funnel_user;
 " 2>/dev/null
-log "Grants aplicados"
+log "Grants e BYPASSRLS aplicados"
 
 # ── 7. Migrations incrementais ──────────────────────────
 log "Verificando migrations..."
