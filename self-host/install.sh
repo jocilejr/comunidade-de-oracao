@@ -282,8 +282,10 @@ mkdir -p "$ACME_ROOT/.well-known/acme-challenge"
 
 # Config HTTP mínima apenas para os domínios da app + ACME challenge
 cat > /etc/nginx/sites-available/funnel-app <<NGINX_TEMP
+# default_server temporário — garante que ACME challenge seja servido por este bloco
+# mesmo que outro site (ex: zapmanager) tenha default_server. Será substituído pela config final.
 server {
-    listen 80;
+    listen 80 default_server;
     server_name ${PUBLIC_DOMAIN} ${DASHBOARD_DOMAIN};
 
     # Validação SSL (Let's Encrypt) — ^~ garante prioridade sobre regex de outros sites
