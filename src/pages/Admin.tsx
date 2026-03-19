@@ -59,6 +59,7 @@ const Admin = () => {
   const [typebotBaseUrl, setTypebotBaseUrl] = useState('');
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [showKey, setShowKey] = useState(false);
+  const [showTypebotToken, setShowTypebotToken] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [typebotImportDialog, setTypebotImportDialog] = useState(false);
   const [typebotList, setTypebotList] = useState<Array<{ id: string; name: string; createdAt?: string }>>([]);
@@ -818,13 +819,22 @@ const Admin = () => {
                   <div className="space-y-3">
                     <div className="space-y-1.5">
                       <Label className="text-[11px] text-muted-foreground">API Token</Label>
-                      <Input
-                        type="password"
-                        placeholder="Token do Typebot..."
-                        value={typebotToken}
-                        onChange={e => setTypebotToken(e.target.value)}
-                        className="font-mono text-xs"
-                      />
+                      <div className="relative">
+                        <Input
+                          type={showTypebotToken ? 'text' : 'password'}
+                          placeholder="Token do Typebot..."
+                          value={typebotToken}
+                          onChange={e => setTypebotToken(e.target.value)}
+                          className="pr-9 font-mono text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowTypebotToken(!showTypebotToken)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showTypebotToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-1.5">
