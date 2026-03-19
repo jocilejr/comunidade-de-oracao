@@ -11,6 +11,8 @@
  */
 
 const http = require("http");
+const fs = require("fs");
+const nodePath = require("path");
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
