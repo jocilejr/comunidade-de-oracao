@@ -1,57 +1,35 @@
 
 
-# Reconstrução Completa: Configurações e Conexão (VPS)
+# Fix: Performance + Public Share URL
 
-## Problema raiz
+## Problem 1: Share URL uses wrong domain
+The "Compartilhar" button builds URLs using `VITE_SUPABASE_URL` (the backend URL), not the public domain. This means shared links point to `exvfzbkhdclukfrhkvtf.supabase.co` instead of `comunidade.dominio.com`.
 
-O `queryWithRLS` no `api-server.js` tenta simular o comportamento do Supabase (RLS via `set_config` + `SET LOCAL ROLE`) mas isso é inerentemente frágil no PostgreSQL puro. O erro `invalid input syntax for type json` persiste porque a interação entre `set_config`, o role `authenticated` e a função `auth.uid()` é instável neste contexto.
+**Fix**: Use `VITE_PUBLIC_DOMAIN` env var for share links. On Lovable Cloud, fall back to `VITE_SUPABASE_URL` if not set.
 
-## Solução: Eliminar RLS no api-server.js
+### Changes in `src/pages/Admin.tsx`
+- Line 593: Change `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=...` → use a helper that reads `VITE_PUBLIC_DOMAIN` first
+- Line 1088: Same fix for the second share button in the profile dialog
+- The share URL format becomes: `https://comunidade.seudominio.com/{slug}` (clean URL, not the edge function path)
 
-O `api-server.js` já valida o JWT e extrai o `userId` de forma segura. Ele é o único ponto de acesso ao banco — não existe acesso direto do browser ao PostgreSQL. Portanto, **a filtragem por `user_id` pode ser feita na query SQL diretamente**, sem precisar de RLS.
+### Changes in `.env` (via environment)
+- No file edit needed — but you'll need to set `VITE_PUBLIC_DOMAIN` in project settings. For the VPS, it's already in `.env.template`.
 
-Isso é seguro porque:
-- O JWT é validado antes de qualquer query
-- O `userId` vem do token, não do corpo da requisição
-- Nenhum cliente acessa o banco diretamente (PostgREST usa RLS separadamente)
+## Problem 2: Performance — heavy base64 images in list
+The `preview_image` column contains full base64 data URLs (can be 500KB+ each). Loading 10+ funnels fetches megabytes of image data just for thumbnails.
 
-## Alterações
+**Fix**: 
+- `getAllFunnelsMeta()` already excludes `flow` but still fetches `preview_image` — keep it for thumbnail display but this is inherent to the current architecture (base64 stored in DB). No change needed here unless we move to storage buckets later.
+- The **stats tab** calls `f.flow.groups.length` and `g.blocks.length` on meta objects that have empty stub flows → always shows 0. Remove these stats or fetch actual counts from the DB.
 
-### 1. `self-host/api-server.js`
-- **Remover** a função `queryWithRLS` completamente
-- **Substituir** todas as chamadas `queryWithRLS(userId, query, params)` por `pool.query(query, params)` direto
-- As queries já filtram por `WHERE user_id = $1` com o `userId` extraído do JWT — isso é suficiente
+### Changes in `src/pages/Admin.tsx` (Stats tab)
+- Remove "Total de grupos" and "Total de blocos" stats since they require full flow data
+- Or replace with a count query from the DB (simpler: just remove them, keep "Total de funis")
 
-Endpoints afetados:
-- `handleOpenaiProxy`: `SELECT openai_api_key FROM user_settings WHERE user_id = $1`
-- `handleTypebotProxy`: `SELECT typebot_api_token, ... FROM user_settings WHERE user_id = $1`
+## Summary of file changes
+1. **`src/pages/Admin.tsx`** — Fix share URL to use `VITE_PUBLIC_DOMAIN`, fix stats tab
+2. **Add secret** `VITE_PUBLIC_DOMAIN` with value like `https://comunidade.seudominio.com`
 
-### 2. `self-host/install.sh`
-- Adicionar `GRANT SELECT, INSERT, UPDATE ON public.user_settings TO funnel_user;` explicitamente
-- Manter as demais grants existentes
-
-### 3. `self-host/update.sh`
-- Adicionar bloco de grants para garantir que `funnel_user` tem acesso direto à `user_settings` (para instalações existentes)
-- Manter a função `auth.uid()` resiliente (usada pelo PostgREST, não pelo api-server)
-
-### 4. Nenhuma alteração no frontend
-- O `funnel-storage.ts` e `Admin.tsx` continuam iguais — usam o Supabase SDK normalmente (Lovable Cloud) ou PostgREST (VPS)
-
-## Comandos para o VPS após deploy
-
-```bash
-cd /root/comunidade-de-oracao && git pull && sudo bash self-host/update.sh
-```
-
-Teste:
-```bash
-cd /opt/funnel-app && set -a && source .env && set +a && \
-TOKEN=$(node -e "const jwt=require('jsonwebtoken');console.log(jwt.sign({sub:'618396b3-4ec8-4b91-af9f-214567497eb1',role:'authenticated',aud:'authenticated'},process.env.PGRST_JWT_SECRET,{algorithm:'HS256',expiresIn:3600}))") && \
-curl -s -X POST "http://127.0.0.1:4000/typebot-proxy" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"list"}' | head -c 800
-```
-
-Resultado esperado: resposta do Typebot ou "Token do Typebot não configurado" (significando que a query funcionou, mas o token ainda não foi salvo).
+## For VPS
+After deploy, the `.env` already has `VITE_PUBLIC_DOMAIN` configured — no extra action needed.
 
