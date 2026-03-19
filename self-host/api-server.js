@@ -52,7 +52,7 @@ function json(res, data, status = 200) {
 async function queryWithRLS(userId, queryText, params) {
   const client = await pool.connect();
   try {
-    await client.query(`SELECT set_config('request.jwt.claims', $1, true)`, [
+    await client.query(`SELECT set_config('request.jwt.claims', $1::text, true)`, [
       JSON.stringify({ sub: userId, role: 'authenticated', aud: 'authenticated' })
     ]);
     await client.query(`SET LOCAL ROLE authenticated`);
