@@ -47,26 +47,7 @@ function json(res, data, status = 200) {
   res.writeHead(status, { ...corsHeaders, "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
 }
-
-// Helper: query RLS-protected tables with JWT claims set
-async function queryWithRLS(userId, queryText, params) {
-  const client = await pool.connect();
-  try {
-    const claims = JSON.stringify({ sub: userId, role: 'authenticated', aud: 'authenticated' });
-    await client.query('BEGIN');
-    await client.query(`SELECT set_config('request.jwt.claims', $1::text, true)`, [claims]);
-    await client.query(`SET LOCAL ROLE authenticated`);
-    const result = await client.query(queryText, params);
-    await client.query('COMMIT');
-    return result;
-  } catch (e) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw e;
-  } finally {
-    await client.query('RESET ROLE').catch(() => {});
-    client.release();
-  }
-}
+// Helper removed — api-server queries pool directly with WHERE user_id = $1
 
 function readBody(req) {
   return new Promise((resolve) => {
