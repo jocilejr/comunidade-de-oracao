@@ -13,6 +13,18 @@ import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
 
+/** Detecta se estamos no domínio público (só funis) */
+function isPublicDomain(): boolean {
+  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+  if (!publicDomain) return false;
+  try {
+    const publicOrigin = new URL(publicDomain).origin;
+    return window.location.origin === publicOrigin;
+  } catch {
+    return false;
+  }
+}
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-background"><p className="text-muted-foreground text-sm">Carregando...</p></div>;
@@ -20,27 +32,41 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ThemeProvider>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
-              <Route path="/f/:slug" element={<Funnel />} />
-              <Route path="/:slug" element={<Funnel />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  const publicOnly = isPublicDomain();
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              {publicOnly ? (
+                /* Domínio público: apenas funis */
+                <Routes>
+                  <Route path="/f/:slug" element={<Funnel />} />
+                  <Route path="/:slug" element={<Funnel />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              ) : (
+                /* Domínio do app: dashboard + funis */
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+                  <Route path="/f/:slug" element={<Funnel />} />
+                  <Route path="/:slug" element={<Funnel />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              )}
+            </BrowserRouter>
+          </TooltipProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;
