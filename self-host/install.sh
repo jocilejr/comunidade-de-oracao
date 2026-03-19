@@ -57,6 +57,9 @@ DB_PASS=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 JWT_SECRET=$(openssl rand -base64 64 | tr -dc 'a-zA-Z0-9' | head -c 64)
 ANON_KEY="self-host-anon-key-$(openssl rand -hex 16)"
 
+# Detectar porta real do PostgreSQL (não assumir 5432)
+PG_PORT="5432"
+
 log "Segredos gerados com sucesso"
 
 # ══════════════════════════════════════════════════════════
