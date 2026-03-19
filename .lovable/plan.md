@@ -1,76 +1,57 @@
 
 
-# Fix: Funil não encontrado no domínio público + Typebot proxy 400
+# Fix: Funil não encontrado no domínio público (401 no PostgREST)
 
-## Diagnóstico
+## Problema
+O fetch same-origin para `/rest/v1/funnels` no domínio público retorna 401. O PostgREST na VPS rejeita o JWT anon. Isso é um problema de configuração do PostgREST, mas podemos contornar no código.
 
-### Problema 1 — Funil não encontrado na URL pública
-O SPA no domínio público (`comunidade.origemdavida.online`) usa o Supabase client configurado com `VITE_SUPABASE_URL=https://dash.origemdavida.online`. Isso gera uma requisição **cross-origin** para o PostgREST. O PostgREST na VPS não retorna headers CORS, e o browser bloqueia a resposta silenciosamente. O `getFunnelBySlug` recebe erro e retorna "Funil não encontrado".
-
-**Solução:** Quando o SPA detecta que está no domínio público, usar `fetch()` direto para `/rest/v1/funnels` (same-origin), já que o Traefik já roteia `/rest/v1/*` no domínio público para o PostgREST. Isso elimina o problema de CORS.
-
-### Problema 2 — Typebot proxy 400
-O edge function funciona no Lovable Cloud (testei e retornou 200 com lista de bots). O problema é na VPS — o api-server retorna 400. Possíveis causas: JWT inválido, user_settings vazio, ou o `saveUserSettings` falha silenciosamente antes da chamada. O erro genérico "Edge Function returned a non-2xx status code" esconde a mensagem real do servidor.
-
-**Solução:** Melhorar o tratamento de erro para extrair e exibir a mensagem real do servidor (já presente no JSON de resposta), em vez da mensagem genérica do Supabase client.
+## Solução
+Usar o api-server (que já está disponível no domínio público via `/functions/v1/`) em vez do PostgREST. Adicionar suporte a `format=json` no endpoint `/share` do api-server, e usar esse endpoint no frontend.
 
 ## Alterações
 
-### 1. `src/lib/funnel-storage.ts` — `getFunnelBySlug`
-Adicionar detecção de domínio público com fetch same-origin:
+### 1. `self-host/api-server.js` — Adicionar `format=json` ao `/share`
+Na função `handleShare`, verificar se `format=json` está nos query params. Se sim, retornar os dados do funil como JSON (incluindo `flow`) em vez de HTML com redirect.
 
-```ts
-export async function getFunnelBySlug(slug: string): Promise<StoredFunnel | undefined> {
-  // On public domain, use same-origin fetch to avoid CORS with dashboard API
-  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
-  if (publicDomain) {
-    try {
-      const publicOrigin = new URL(publicDomain).origin;
-      if (window.location.origin === publicOrigin) {
-        const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-        const res = await fetch(
-          `/rest/v1/funnels?slug=eq.${encodeURIComponent(slug)}&limit=1`,
-          {
-            headers: {
-              'apikey': apiKey,
-              'Authorization': `Bearer ${apiKey}`,
-              'Accept': 'application/json',
-              'Accept-Profile': 'public',
-            },
-          }
-        );
-        if (!res.ok) return undefined;
-        const rows = await res.json();
-        if (!rows.length) return undefined;
-        const data = rows[0];
-        return { /* map columns to StoredFunnel */ };
-      }
-    } catch { /* fall through to Supabase client */ }
+```js
+async function handleShare(req, res, slug, format) {
+  // Se format=json, buscar dados completos incluindo flow
+  if (format === 'json') {
+    const { rows } = await pool.query(
+      `SELECT id, slug, name, created_at, flow, bot_name, bot_avatar, 
+              preview_image, page_title, page_description, user_id
+       FROM funnels WHERE slug = $1 LIMIT 1`, [slug]
+    );
+    if (!rows.length) return json(res, { error: "Not found" }, 404);
+    return json(res, rows[0]);
   }
-
-  // Default: use Supabase client (Lovable Cloud or dashboard domain)
-  const { data, error } = await supabase.from('funnels')...
+  // ... resto do código existente (HTML para crawlers)
 }
 ```
 
-### 2. `src/pages/Admin.tsx` — Melhorar erro do typebot proxy
-Nas 2 chamadas ao `supabase.functions.invoke('typebot-proxy')`, extrair a mensagem real do response body ao invés de usar a mensagem genérica:
+Atualizar o router para passar `format`:
+```js
+if (path === "/share" || path === "/share/") {
+  const slug = url.searchParams.get("slug");
+  const format = url.searchParams.get("format");
+  if (!slug) return json(res, { error: "Missing slug" }, 400);
+  return await handleShare(req, res, slug, format);
+}
+```
+
+### 2. `src/lib/funnel-storage.ts` — Usar `/functions/v1/share` no domínio público
+Substituir o fetch para `/rest/v1/funnels` por `/functions/v1/share?slug=xxx&format=json`:
 
 ```ts
-const { data, error } = await supabase.functions.invoke('typebot-proxy', {
-  body: { action: 'list' },
-});
-if (error) {
-  // data contains the server's JSON response with the actual error
-  const serverMsg = data?.error || error?.message || 'Erro desconhecido';
-  throw new Error(serverMsg);
-}
+const res = await fetch(
+  `/functions/v1/share?slug=${encodeURIComponent(slug)}&format=json`
+);
 ```
 
-Isso já está parcialmente implementado, mas vou garantir que funcione em ambas as chamadas (list e get).
+Isso funciona porque no Traefik, `/functions/v1/*` no domínio público já é roteado para o api-server (com StripPrefix), e o api-server não requer JWT para o endpoint `/share`.
 
 ## Resultado
-- URL pública na VPS carrega o funil via same-origin (sem CORS)
-- Lovable Cloud não é afetado (VITE_PUBLIC_DOMAIN não existe)
-- Erros do typebot proxy mostram a mensagem real do servidor para diagnóstico
+- Domínio público carrega funis via api-server (sem JWT, sem CORS)
+- Lovable Cloud continua usando Supabase client normalmente
+- Zero dependência do PostgREST no domínio público
 
