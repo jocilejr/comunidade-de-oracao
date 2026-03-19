@@ -1086,7 +1086,7 @@ const Admin = () => {
               <div className="flex gap-1.5">
                 <Input
                   readOnly
-                  value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${profileDialog?.slug || ''}&v=${Date.now()}`}
+                  value={getShareUrl(profileDialog?.slug || '')}
                   className="text-[10px] font-mono bg-muted"
                   onClick={e => (e.target as HTMLInputElement).select()}
                 />
