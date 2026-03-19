@@ -48,6 +48,22 @@ function json(res, data, status = 200) {
   res.end(JSON.stringify(data));
 }
 
+// Helper: query RLS-protected tables with JWT claims set
+async function queryWithRLS(userId, queryText, params) {
+  const client = await pool.connect();
+  try {
+    await client.query(`SELECT set_config('request.jwt.claims', $1, true)`, [
+      JSON.stringify({ sub: userId, role: 'authenticated', aud: 'authenticated' })
+    ]);
+    await client.query(`SET LOCAL ROLE authenticated`);
+    const result = await client.query(queryText, params);
+    return result;
+  } finally {
+    await client.query(`RESET ROLE`).catch(() => {});
+    client.release();
+  }
+}
+
 function readBody(req) {
   return new Promise((resolve) => {
     const chunks = [];
@@ -166,7 +182,7 @@ async function handleOpenaiProxy(req, res) {
   const body = JSON.parse(await readBody(req));
   const { messages, model, tools } = body;
 
-  const { rows } = await pool.query(
+  const { rows } = await queryWithRLS(userId,
     `SELECT openai_api_key FROM user_settings WHERE user_id = $1 LIMIT 1`,
     [userId]
   );
@@ -229,7 +245,7 @@ async function handleTypebotProxy(req, res) {
   const body = JSON.parse(await readBody(req));
   const { action, typebotId } = body;
 
-  const { rows } = await pool.query(
+  const { rows } = await queryWithRLS(userId,
     `SELECT typebot_api_token, typebot_workspace_id, typebot_base_url
      FROM user_settings WHERE user_id = $1 LIMIT 1`,
     [userId]
