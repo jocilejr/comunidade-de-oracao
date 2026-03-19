@@ -96,6 +96,11 @@ log "Nginx, Certbot, PM2 instalados"
 # ══════════════════════════════════════════════════════════
 log "Configurando PostgreSQL..."
 
+# Detectar porta real do cluster PostgreSQL
+PG_PORT=$(sudo -u postgres psql -tAc "SHOW port;" 2>/dev/null | tr -d '[:space:]')
+[ -z "$PG_PORT" ] && PG_PORT="5432"
+log "Porta do PostgreSQL detectada: ${PG_PORT}"
+
 sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='funnel_user'" | grep -q 1 || \
   sudo -u postgres psql -c "CREATE ROLE funnel_user WITH LOGIN PASSWORD '${DB_PASS}';"
 
