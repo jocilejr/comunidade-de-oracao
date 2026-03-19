@@ -164,9 +164,19 @@ if [ -f "$REPO_DIR/self-host/nginx.conf.template" ]; then
         -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
         "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
 
+    # Garantir symlink ativo (evita config desatualizada)
+    ln -sf /etc/nginx/sites-available/funnel-app /etc/nginx/sites-enabled/funnel-app
+
     if nginx -t 2>/dev/null; then
       systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
       log "Nginx atualizado e recarregado"
+
+      # Validação pós-reload: garantir que rotas críticas existem
+      if grep -q "functions/v1" /etc/nginx/sites-enabled/funnel-app; then
+        log "Rota /functions/v1/ confirmada no Nginx"
+      else
+        warn "Rota /functions/v1/ NÃO encontrada no Nginx — edge functions podem falhar"
+      fi
     else
       warn "Nginx config inválida — não recarregado"
     fi
