@@ -419,8 +419,9 @@ const server = http.createServer(async (req, res) => {
 
     if (path === "/share" || path === "/share/") {
       const slug = url.searchParams.get("slug");
+      const format = url.searchParams.get("format");
       if (!slug) return json(res, { error: "Missing slug" }, 400);
-      return await handleShare(req, res, slug);
+      return await handleShare(req, res, slug, format);
     }
 
     if (path === "/preview-image" || path === "/preview-image/") {
