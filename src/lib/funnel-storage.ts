@@ -58,6 +58,48 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
 }
 
 export async function getFunnelBySlug(slug: string): Promise<StoredFunnel | undefined> {
+  // On public domain, use same-origin fetch to avoid CORS with dashboard API
+  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+  if (publicDomain) {
+    try {
+      const publicOrigin = new URL(publicDomain).origin;
+      if (window.location.origin === publicOrigin) {
+        const apiKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+        const res = await fetch(
+          `/rest/v1/funnels?slug=eq.${encodeURIComponent(slug)}&limit=1`,
+          {
+            headers: {
+              'apikey': apiKey,
+              'Authorization': `Bearer ${apiKey}`,
+              'Accept': 'application/json',
+              'Accept-Profile': 'public',
+            },
+          }
+        );
+        if (!res.ok) return undefined;
+        const rows = await res.json();
+        if (!Array.isArray(rows) || rows.length === 0) return undefined;
+        const data = rows[0];
+        return {
+          id: data.id,
+          slug: data.slug,
+          name: data.name,
+          uploadedAt: data.created_at,
+          flow: data.flow as unknown as TypebotFlow,
+          botName: data.bot_name || '',
+          botAvatar: data.bot_avatar || '',
+          previewImage: data.preview_image || '',
+          pageTitle: data.page_title || '',
+          pageDescription: data.page_description || '',
+          userId: data.user_id,
+        };
+      }
+    } catch {
+      // Fall through to Supabase client
+    }
+  }
+
+  // Default: use Supabase client (Lovable Cloud or dashboard domain)
   const { data, error } = await supabase
     .from('funnels')
     .select('*')
