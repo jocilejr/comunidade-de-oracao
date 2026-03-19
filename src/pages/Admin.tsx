@@ -904,10 +904,19 @@ const Admin = () => {
                           setTypebotImportDialog(true);
                           setLoadingTypebots(true);
                           try {
+                            // Auto-save settings before calling proxy
+                            await saveUserSettings({
+                              typebot_api_token: typebotToken,
+                              typebot_workspace_id: typebotWorkspaceId,
+                              typebot_base_url: typebotBaseUrl,
+                            });
                             const { data, error } = await supabase.functions.invoke('typebot-proxy', {
                               body: { action: 'list' },
                             });
-                            if (error) throw error;
+                            if (error) {
+                              const serverMsg = data?.error || error?.message || 'Erro desconhecido';
+                              throw new Error(serverMsg);
+                            }
                             const bots = data?.typebots || [];
                             setTypebotList(bots.map((b: any) => ({ id: b.id, name: b.name, createdAt: b.createdAt })));
                           } catch (err: any) {
