@@ -365,10 +365,10 @@ if dig +short "www.${PUBLIC_DOMAIN}" A 2>/dev/null | grep -q .; then
 else
   warn "www.${PUBLIC_DOMAIN} não resolve no DNS. Certificado será apenas para ${PUBLIC_DOMAIN}"
 fi
-obtain_cert "$PUBLIC_CERT_DOMAINS" "${PUBLIC_DOMAIN}" || true
+verify_acme_webroot "${PUBLIC_DOMAIN}" && obtain_cert "$PUBLIC_CERT_DOMAINS" "${PUBLIC_DOMAIN}" || true
 
 log "Obtendo certificados SSL para dashboard..."
-obtain_cert "-d ${DASHBOARD_DOMAIN}" "${DASHBOARD_DOMAIN}" || true
+verify_acme_webroot "${DASHBOARD_DOMAIN}" && obtain_cert "-d ${DASHBOARD_DOMAIN}" "${DASHBOARD_DOMAIN}" || true
 
 # Aplicar config completa com dois domínios (apenas se certs existem)
 if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
