@@ -1,4 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+
+function getShareUrl(slug: string): string {
+  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+  if (publicDomain) {
+    return `${publicDomain.replace(/\/$/, '')}/${slug}`;
+  }
+  return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${slug}&v=${Date.now()}`;
+}
 import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
 import { supabase } from '@/integrations/supabase/client';
 import FunnelInspector from '@/components/admin/FunnelInspector';
