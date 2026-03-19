@@ -22,7 +22,7 @@ const generateWaveform = (count: number): number[] => {
 
 const BARS = generateWaveform(46);
 
-const AudioPlayer = ({ src, time, autoPlay = false }: AudioPlayerProps) => {
+const AudioPlayer = ({ src, time, autoPlay = false, avatar, avatarFallback }: AudioPlayerProps) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
