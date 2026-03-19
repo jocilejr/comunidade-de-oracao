@@ -1,4 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+
+function getShareUrl(slug: string): string {
+  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+  if (publicDomain) {
+    return `${publicDomain.replace(/\/$/, '')}/${slug}`;
+  }
+  return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${slug}&v=${Date.now()}`;
+}
 import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
 import { supabase } from '@/integrations/supabase/client';
 import FunnelInspector from '@/components/admin/FunnelInspector';
@@ -589,8 +597,7 @@ const Admin = () => {
                               <Eye className="w-3.5 h-3.5" />
                             </Button>
                             <Button variant="outline" size="sm" className="h-8 px-2.5 gap-1.5 text-[11px] font-medium" title="Copiar link para WhatsApp (com preview)" onClick={() => {
-                              const v = Date.now();
-                              const shareUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${funnel.slug}&v=${v}`;
+                              const shareUrl = getShareUrl(funnel.slug);
                               navigator.clipboard.writeText(shareUrl);
                               toast({ title: 'Link copiado!', description: 'Cole este link no WhatsApp para compartilhar com preview de imagem.' });
                             }}>
@@ -1079,13 +1086,12 @@ const Admin = () => {
               <div className="flex gap-1.5">
                 <Input
                   readOnly
-                  value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${profileDialog?.slug || ''}&v=${Date.now()}`}
+                  value={getShareUrl(profileDialog?.slug || '')}
                   className="text-[10px] font-mono bg-muted"
                   onClick={e => (e.target as HTMLInputElement).select()}
                 />
                 <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => {
-                  const v = Date.now();
-                  const shareUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${profileDialog?.slug || ''}&v=${v}`;
+                  const shareUrl = getShareUrl(profileDialog?.slug || '');
                   navigator.clipboard.writeText(shareUrl);
                   toast({ title: 'Link copiado!', description: 'Cole este link no WhatsApp para compartilhar com preview de imagem.' });
                 }}>
