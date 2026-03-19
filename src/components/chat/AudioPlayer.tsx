@@ -139,9 +139,26 @@ const AudioPlayer = ({ src, time, autoPlay = false, avatar, avatarFallback }: Au
           )}
         </div>
       </div>
+      {/* Avatar */}
+      {(avatar || avatarFallback) && (
+        <div
+          className="w-[34px] h-[34px] rounded-full overflow-hidden shrink-0"
+          style={{ backgroundColor: 'hsl(var(--wa-time) / 0.3)' }}
+        >
+          {avatar ? (
+            <img src={avatar} alt={avatarFallback || 'Bot'} className="w-full h-full object-cover" />
+          ) : (
+            <div
+              className="w-full h-full flex items-center justify-center text-[11px] font-bold"
+              style={{ color: 'hsl(var(--wa-bot-foreground))' }}
+            >
+              {(avatarFallback || 'B').charAt(0).toUpperCase()}
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
-  );
 };
 
 export default AudioPlayer;
