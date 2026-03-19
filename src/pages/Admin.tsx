@@ -1091,8 +1091,7 @@ const Admin = () => {
                   onClick={e => (e.target as HTMLInputElement).select()}
                 />
                 <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => {
-                  const v = Date.now();
-                  const shareUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${profileDialog?.slug || ''}&v=${v}`;
+                  const shareUrl = getShareUrl(profileDialog?.slug || '');
                   navigator.clipboard.writeText(shareUrl);
                   toast({ title: 'Link copiado!', description: 'Cole este link no WhatsApp para compartilhar com preview de imagem.' });
                 }}>
