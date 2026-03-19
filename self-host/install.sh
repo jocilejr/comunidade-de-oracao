@@ -430,6 +430,15 @@ verify_acme_webroot "${PUBLIC_DOMAIN}" && obtain_cert "$PUBLIC_CERT_DOMAINS" "${
 log "Obtendo certificados SSL para dashboard..."
 verify_acme_webroot "${DASHBOARD_DOMAIN}" && obtain_cert "-d ${DASHBOARD_DOMAIN}" "${DASHBOARD_DOMAIN}" || true
 
+# ── Limpar config ACME temporária e restaurar backups ──
+rm -f /etc/nginx/conf.d/000-funnel-acme.conf
+for BAK_FILE in /etc/nginx/sites-available/*.bak-funnel; do
+  [ ! -f "$BAK_FILE" ] && continue
+  ORIG_FILE="${BAK_FILE%.bak-funnel}"
+  mv "$BAK_FILE" "$ORIG_FILE"
+  log "Restaurado backup: $(basename "$ORIG_FILE")"
+done
+
 # Aplicar config completa com dois domínios (apenas se certs existem)
 if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
    [ -f "/etc/letsencrypt/live/${DASHBOARD_DOMAIN}/fullchain.pem" ]; then
