@@ -151,10 +151,20 @@ async function handlePreviewImage(req, res, slug) {
 
 // ── Route: /openai-proxy ──────────────────────────────────
 async function handleOpenaiProxy(req, res) {
-  const body = JSON.parse(await readBody(req));
-  const { messages, model, tools, userId } = body;
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer "))
+    return json(res, { error: "Missing authorization" }, 401);
 
-  if (!userId) return json(res, { error: "User ID not provided." }, 400);
+  let userId;
+  try {
+    const decoded = jwt.verify(authHeader.replace("Bearer ", ""), JWT_SECRET, { algorithms: ["HS256"] });
+    userId = decoded.sub;
+  } catch (e) {
+    return json(res, { error: "Invalid token" }, 401);
+  }
+
+  const body = JSON.parse(await readBody(req));
+  const { messages, model, tools } = body;
 
   const { rows } = await pool.query(
     `SELECT openai_api_key FROM user_settings WHERE user_id = $1 LIMIT 1`,
