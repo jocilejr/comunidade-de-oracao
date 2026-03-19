@@ -318,7 +318,6 @@ async function handleToken(req, res) {
   const { email, password } = body;
 
   if (grant_type === "refresh_token") {
-    // Para refresh, decodificar o token antigo e gerar um novo
     try {
       const decoded = jwt.verify(body.refresh_token || "", JWT_SECRET, { algorithms: ["HS256"] });
       const { rows } = await pool.query("SELECT id, email FROM auth.users WHERE id = $1", [decoded.sub]);
@@ -326,21 +325,30 @@ async function handleToken(req, res) {
       const token = generateToken(rows[0]);
       return json(res, { access_token: token, token_type: "bearer", expires_in: JWT_EXP, user: { id: rows[0].id, email: rows[0].email } });
     } catch (e) {
+      if (e.code === 'XX000' || e.severity === 'FATAL') {
+        console.error("DB auth error (refresh):", e.message);
+        return json(res, { error: "Database error - check funnel_user permissions on auth schema" }, 500);
+      }
       return json(res, { error: "Invalid refresh token" }, 401);
     }
   }
 
   if (!email || !password) return json(res, { error: "email and password required" }, 400);
 
-  const { rows } = await pool.query("SELECT id, email, encrypted_password FROM auth.users WHERE email = $1", [email]);
-  if (!rows.length) return json(res, { error: "Invalid login credentials" }, 401);
+  try {
+    const { rows } = await pool.query("SELECT id, email, encrypted_password FROM auth.users WHERE email = $1", [email]);
+    if (!rows.length) return json(res, { error: "Invalid login credentials" }, 401);
 
-  const valid = await bcrypt.compare(password, rows[0].encrypted_password);
-  if (!valid) return json(res, { error: "Invalid login credentials" }, 401);
+    const valid = await bcrypt.compare(password, rows[0].encrypted_password);
+    if (!valid) return json(res, { error: "Invalid login credentials" }, 401);
 
-  const user = rows[0];
-  const token = generateToken(user);
-  json(res, { access_token: token, token_type: "bearer", expires_in: JWT_EXP, refresh_token: token, user: { id: user.id, email: user.email } });
+    const user = rows[0];
+    const token = generateToken(user);
+    json(res, { access_token: token, token_type: "bearer", expires_in: JWT_EXP, refresh_token: token, user: { id: user.id, email: user.email } });
+  } catch (dbErr) {
+    console.error("DB auth error (login):", dbErr.message);
+    return json(res, { error: "Database error - check funnel_user permissions on auth schema" }, 500);
+  }
 }
 
 // ── Auth: get user ───────────────────────────────────────
