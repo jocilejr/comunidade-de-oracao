@@ -91,18 +91,21 @@ const Admin = () => {
     const load = async () => {
       setLoadingFunnels(true);
       setLoadingSettings(true);
-      const [funnelData, galleryData, settingsData] = await Promise.all([
+      const [funnelData, galleryData, settingsResult] = await Promise.all([
         getAllFunnelsMeta(),
         getAvatarGallery(),
         getUserSettings(),
       ]);
       setFunnels(funnelData);
       setGallery(galleryData);
-      if (settingsData) {
-        setOpenaiKey(settingsData.openai_api_key);
-        setTypebotToken(settingsData.typebot_api_token);
-        setTypebotWorkspaceId(settingsData.typebot_workspace_id);
-        setTypebotBaseUrl(settingsData.typebot_base_url);
+      if (settingsResult.status === 'ok') {
+        setOpenaiKey(settingsResult.data.openai_api_key);
+        setTypebotToken(settingsResult.data.typebot_api_token);
+        setTypebotWorkspaceId(settingsResult.data.typebot_workspace_id);
+        setTypebotBaseUrl(settingsResult.data.typebot_base_url);
+        setBackendError(null);
+      } else if (settingsResult.status === 'error') {
+        setBackendError(settingsResult.message);
       }
       setLoadingSettings(false);
       setLoadingFunnels(false);
