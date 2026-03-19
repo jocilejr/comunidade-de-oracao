@@ -151,12 +151,31 @@ for migration in "$REPO_DIR"/supabase/migrations/*.sql; do
 done
 
 sudo -u postgres psql -d funnel_app -c "
-GRANT ALL ON ALL TABLES IN SCHEMA public TO funnel_user, authenticated, service_role;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon;
-GRANT INSERT ON public.funnel_sessions, public.funnel_session_events TO anon;
-GRANT UPDATE ON public.funnel_sessions TO anon;
+-- Owner permissions
+GRANT ALL ON ALL TABLES IN SCHEMA public TO funnel_user, service_role;
+
+-- Authenticated users (via PostgREST JWT)
+GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.user_settings TO authenticated;
+GRANT SELECT, INSERT, DELETE ON public.avatar_gallery TO authenticated;
+GRANT ALL ON public.funnels TO authenticated;
+GRANT ALL ON public.funnel_preview_images TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.funnel_sessions TO authenticated;
+GRANT SELECT, INSERT ON public.funnel_session_events TO authenticated;
+
+-- Anonymous visitors (public funnel access)
+GRANT USAGE ON SCHEMA public TO anon;
+GRANT SELECT ON public.funnels TO anon;
+GRANT SELECT ON public.funnel_preview_images TO anon;
+GRANT SELECT, INSERT, UPDATE ON public.funnel_sessions TO anon;
+GRANT SELECT, INSERT ON public.funnel_session_events TO anon;
+
+-- Sequences
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO funnel_user, anon, authenticated, service_role;
+
+-- Default privileges for future tables
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO funnel_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated;
 "
 log "Migrations executadas"
 
