@@ -432,6 +432,14 @@ const Admin = () => {
             </div>
           </header>
 
+          {backendError && (
+            <div className="mx-8 mt-4 p-3 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive text-sm flex items-center gap-2">
+              <span className="font-medium">⚠ Backend indisponível:</span>
+              <span>{backendError}</span>
+              <span className="text-muted-foreground ml-1">— suas configurações podem não ter sido carregadas, mas não foram perdidas.</span>
+            </div>
+          )}
+
           <div className="px-8 py-6">
             {/* ===== FUNNELS TAB ===== */}
             {activeTab === 'funnels' && (
