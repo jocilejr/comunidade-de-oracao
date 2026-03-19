@@ -1,5 +1,5 @@
 # Template gerado por setup-traefik.sh — NÃO edite manualmente
-# Placeholders __DASHBOARD_DOMAIN__ e __PUBLIC_DOMAIN__ são substituídos automaticamente
+# Placeholders são substituídos automaticamente pelo setup-traefik.sh
 
 version: "3.8"
 
@@ -18,27 +18,53 @@ services:
     labels:
       - "traefik.enable=true"
 
-      # ── Router API (prioridade ALTA) ──────────────────
-      - "traefik.http.routers.funnel-api.rule=Host(`__DASHBOARD_DOMAIN__`) && (PathPrefix(`/functions/v1`) || PathPrefix(`/auth/v1`) || PathPrefix(`/rest/v1`) || PathPrefix(`/api`))"
-      - "traefik.http.routers.funnel-api.entrypoints=websecure"
-      - "traefik.http.routers.funnel-api.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.funnel-api.priority=100"
-      - "traefik.http.routers.funnel-api.service=funnel-backend"
-      - "traefik.http.services.funnel-backend.loadbalancer.server.port=8080"
+      # ── Middleware: redirect HTTP → HTTPS ──────────────
+      - "traefik.http.middlewares.__ROUTER_PREFIX__-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.__ROUTER_PREFIX__-https.redirectscheme.permanent=true"
 
-      # ── Router SPA (prioridade BAIXA — fallback) ──────
-      - "traefik.http.routers.funnel-spa.rule=Host(`__DASHBOARD_DOMAIN__`)"
-      - "traefik.http.routers.funnel-spa.entrypoints=websecure"
-      - "traefik.http.routers.funnel-spa.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.funnel-spa.priority=1"
-      - "traefik.http.routers.funnel-spa.service=funnel-backend"
+      # ══════════════════════════════════════════════════
+      # DASHBOARD DOMAIN — __DASHBOARD_DOMAIN__
+      # ══════════════════════════════════════════════════
 
-      # ── Router domínio público (preview links) ────────
-      - "traefik.http.routers.funnel-public.rule=Host(`__PUBLIC_DOMAIN__`)"
-      - "traefik.http.routers.funnel-public.entrypoints=websecure"
-      - "traefik.http.routers.funnel-public.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.funnel-public.priority=1"
-      - "traefik.http.routers.funnel-public.service=funnel-backend"
+      # ── Router API (HTTPS, prioridade ALTA) ────────────
+      - "traefik.http.routers.__ROUTER_PREFIX__-api.rule=Host(`__DASHBOARD_DOMAIN__`) && (PathPrefix(`/functions/v1`) || PathPrefix(`/auth/v1`) || PathPrefix(`/rest/v1`) || PathPrefix(`/api`))"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api.priority=100"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api.service=__ROUTER_PREFIX__-svc"
+
+      # ── Router SPA (HTTPS, prioridade 10) ──────────────
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa.rule=Host(`__DASHBOARD_DOMAIN__`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa.priority=10"
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa.service=__ROUTER_PREFIX__-svc"
+
+      # ── Router Dashboard HTTP → redirect HTTPS ─────────
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.rule=Host(`__DASHBOARD_DOMAIN__`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.entrypoints=web"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.middlewares=__ROUTER_PREFIX__-https"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.priority=1"
+
+      # ══════════════════════════════════════════════════
+      # PUBLIC DOMAIN — __PUBLIC_DOMAIN__
+      # ══════════════════════════════════════════════════
+
+      # ── Router público (HTTPS) ─────────────────────────
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.rule=Host(`__PUBLIC_DOMAIN__`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.priority=10"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.service=__ROUTER_PREFIX__-svc"
+
+      # ── Router público HTTP → redirect HTTPS ───────────
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.rule=Host(`__PUBLIC_DOMAIN__`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.entrypoints=web"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.middlewares=__ROUTER_PREFIX__-https"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.priority=1"
+
+      # ── Service único (porta 8080 do Nginx interno) ────
+      - "traefik.http.services.__ROUTER_PREFIX__-svc.loadbalancer.server.port=8080"
 
 networks:
   traefik-net:
