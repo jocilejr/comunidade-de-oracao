@@ -216,9 +216,10 @@ info "Testando rotas públicas via Traefik..."
 sleep 2
 
 test_route() {
-  local label="$1" url="$2" expected="$3" extra="${4:-}"
+  local label="$1" url="$2" expected="$3"
+  shift 3
   local code
-  code=$(curl -s -o /dev/null -w "%{http_code}" $extra "$url" 2>/dev/null || echo "000")
+  code=$(curl -s -o /dev/null -w "%{http_code}" "$@" "$url" 2>/dev/null || echo "000")
   if echo "$expected" | grep -qw "$code"; then
     echo -e "  ${GREEN}✅${NC} ${label} → HTTP ${code}"
     return 0
@@ -235,7 +236,7 @@ test_route "GET  /"                    "https://${DASHBOARD_DOMAIN}/"       "200
 test_route "GET  /login"               "https://${DASHBOARD_DOMAIN}/login"  "200"         || ROUTES_OK=false
 test_route "GET  /admin"               "https://${DASHBOARD_DOMAIN}/admin"  "200"         || ROUTES_OK=false
 test_route "POST /functions/v1/proxy"  "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" "400 401" \
-  "-X POST -H 'Content-Type: application/json' -d '{\"action\":\"list\"}'"                || ROUTES_OK=false
+  -X POST -H "Content-Type: application/json" -d '{"action":"list"}'                      || ROUTES_OK=false
 test_route "GET  /rest/v1/"            "https://${DASHBOARD_DOMAIN}/rest/v1/user_settings?select=id&limit=1" "200 401 406" || ROUTES_OK=false
 
 echo ""
