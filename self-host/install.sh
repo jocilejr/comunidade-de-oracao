@@ -276,9 +276,9 @@ if [ -n "$EXISTING_SITES" ]; then
   for s in $EXISTING_SITES; do echo "       - $s"; done
 fi
 
-# Criar diretório para validação SSL via webroot
+# Criar diretório para validação SSL via webroot (path completo)
 ACME_ROOT="/var/www/acme-challenge"
-mkdir -p "$ACME_ROOT"
+mkdir -p "$ACME_ROOT/.well-known/acme-challenge"
 
 # Config HTTP mínima apenas para os domínios da app + ACME challenge
 cat > /etc/nginx/sites-available/funnel-app <<NGINX_TEMP
@@ -286,8 +286,8 @@ server {
     listen 80;
     server_name ${PUBLIC_DOMAIN} ${DASHBOARD_DOMAIN};
 
-    # Validação SSL (Let's Encrypt)
-    location /.well-known/acme-challenge/ {
+    # Validação SSL (Let's Encrypt) — ^~ garante prioridade sobre regex de outros sites
+    location ^~ /.well-known/acme-challenge/ {
         root ${ACME_ROOT};
         allow all;
         try_files \$uri =404;
