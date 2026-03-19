@@ -37,6 +37,11 @@ PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-}"
 log "Dashboard: ${DASHBOARD_DOMAIN}"
 log "Público:   ${PUBLIC_DOMAIN}"
 
+# ── 2b. Gerar ROUTER_PREFIX único (derivado do domínio) ──
+# Transforma "dash.origemdavida.online" → "funnel-dash-origemdavida-online"
+ROUTER_PREFIX="funnel-$(echo "$DASHBOARD_DOMAIN" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]')"
+log "Router prefix: ${ROUTER_PREFIX}"
+
 # ── 3. Sincronizar backend do repo → /opt ────────────────
 info "Sincronizando backend do repositório para $APP_DIR..."
 
@@ -120,13 +125,14 @@ info "Gerando config Nginx interna..."
 cp "$REPO_DIR/self-host/nginx-proxy.conf.template" "$APP_DIR/nginx-proxy.conf"
 log "Config Nginx salva em $APP_DIR/nginx-proxy.conf"
 
-# ── 8. Gerar docker-compose.yml ──────────────────────────
-info "Gerando docker-compose.yml..."
+# ── 8. Gerar docker-compose.yml com prefixo único ───────
+info "Gerando docker-compose.yml com prefixo ${ROUTER_PREFIX}..."
 
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 
 sed -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
     -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
+    -e "s/__ROUTER_PREFIX__/${ROUTER_PREFIX}/g" \
     "$REPO_DIR/self-host/docker-compose.traefik.yml.template" > "$COMPOSE_FILE"
 
 if [ "$TRAEFIK_NETWORK" != "traefik-net" ]; then
@@ -180,7 +186,6 @@ else
   echo ""
   warn "❌ Container NÃO alcança a API (HTTP ${HEALTH_TEST})"
   echo ""
-  # Diagnóstico detalhado
   if [ "$HEALTH_TEST" = "000" ]; then
     info "Causa provável: host.docker.internal não resolve ou porta 4000 inacessível"
     echo ""
@@ -222,6 +227,18 @@ else
   warn "⚠ PostgREST inacessível (HTTP ${REST_TEST}) — user_settings não carregará no frontend"
 fi
 
+# Test 4: Container → SPA (index.html)
+info "Teste 4: Container → SPA (/)"
+SPA_TEST=$(docker exec funnel-nginx-proxy \
+  curl -s -o /dev/null -w "%{http_code}" \
+  http://localhost:8080/ 2>/dev/null || echo "000")
+
+if [ "$SPA_TEST" = "200" ]; then
+  log "✅ SPA servindo index.html (HTTP 200)"
+else
+  warn "⚠ SPA retornou HTTP ${SPA_TEST} (esperado 200)"
+fi
+
 echo ""
 
 # ── 12. Teste via URL pública ───────────────────────────
@@ -235,16 +252,32 @@ PUBLIC_PROXY=$(curl -s -o /dev/null -w "%{http_code}" \
 PUBLIC_REST=$(curl -s -o /dev/null -w "%{http_code}" \
   "https://${DASHBOARD_DOMAIN}/rest/v1/user_settings?select=id&limit=1" 2>/dev/null || echo "000")
 
+PUBLIC_SPA=$(curl -s -o /dev/null -w "%{http_code}" \
+  "https://${DASHBOARD_DOMAIN}/" 2>/dev/null || echo "000")
+
+PUBLIC_ADMIN=$(curl -s -o /dev/null -w "%{http_code}" \
+  "https://${DASHBOARD_DOMAIN}/admin" 2>/dev/null || echo "000")
+
 echo ""
 ROUTES_OK=true
 
 echo -e "  ${CYAN}POST /functions/v1/typebot-proxy${NC} → HTTP ${PUBLIC_PROXY}"
-if [ "$PUBLIC_PROXY" = "502" ] || [ "$PUBLIC_PROXY" = "405" ] || [ "$PUBLIC_PROXY" = "000" ]; then
+if [ "$PUBLIC_PROXY" = "502" ] || [ "$PUBLIC_PROXY" = "405" ] || [ "$PUBLIC_PROXY" = "000" ] || [ "$PUBLIC_PROXY" = "500" ]; then
   ROUTES_OK=false
 fi
 
 echo -e "  ${CYAN}GET  /rest/v1/user_settings${NC}      → HTTP ${PUBLIC_REST}"
-if [ "$PUBLIC_REST" = "502" ] || [ "$PUBLIC_REST" = "405" ] || [ "$PUBLIC_REST" = "000" ]; then
+if [ "$PUBLIC_REST" = "502" ] || [ "$PUBLIC_REST" = "405" ] || [ "$PUBLIC_REST" = "000" ] || [ "$PUBLIC_REST" = "500" ]; then
+  ROUTES_OK=false
+fi
+
+echo -e "  ${CYAN}GET  / (SPA)${NC}                     → HTTP ${PUBLIC_SPA}"
+if [ "$PUBLIC_SPA" = "404" ] || [ "$PUBLIC_SPA" = "500" ] || [ "$PUBLIC_SPA" = "502" ] || [ "$PUBLIC_SPA" = "000" ]; then
+  ROUTES_OK=false
+fi
+
+echo -e "  ${CYAN}GET  /admin${NC}                      → HTTP ${PUBLIC_ADMIN}"
+if [ "$PUBLIC_ADMIN" = "500" ] || [ "$PUBLIC_ADMIN" = "502" ] || [ "$PUBLIC_ADMIN" = "000" ]; then
   ROUTES_OK=false
 fi
 
@@ -261,7 +294,7 @@ if [ "$ROUTES_OK" = true ]; then
   echo ""
 else
   echo -e "${YELLOW}╔══════════════════════════════════════════════════╗${NC}"
-  echo -e "${YELLOW}║  ⚠ Rotas internas OK, mas públicas falharam       ║${NC}"
+  echo -e "${YELLOW}║  ⚠ Algumas rotas públicas falharam                ║${NC}"
   echo -e "${YELLOW}╚══════════════════════════════════════════════════╝${NC}"
   echo ""
   echo -e "O container está configurado e alcança a API internamente."
@@ -278,5 +311,8 @@ else
   echo -e "  ${CYAN}Debug:${NC}"
   echo -e "     docker logs funnel-nginx-proxy"
   echo -e "     docker logs \$(docker ps --format '{{.Names}}' | grep traefik | head -1)"
+  echo ""
+  echo -e "  ${CYAN}Diagnóstico completo:${NC}"
+  echo -e "     sudo bash self-host/fix-traefik-routing.sh"
   echo ""
 fi

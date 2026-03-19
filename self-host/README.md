@@ -86,13 +86,42 @@ O `update.sh` cuida de:
 2. Executar migrations SQL pendentes
 3. Rebuild do frontend (se necessário)
 4. `pm2 restart` com `--update-env`
+5. **Auto-heal Traefik** — se detectar Traefik na porta 443, roda `setup-traefik.sh` e smoke tests
 
 ## Traefik (proxy externo)
 
-Se a sua VPS já usa **Traefik** para gerenciar SSL/portas 80+443, o Nginx do host não recebe tráfego externo diretamente. Nesse caso:
+Se a sua VPS já usa **Traefik** para gerenciar SSL/portas 80+443, o Nginx do host não recebe tráfego externo diretamente.
 
-1. O container `funnel-nginx-proxy` faz proxy para a API local (porta 4000) e serve o frontend.
-2. O Traefik precisa rotear os paths de backend (`/functions/v1/`, `/auth/v1/`, `/rest/v1/`, `/api/`) com **prioridade maior** que o fallback SPA.
+### Estratégia de namespacing
+
+Para evitar conflitos com outros containers na VPS, o sistema usa **nomes de routers únicos** derivados do domínio:
+
+```
+domínio: dash.origemdavida.online
+prefixo: funnel-dash-origemdavida-online
+
+routers gerados:
+  funnel-dash-origemdavida-online-api     (API, prioridade 100)
+  funnel-dash-origemdavida-online-spa     (SPA, prioridade 10)
+  funnel-dash-origemdavida-online-pub     (domínio público, prioridade 10)
+  funnel-dash-origemdavida-online-dash-http (redirect HTTP→HTTPS)
+  funnel-dash-origemdavida-online-pub-http  (redirect HTTP→HTTPS)
+```
+
+Isso garante que **nenhum outro container** na VPS colida com os routers do funil.
+
+### Configuração automática
+
+```bash
+# Configura ou reconfigura tudo automaticamente
+sudo bash self-host/setup-traefik.sh
+```
+
+O `setup-traefik.sh`:
+1. Gera prefixo único a partir do `DASHBOARD_DOMAIN`
+2. Cria `docker-compose.yml` com labels Traefik corretas
+3. Sobe container `funnel-nginx-proxy` com `--force-recreate`
+4. Valida conectividade interna (container → API) e pública (Traefik → SPA)
 
 ### Diagnóstico
 
@@ -100,23 +129,41 @@ Se a sua VPS já usa **Traefik** para gerenciar SSL/portas 80+443, o Nginx do ho
 sudo bash self-host/fix-traefik-routing.sh
 ```
 
-### Labels do Traefik (exemplo)
+O script de diagnóstico:
+- Detecta **routers Traefik duplicados** em todos os containers
+- Testa **todas as rotas críticas** (não só `/functions/v1`)
+- Sugere correção automática via `setup-traefik.sh`
 
-No seu `docker-compose.yml`, o serviço que aponta para o Nginx interno (porta 8080) precisa de **dois routers**:
+### Validação pós-update (matriz de status)
 
-```yaml
-labels:
-  # API paths — prioridade alta
-  - "traefik.http.routers.funnel-api.rule=Host(`dash.seudominio.com`) && (PathPrefix(`/functions/v1`) || PathPrefix(`/auth/v1`) || PathPrefix(`/rest/v1`) || PathPrefix(`/api`))"
-  - "traefik.http.routers.funnel-api.priority=100"
-  - "traefik.http.routers.funnel-api.entrypoints=websecure"
-  - "traefik.http.routers.funnel-api.tls.certresolver=letsencrypt"
+| Rota | Método | Status esperado |
+|------|--------|----------------|
+| `https://dash.../` | GET | 200 |
+| `https://dash.../login` | GET | 200 |
+| `https://dash.../admin` | GET | 200 |
+| `https://dash.../functions/v1/typebot-proxy` | POST | 400 ou 401 |
+| `https://dash.../rest/v1/user_settings?select=id&limit=1` | GET | 200, 401 ou 406 |
+| `http://dash.../` | GET | 301 (redirect HTTPS) |
 
-  # SPA fallback — prioridade baixa
-  - "traefik.http.routers.funnel-spa.rule=Host(`dash.seudominio.com`)"
-  - "traefik.http.routers.funnel-spa.priority=1"
-  - "traefik.http.routers.funnel-spa.entrypoints=websecure"
-  - "traefik.http.routers.funnel-spa.tls.certresolver=letsencrypt"
+### Fluxo recomendado
+
+```
+update.sh
+  ├── build + deploy + restart
+  ├── detecta Traefik?
+  │     ├── sim → roda setup-traefik.sh → smoke tests
+  │     │         ├── OK → ✅ concluído
+  │     │         └── falha → aviso + instruções
+  │     └── não → valida Nginx direto
+  └── resumo final
 ```
 
-**Importante**: Ambos os routers apontam para o **mesmo serviço** (o container Nginx interno). A diferença é que o router de API tem prioridade `100`, garantindo que paths como `/functions/v1/typebot-proxy` cheguem no proxy correto em vez de cair no SPA fallback (que retorna `405`).
+### Labels do Traefik (referência)
+
+No `docker-compose.yml` gerado, o serviço `funnel-nginx-proxy` (porta 8080) terá routers com **prioridades escalonadas**:
+
+- **Prioridade 100**: paths de API (`/functions/v1`, `/auth/v1`, `/rest/v1`, `/api`)
+- **Prioridade 10**: SPA fallback (qualquer path do domínio)
+- **Prioridade 1**: redirect HTTP→HTTPS (entrypoint `web`)
+
+**Importante**: Todos os routers apontam para o **mesmo serviço** (Nginx interno). A diferença é a prioridade, garantindo que paths de API nunca caiam no SPA fallback.

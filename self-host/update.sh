@@ -4,6 +4,7 @@ set -euo pipefail
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  Update Self-Host — Funil App                                ║
 # ║  Lê config de /opt/funnel-app/.env — zero perguntas          ║
+# ║  Inclui smoke tests e auto-heal para ambientes com Traefik   ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 APP_DIR="/opt/funnel-app"
@@ -14,6 +15,7 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC
 log()  { echo -e "${GREEN}[✓]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
+info() { echo -e "${CYAN}[i]${NC} $1"; }
 
 # ── 1. Verificações ──────────────────────────────────────
 [ "$EUID" -ne 0 ] && err "Execute como root: sudo bash update.sh"
@@ -210,20 +212,64 @@ fi
 TRAEFIK_OWNS_443=$(ss -ltnp 2>/dev/null | grep ':443' | grep -c 'docker-proxy' || true)
 if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
   warn "Traefik detectado na porta 443 — Nginx do host NÃO recebe tráfego externo."
-  warn "O roteamento de /functions/v1/ depende das labels do Traefik."
+  info "Executando smoke tests completos..."
 
-  # Validar URL pública
-  if [ -n "${DASHBOARD_DOMAIN:-}" ]; then
-    FUNC_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
-      -X POST "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" \
-      -H 'Content-Type: application/json' -d '{"action":"list"}' 2>/dev/null || echo "000")
+  # Atualizar container Traefik (sempre, para garantir labels atualizadas)
+  info "Atualizando container funnel-nginx-proxy com labels mais recentes..."
+  bash "$REPO_DIR/self-host/setup-traefik.sh" 2>&1 | tail -5
 
-    if [ "$FUNC_TEST" = "401" ] || [ "$FUNC_TEST" = "400" ]; then
-      log "Rota pública /functions/v1/ OK (HTTP ${FUNC_TEST})"
-    else
-      warn "⚠ /functions/v1/ retornou HTTP ${FUNC_TEST} (esperado 401 ou 400)"
-      warn "Execute: sudo bash self-host/fix-traefik-routing.sh"
-    fi
+  sleep 3
+
+  # ── Smoke tests completos ──────────────────────────────
+  SMOKE_OK=true
+
+  FUNC_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
+    -X POST "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" \
+    -H 'Content-Type: application/json' -d '{"action":"list"}' 2>/dev/null || echo "000")
+  echo -e "  POST /functions/v1/typebot-proxy → HTTP ${FUNC_TEST}"
+  if [ "$FUNC_TEST" = "401" ] || [ "$FUNC_TEST" = "400" ]; then
+    log "Rota /functions/v1/ OK"
+  else
+    warn "⚠ /functions/v1/ retornou HTTP ${FUNC_TEST}"
+    SMOKE_OK=false
+  fi
+
+  SPA_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
+    "https://${DASHBOARD_DOMAIN}/" 2>/dev/null || echo "000")
+  echo -e "  GET  /                          → HTTP ${SPA_TEST}"
+  if [ "$SPA_TEST" = "200" ]; then
+    log "SPA / OK"
+  else
+    warn "⚠ SPA / retornou HTTP ${SPA_TEST} (esperado 200)"
+    SMOKE_OK=false
+  fi
+
+  LOGIN_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
+    "https://${DASHBOARD_DOMAIN}/login" 2>/dev/null || echo "000")
+  echo -e "  GET  /login                     → HTTP ${LOGIN_TEST}"
+  if [ "$LOGIN_TEST" = "200" ]; then
+    log "SPA /login OK"
+  else
+    warn "⚠ SPA /login retornou HTTP ${LOGIN_TEST}"
+    SMOKE_OK=false
+  fi
+
+  ADMIN_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
+    "https://${DASHBOARD_DOMAIN}/admin" 2>/dev/null || echo "000")
+  echo -e "  GET  /admin                     → HTTP ${ADMIN_TEST}"
+  if [ "$ADMIN_TEST" = "200" ]; then
+    log "SPA /admin OK"
+  else
+    warn "⚠ SPA /admin retornou HTTP ${ADMIN_TEST}"
+    SMOKE_OK=false
+  fi
+
+  if [ "$SMOKE_OK" = false ]; then
+    echo ""
+    warn "Alguns smoke tests falharam. Possíveis causas:"
+    echo -e "  1. ${CYAN}Conflito de routers Traefik${NC} — outro container pode ter labels para ${DASHBOARD_DOMAIN}"
+    echo -e "  2. ${CYAN}Cache do Traefik${NC} — aguarde 30s e teste novamente"
+    echo -e "  3. ${CYAN}Diagnóstico completo:${NC} sudo bash self-host/fix-traefik-routing.sh"
   fi
 else
   log "Nginx do host controla a porta 443"
@@ -242,4 +288,9 @@ echo -e "  ${CYAN}Serviços:${NC}   pm2 status | pm2 logs"
 if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
   echo -e "  ${YELLOW}Proxy:${NC}      Traefik (externo) → Nginx (interno)"
 fi
+echo ""
+echo -e "  ${CYAN}Validação:${NC}"
+echo -e "    https://${DASHBOARD_DOMAIN}/          → deve abrir SPA"
+echo -e "    https://${DASHBOARD_DOMAIN}/login     → deve abrir login"
+echo -e "    https://${DASHBOARD_DOMAIN}/admin     → deve abrir admin"
 echo ""
