@@ -159,6 +159,7 @@ const AudioPlayer = ({ src, time, autoPlay = false, avatar, avatarFallback }: Au
       )}
 
     </div>
+  );
 };
 
 export default AudioPlayer;
