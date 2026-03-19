@@ -73,17 +73,39 @@ certbot renew       # Renovar SSL (automático via cron)
 
 ```bash
 cd /tmp/funnel-app && git pull
-
-# Rebuild frontend
-npm ci && npm run build
-cp -r dist /opt/funnel-app/dist
-
-# Atualizar API
-cp self-host/api-server.js /opt/funnel-app/
-pm2 restart api-server
-
-# Novas migrations
-for f in supabase/migrations/*.sql; do
-  sudo -u postgres psql -d funnel_app -f "$f" 2>/dev/null
-done
+sudo bash self-host/update.sh
 ```
+
+## Traefik (proxy externo)
+
+Se a sua VPS já usa **Traefik** para gerenciar SSL/portas 80+443, o Nginx do host não recebe tráfego externo diretamente. Nesse caso:
+
+1. O container `funnel-nginx-proxy` faz proxy para a API local (porta 4000) e serve o frontend.
+2. O Traefik precisa rotear os paths de backend (`/functions/v1/`, `/auth/v1/`, `/rest/v1/`, `/api/`) com **prioridade maior** que o fallback SPA.
+
+### Diagnóstico
+
+```bash
+sudo bash self-host/fix-traefik-routing.sh
+```
+
+### Labels do Traefik (exemplo)
+
+No seu `docker-compose.yml`, o serviço que aponta para o Nginx interno (porta 8080) precisa de **dois routers**:
+
+```yaml
+labels:
+  # API paths — prioridade alta
+  - "traefik.http.routers.funnel-api.rule=Host(`dash.seudominio.com`) && (PathPrefix(`/functions/v1`) || PathPrefix(`/auth/v1`) || PathPrefix(`/rest/v1`) || PathPrefix(`/api`))"
+  - "traefik.http.routers.funnel-api.priority=100"
+  - "traefik.http.routers.funnel-api.entrypoints=websecure"
+  - "traefik.http.routers.funnel-api.tls.certresolver=letsencrypt"
+
+  # SPA fallback — prioridade baixa
+  - "traefik.http.routers.funnel-spa.rule=Host(`dash.seudominio.com`)"
+  - "traefik.http.routers.funnel-spa.priority=1"
+  - "traefik.http.routers.funnel-spa.entrypoints=websecure"
+  - "traefik.http.routers.funnel-spa.tls.certresolver=letsencrypt"
+```
+
+**Importante**: Ambos os routers apontam para o **mesmo serviço** (o container Nginx interno). A diferença é que o router de API tem prioridade `100`, garantindo que paths como `/functions/v1/typebot-proxy` cheguem no proxy correto em vez de cair no SPA fallback (que retorna `405`).
