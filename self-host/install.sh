@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS auth.users (
 );
 CREATE OR REPLACE FUNCTION auth.uid()
 RETURNS UUID LANGUAGE sql STABLE
-AS \$\$ SELECT NULLIF(current_setting('request.jwt.claims', true)::json->>'sub', '')::uuid \$\$;
+AS \$\$ SELECT CASE WHEN NULLIF(current_setting('request.jwt.claims', true), '') IS NULL THEN NULL ELSE NULLIF((current_setting('request.jwt.claims', true)::jsonb->>'sub'), '')::uuid END \$\$;
 GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role, funnel_user;
 GRANT SELECT ON auth.users TO anon, authenticated, service_role, funnel_user;
 "
