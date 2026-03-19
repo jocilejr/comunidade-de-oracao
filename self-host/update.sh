@@ -211,12 +211,12 @@ fi
 # ── 12. Detectar Traefik e validar roteamento público ───
 TRAEFIK_OWNS_443=$(ss -ltnp 2>/dev/null | grep ':443' | grep -c 'docker-proxy' || true)
 if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
-  warn "Traefik detectado na porta 443 — Nginx do host NÃO recebe tráfego externo."
+  warn "Traefik detectado na porta 443 — roteamento via containers Traefik."
   info "Executando smoke tests completos..."
 
-  # Atualizar container Traefik (sempre, para garantir labels atualizadas)
-  info "Atualizando container funnel-nginx-proxy com labels mais recentes..."
-  bash "$REPO_DIR/self-host/setup-traefik.sh" 2>&1 | tail -5
+  # Atualizar containers (SPA + API proxy + REST proxy)
+  info "Atualizando containers Traefik (funnel-spa, funnel-api-proxy, funnel-rest-proxy)..."
+  bash "$REPO_DIR/self-host/setup-traefik.sh" 2>&1 | tail -10
 
   sleep 3
 
