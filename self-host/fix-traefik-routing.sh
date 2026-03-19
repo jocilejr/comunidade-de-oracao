@@ -3,8 +3,8 @@ set -euo pipefail
 
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  Fix Traefik Routing — Funil App                            ║
-# ║  Diagnostica e corrige roteamento quando Traefik gerencia   ║
-# ║  as portas 80/443 na frente do Nginx do host.               ║
+# ║  Diagnóstico para arquitetura de 3 containers               ║
+# ║  (funnel-spa, funnel-api-proxy, funnel-rest-proxy)           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -31,161 +31,100 @@ echo ""
 DASHBOARD_DOMAIN="${DASHBOARD_DOMAIN:-}"
 [ -z "$DASHBOARD_DOMAIN" ] && err "DASHBOARD_DOMAIN não definido no .env"
 
-# ── 0. Sincronizar backend (mesma lógica do setup-traefik) ─
-info "Verificando se backend em $APP_DIR está atualizado..."
-SYNCED=0
-for f in api-server.js ecosystem.config.js; do
-  if [ -f "$REPO_DIR/self-host/$f" ]; then
-    if ! diff -q "$REPO_DIR/self-host/$f" "$APP_DIR/$f" >/dev/null 2>&1; then
-      cp "$REPO_DIR/self-host/$f" "$APP_DIR/$f"
-      log "Atualizado: $f"
-      SYNCED=$((SYNCED + 1))
-    fi
-  fi
-done
-if [ "$SYNCED" -gt 0 ]; then
-  pm2 restart funnel-api --update-env 2>/dev/null || warn "PM2 restart falhou"
-  sleep 2
-  log "Backend sincronizado e reiniciado"
-fi
-
-# ── 1. Verificar como a API está escutando ───────────────
-info "Verificando bind da API na porta 4000:"
+# ── 1. Verificar API ────────────────────────────────────
+info "API na porta 4000:"
 API_BIND=$(ss -ltnp | grep ":4000" || true)
-if [ -z "$API_BIND" ]; then
-  warn "API NÃO está escutando na porta 4000!"
-  info "Tentando: pm2 restart funnel-api"
-  pm2 restart funnel-api --update-env 2>/dev/null || true
-  sleep 3
-  API_BIND=$(ss -ltnp | grep ":4000" || true)
-fi
-
 if echo "$API_BIND" | grep -q "0.0.0.0:4000"; then
   log "API escuta em 0.0.0.0:4000 ✅"
 elif echo "$API_BIND" | grep -q "127.0.0.1:4000"; then
-  err "API escuta em 127.0.0.1 — Docker NÃO alcança!\n   Corrija server.listen() em $APP_DIR/api-server.js para '0.0.0.0'"
+  err "API escuta em 127.0.0.1 — Docker NÃO alcança!"
+elif [ -z "$API_BIND" ]; then
+  warn "API NÃO escutando na porta 4000"
+fi
+echo ""
+
+# ── 2. Verificar containers ─────────────────────────────
+info "Status dos containers:"
+for c in funnel-spa funnel-api-proxy funnel-rest-proxy; do
+  if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
+    log "$c ✅ rodando"
+  else
+    warn "$c ❌ NÃO rodando"
+  fi
+done
+
+# Container antigo (deve ter sido removido)
+if docker ps --format '{{.Names}}' | grep -q "^funnel-nginx-proxy$"; then
+  warn "⚠ Container ANTIGO funnel-nginx-proxy ainda existe! Remova-o:"
+  echo -e "    docker stop funnel-nginx-proxy && docker rm funnel-nginx-proxy"
+fi
+echo ""
+
+# ── 3. Verificar rede ───────────────────────────────────
+info "Rede dos containers vs Traefik:"
+TRAEFIK_CONTAINER=$(docker ps --format '{{.Names}}' | grep -i traefik | head -1 || true)
+if [ -n "$TRAEFIK_CONTAINER" ]; then
+  TRAEFIK_NETS=$(docker inspect "$TRAEFIK_CONTAINER" \
+    --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)
+  echo -e "  Traefik ($TRAEFIK_CONTAINER): ${TRAEFIK_NETS}"
+
+  for c in funnel-spa funnel-api-proxy funnel-rest-proxy; do
+    if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
+      NETS=$(docker inspect "$c" \
+        --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)
+      echo -e "  $c: ${NETS}"
+    fi
+  done
 else
-  echo "  $API_BIND"
+  warn "Traefik não encontrado!"
 fi
 echo ""
 
-# ── 2. Detectar quem controla a porta 443 ────────────────
-info "Quem escuta na porta 443:"
-ss -ltnp | grep ':443' || true
-echo ""
-
-TRAEFIK_OWNS_443=$(ss -ltnp | grep ':443' | grep -c 'docker-proxy' || true)
-if [ "$TRAEFIK_OWNS_443" -eq 0 ]; then
-  log "Nginx do host controla a porta 443 — este script não é necessário."
-  log "Use: sudo bash self-host/update.sh"
-  exit 0
-fi
-
-warn "docker-proxy controla a porta 443 → Traefik está na frente do Nginx."
-echo ""
-
-# ── 3. Listar containers e labels relevantes ─────────────
-info "Containers Docker ativos:"
-docker ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Image}}' | head -20
-echo ""
-
-# ── 4. Detectar TODOS os routers Traefik (conflitos) ─────
-info "Buscando TODOS os routers Traefik configurados em containers ativos..."
-echo ""
-
-ROUTER_NAMES_FILE=$(mktemp)
+# ── 4. Detectar conflitos de host-rule ───────────────────
+info "Buscando conflitos de host-rule para ${DASHBOARD_DOMAIN}..."
+CONFLICTS=0
 for cid in $(docker ps -q); do
   name=$(docker inspect --format '{{.Name}}' "$cid" | sed 's/^\///')
   labels=$(docker inspect --format '{{json .Config.Labels}}' "$cid" 2>/dev/null)
 
-  # Extrair nomes de routers
-  ROUTERS=$(echo "$labels" | grep -oP '"traefik\.http\.routers\.([^.]+)\.rule"' | sed 's/"traefik\.http\.routers\.//;s/\.rule"//' || true)
+  # Pular nossos próprios containers
+  case "$name" in funnel-spa|funnel-api-proxy|funnel-rest-proxy) continue;; esac
 
-  if [ -n "$ROUTERS" ]; then
-    for router in $ROUTERS; do
-      RULE=$(echo "$labels" | grep -oP "\"traefik\.http\.routers\.${router}\.rule\":\s*\"[^\"]+\"" | sed 's/.*: *"//;s/"$//' || true)
-      echo "$router|$name|$RULE" >> "$ROUTER_NAMES_FILE"
-
-      # Destacar se toca nosso domínio
-      if echo "$RULE" | grep -qi "$DASHBOARD_DOMAIN"; then
-        echo -e "  ${CYAN}${name}${NC} → router ${YELLOW}${router}${NC} → ${RULE}"
-      fi
-    done
+  if echo "$labels" | grep -qi "$DASHBOARD_DOMAIN"; then
+    echo -e "  ${RED}⚠ CONFLITO:${NC} container ${CYAN}${name}${NC} tem labels para ${DASHBOARD_DOMAIN}"
+    CONFLICTS=$((CONFLICTS + 1))
   fi
+done
+
+if [ "$CONFLICTS" -eq 0 ]; then
+  log "Nenhum conflito de host-rule detectado ✅"
+else
+  warn "$CONFLICTS container(s) externo(s) com regras para ${DASHBOARD_DOMAIN}!"
+  echo -e "  ${YELLOW}Remova as labels Traefik desses containers ou pare-os.${NC}"
+fi
+echo ""
+
+# ── 5. Testar headers de resposta ────────────────────────
+info "Identificando quem responde cada rota (via headers)..."
+echo ""
+
+for route in "/" "/login" "/admin"; do
+  HEADERS=$(curl -sI "https://${DASHBOARD_DOMAIN}${route}" 2>/dev/null | head -5)
+  STATUS=$(echo "$HEADERS" | head -1)
+  SERVER=$(echo "$HEADERS" | grep -i "^server:" || echo "  server: (não informado)")
+  echo -e "  ${CYAN}${route}${NC}: ${STATUS}"
+  echo -e "    ${SERVER}"
 done
 echo ""
 
-# Detectar nomes de routers duplicados
-info "Verificando routers duplicados..."
-DUPES=$(cut -d'|' -f1 "$ROUTER_NAMES_FILE" | sort | uniq -d)
-if [ -n "$DUPES" ]; then
-  echo ""
-  echo -e "  ${RED}⚠ ROUTERS DUPLICADOS DETECTADOS:${NC}"
-  for dup in $DUPES; do
-    echo -e "    ${RED}${dup}${NC} — definido em:"
-    grep "^${dup}|" "$ROUTER_NAMES_FILE" | while IFS='|' read -r _ container rule; do
-      echo -e "      → container ${CYAN}${container}${NC}: ${rule}"
-    done
-  done
-  echo ""
-  warn "Routers duplicados causam conflito! O Traefik pode rotear para o container errado."
-  warn "Solução: rode setup-traefik.sh para usar nomes únicos por domínio."
-else
-  log "Nenhum router duplicado detectado ✅"
-fi
-rm -f "$ROUTER_NAMES_FILE"
-echo ""
-
-# ── 5. Verificar se funnel-nginx-proxy existe ────────────
-if docker ps --format '{{.Names}}' | grep -q "funnel-nginx-proxy"; then
-  log "Container funnel-nginx-proxy está rodando"
-
-  info "Resolvendo host.docker.internal dentro do container:"
-  docker exec funnel-nginx-proxy sh -c "getent hosts host.docker.internal 2>/dev/null || echo 'FALHOU: não resolve'" || true
-  echo ""
-
-  info "Testando roteamento interno do funnel-nginx-proxy:"
-  INTERNAL_TEST=$(docker exec funnel-nginx-proxy curl -s -o /dev/null -w "%{http_code}" \
-    http://host.docker.internal:4000/health 2>/dev/null || echo "000")
-
-  if [ "$INTERNAL_TEST" = "200" ]; then
-    log "Container alcança a API (HTTP ${INTERNAL_TEST}) ✅"
-  else
-    warn "Container NÃO alcança a API (HTTP ${INTERNAL_TEST})"
-    if [ "$INTERNAL_TEST" = "000" ]; then
-      info "Causa: DNS falha ou porta inacessível. Verifique extra_hosts no docker-compose.yml"
-    fi
-  fi
-
-  # Testar SPA dentro do container
-  info "Testando SPA dentro do container:"
-  SPA_INTERNAL=$(docker exec funnel-nginx-proxy curl -s -o /dev/null -w "%{http_code}" \
-    http://localhost:8080/ 2>/dev/null || echo "000")
-  if [ "$SPA_INTERNAL" = "200" ]; then
-    log "SPA servindo index.html dentro do container (HTTP 200) ✅"
-  else
-    warn "SPA retornou HTTP ${SPA_INTERNAL} dentro do container"
-  fi
-else
-  warn "Container funnel-nginx-proxy NÃO está rodando"
-  info "Execute: sudo bash self-host/setup-traefik.sh"
-fi
-echo ""
-
-# ── 6. Testes completos via URL pública ──────────────────
-info "Testando URLs públicas..."
+# ── 6. Testes completos ─────────────────────────────────
+info "Testes de rota:"
 echo ""
 
 test_url() {
-  local label="$1"
-  local method="$2"
-  local url="$3"
-  local expected="$4"
-  local extra_args="${5:-}"
-
+  local label="$1" url="$2" expected="$3" extra="${4:-}"
   local code
-  code=$(curl -s -o /dev/null -w "%{http_code}" $extra_args "$url" 2>/dev/null || echo "000")
-
+  code=$(curl -s -o /dev/null -w "%{http_code}" $extra "$url" 2>/dev/null || echo "000")
   if echo "$expected" | grep -qw "$code"; then
     echo -e "  ${GREEN}✅${NC} ${label} → HTTP ${code}"
   else
@@ -193,20 +132,18 @@ test_url() {
   fi
 }
 
-test_url "GET  https://${DASHBOARD_DOMAIN}/"       GET  "https://${DASHBOARD_DOMAIN}/"       "200"
-test_url "GET  https://${DASHBOARD_DOMAIN}/login"   GET  "https://${DASHBOARD_DOMAIN}/login"   "200"
-test_url "GET  https://${DASHBOARD_DOMAIN}/admin"   GET  "https://${DASHBOARD_DOMAIN}/admin"   "200"
-test_url "POST /functions/v1/typebot-proxy"          POST "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" "400 401" "-X POST -H 'Content-Type: application/json' -d '{\"action\":\"list\"}'"
-test_url "GET  /rest/v1/user_settings"               GET  "https://${DASHBOARD_DOMAIN}/rest/v1/user_settings?select=id&limit=1" "200 401 406"
+test_url "GET  /"                    "https://${DASHBOARD_DOMAIN}/"       "200"
+test_url "GET  /login"               "https://${DASHBOARD_DOMAIN}/login"  "200"
+test_url "GET  /admin"               "https://${DASHBOARD_DOMAIN}/admin"  "200"
+test_url "POST /functions/v1/proxy"  "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" "400 401" \
+  "-X POST -H 'Content-Type: application/json' -d '{\"action\":\"list\"}'"
+test_url "GET  /rest/v1/"            "https://${DASHBOARD_DOMAIN}/rest/v1/user_settings?select=id&limit=1" "200 401 406"
 
 echo ""
 
-# ── 7. Resultado e sugestão de ação ──────────────────────
-# Re-test critical SPA route
+# ── 7. Resultado ────────────────────────────────────────
 FINAL_SPA=$(curl -s -o /dev/null -w "%{http_code}" "https://${DASHBOARD_DOMAIN}/" 2>/dev/null || echo "000")
-FINAL_ADMIN=$(curl -s -o /dev/null -w "%{http_code}" "https://${DASHBOARD_DOMAIN}/admin" 2>/dev/null || echo "000")
-
-if [ "$FINAL_SPA" = "200" ] && [ "$FINAL_ADMIN" = "200" ]; then
+if [ "$FINAL_SPA" = "200" ]; then
   echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
   echo -e "${GREEN}║  ✅ Roteamento OK!                                ║${NC}"
   echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
@@ -217,29 +154,6 @@ echo -e "${RED}╔════════════════════�
 echo -e "${RED}║  ❌ Roteamento com problemas                      ║${NC}"
 echo -e "${RED}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
-
-# ── 8. Auto-fix: oferecer recriar com prefixo único ─────
-echo -e "${YELLOW}═══ CORREÇÃO AUTOMÁTICA ═══${NC}"
-echo ""
-echo -e "O setup-traefik.sh agora usa nomes de routers únicos por domínio,"
-echo -e "eliminando conflitos com outros containers na VPS."
-echo ""
-echo -e "  ${CYAN}Execute:${NC}"
-echo -e "    sudo bash self-host/setup-traefik.sh"
-echo ""
-echo -e "  Isso vai:"
-echo -e "    1. Gerar labels com prefixo único (baseado no domínio)"
-echo -e "    2. Recriar o container funnel-nginx-proxy"
-echo -e "    3. Validar conectividade interna e pública"
-echo ""
-echo -e "${YELLOW}Se o problema persistir após setup-traefik.sh:${NC}"
-echo ""
-echo -e "  1. Verifique se outro container tem labels Traefik para ${DASHBOARD_DOMAIN}"
-echo -e "     → docker inspect <container> | grep traefik"
-echo ""
-echo -e "  2. Verifique a rede compartilhada com o Traefik"
-echo -e "     → docker network inspect \$(docker inspect \$(docker ps --format '{{.Names}}' | grep traefik | head -1) --format '{{range \$k, \$v := .NetworkSettings.Networks}}{{\$k}} {{end}}')"
-echo ""
-echo -e "  3. Reinicie o Traefik para limpar cache de routers"
-echo -e "     → docker restart \$(docker ps --format '{{.Names}}' | grep traefik | head -1)"
+echo -e "  ${CYAN}Correção:${NC} sudo bash self-host/setup-traefik.sh"
+echo -e "  ${CYAN}Logs:${NC}     docker compose -f $APP_DIR/docker-compose.yml logs"
 echo ""

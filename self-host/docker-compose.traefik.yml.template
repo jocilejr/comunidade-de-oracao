@@ -1,70 +1,149 @@
 # Template gerado por setup-traefik.sh — NÃO edite manualmente
-# Placeholders são substituídos automaticamente pelo setup-traefik.sh
+# Arquitetura: Traefik roteia direto — sem Nginx proxy intermediário
 
 version: "3.8"
 
 services:
-  funnel-nginx-proxy:
-    image: nginx:alpine
-    container_name: funnel-nginx-proxy
+  # ── SPA: serve arquivos estáticos com fallback SPA ──────
+  funnel-spa:
+    image: joseluisq/static-web-server:2-alpine
+    container_name: funnel-spa
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    environment:
+      - SERVER_PORT=8080
+      - SERVER_ROOT=/public
+      - SERVER_FALLBACK_PAGE=/public/index.html
+      - SERVER_LOG_LEVEL=warn
     volumes:
-      - /opt/funnel-app/dist:/usr/share/nginx/html:ro
-      - /opt/funnel-app/nginx-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/funnel-app/dist:/public:ro
     networks:
       - traefik-net
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
 
       # ── Middleware: redirect HTTP → HTTPS ──────────────
       - "traefik.http.middlewares.__ROUTER_PREFIX__-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.__ROUTER_PREFIX__-https.redirectscheme.permanent=true"
 
-      # ══════════════════════════════════════════════════
-      # DASHBOARD DOMAIN — __DASHBOARD_DOMAIN__
-      # ══════════════════════════════════════════════════
-
-      # ── Router API (HTTPS, prioridade ALTA) ────────────
-      - "traefik.http.routers.__ROUTER_PREFIX__-api.rule=Host(`__DASHBOARD_DOMAIN__`) && (PathPrefix(`/functions/v1`) || PathPrefix(`/auth/v1`) || PathPrefix(`/rest/v1`) || PathPrefix(`/api`))"
-      - "traefik.http.routers.__ROUTER_PREFIX__-api.entrypoints=websecure"
-      - "traefik.http.routers.__ROUTER_PREFIX__-api.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.__ROUTER_PREFIX__-api.priority=100"
-      - "traefik.http.routers.__ROUTER_PREFIX__-api.service=__ROUTER_PREFIX__-svc"
-
-      # ── Router SPA (HTTPS, prioridade 10) ──────────────
+      # ══ DASHBOARD — __DASHBOARD_DOMAIN__ ══════════════
+      # SPA HTTPS (catch-all, prioridade baixa)
       - "traefik.http.routers.__ROUTER_PREFIX__-spa.rule=Host(`__DASHBOARD_DOMAIN__`)"
       - "traefik.http.routers.__ROUTER_PREFIX__-spa.entrypoints=websecure"
       - "traefik.http.routers.__ROUTER_PREFIX__-spa.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.__ROUTER_PREFIX__-spa.priority=10"
-      - "traefik.http.routers.__ROUTER_PREFIX__-spa.service=__ROUTER_PREFIX__-svc"
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa.priority=1"
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa.service=__ROUTER_PREFIX__-spa-svc"
 
-      # ── Router Dashboard HTTP → redirect HTTPS ─────────
-      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.rule=Host(`__DASHBOARD_DOMAIN__`)"
-      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.entrypoints=web"
-      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.middlewares=__ROUTER_PREFIX__-https"
-      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.priority=1"
+      # SPA HTTP → redirect HTTPS
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa-http.rule=Host(`__DASHBOARD_DOMAIN__`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa-http.entrypoints=web"
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa-http.middlewares=__ROUTER_PREFIX__-https"
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa-http.priority=1"
 
-      # ══════════════════════════════════════════════════
-      # PUBLIC DOMAIN — __PUBLIC_DOMAIN__
-      # ══════════════════════════════════════════════════
-
-      # ── Router público (HTTPS) ─────────────────────────
+      # ══ PUBLIC — __PUBLIC_DOMAIN__ ════════════════════
+      # SPA público HTTPS
       - "traefik.http.routers.__ROUTER_PREFIX__-pub.rule=Host(`__PUBLIC_DOMAIN__`)"
       - "traefik.http.routers.__ROUTER_PREFIX__-pub.entrypoints=websecure"
       - "traefik.http.routers.__ROUTER_PREFIX__-pub.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.__ROUTER_PREFIX__-pub.priority=10"
-      - "traefik.http.routers.__ROUTER_PREFIX__-pub.service=__ROUTER_PREFIX__-svc"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.priority=1"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.service=__ROUTER_PREFIX__-spa-svc"
 
-      # ── Router público HTTP → redirect HTTPS ───────────
+      # SPA público HTTP → redirect HTTPS
       - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.rule=Host(`__PUBLIC_DOMAIN__`)"
       - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.entrypoints=web"
       - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.middlewares=__ROUTER_PREFIX__-https"
       - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.priority=1"
 
-      # ── Service único (porta 8080 do Nginx interno) ────
-      - "traefik.http.services.__ROUTER_PREFIX__-svc.loadbalancer.server.port=8080"
+      # Service SPA (porta 8080)
+      - "traefik.http.services.__ROUTER_PREFIX__-spa-svc.loadbalancer.server.port=8080"
+
+  # ── API Proxy: TCP forward para host:4000 ───────────────
+  funnel-api-proxy:
+    image: alpine/socat:latest
+    container_name: funnel-api-proxy
+    restart: unless-stopped
+    command: "TCP-LISTEN:4000,fork,reuseaddr TCP:host.docker.internal:4000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+
+      # ── Middleware: StripPrefix para /functions/v1 ─────
+      - "traefik.http.middlewares.__ROUTER_PREFIX__-strip-functions.stripprefix.prefixes=/functions/v1"
+      - "traefik.http.middlewares.__ROUTER_PREFIX__-strip-api.stripprefix.prefixes=/api"
+
+      # ── Router: /functions/v1/* (dashboard) ────────────
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-functions.rule=Host(`__DASHBOARD_DOMAIN__`) && PathPrefix(`/functions/v1`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-functions.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-functions.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-functions.priority=100"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-functions.middlewares=__ROUTER_PREFIX__-strip-functions"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-functions.service=__ROUTER_PREFIX__-api-svc"
+
+      # ── Router: /auth/v1/* (dashboard, sem strip) ──────
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-auth.rule=Host(`__DASHBOARD_DOMAIN__`) && PathPrefix(`/auth/v1`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-auth.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-auth.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-auth.priority=100"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-auth.service=__ROUTER_PREFIX__-api-svc"
+
+      # ── Router: /api/* (dashboard) ─────────────────────
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-raw.rule=Host(`__DASHBOARD_DOMAIN__`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-raw.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-raw.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-raw.priority=100"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-raw.middlewares=__ROUTER_PREFIX__-strip-api"
+      - "traefik.http.routers.__ROUTER_PREFIX__-api-raw.service=__ROUTER_PREFIX__-api-svc"
+
+      # ── Router: /functions/v1/* (público) ──────────────
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.rule=Host(`__PUBLIC_DOMAIN__`) && PathPrefix(`/functions/v1`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.priority=100"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.middlewares=__ROUTER_PREFIX__-strip-functions"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.service=__ROUTER_PREFIX__-api-svc"
+
+      # Service API (porta 4000 interna do socat)
+      - "traefik.http.services.__ROUTER_PREFIX__-api-svc.loadbalancer.server.port=4000"
+
+  # ── REST Proxy: TCP forward para host:3100 ──────────────
+  funnel-rest-proxy:
+    image: alpine/socat:latest
+    container_name: funnel-rest-proxy
+    restart: unless-stopped
+    command: "TCP-LISTEN:3100,fork,reuseaddr TCP:host.docker.internal:3100"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+
+      # ── Middleware: StripPrefix para /rest/v1 ──────────
+      - "traefik.http.middlewares.__ROUTER_PREFIX__-strip-rest.stripprefix.prefixes=/rest/v1"
+
+      # ── Router: /rest/v1/* (dashboard) ─────────────────
+      - "traefik.http.routers.__ROUTER_PREFIX__-rest.rule=Host(`__DASHBOARD_DOMAIN__`) && PathPrefix(`/rest/v1`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-rest.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-rest.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-rest.priority=100"
+      - "traefik.http.routers.__ROUTER_PREFIX__-rest.middlewares=__ROUTER_PREFIX__-strip-rest"
+      - "traefik.http.routers.__ROUTER_PREFIX__-rest.service=__ROUTER_PREFIX__-rest-svc"
+
+      # ── Router: /rest/v1/* (público) ───────────────────
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-rest.rule=Host(`__PUBLIC_DOMAIN__`) && PathPrefix(`/rest/v1`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-rest.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-rest.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-rest.priority=100"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-rest.middlewares=__ROUTER_PREFIX__-strip-rest"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-rest.service=__ROUTER_PREFIX__-rest-svc"
+
+      # Service REST (porta 3100 interna do socat)
+      - "traefik.http.services.__ROUTER_PREFIX__-rest-svc.loadbalancer.server.port=3100"
 
 networks:
   traefik-net:
