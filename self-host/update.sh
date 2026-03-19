@@ -211,12 +211,12 @@ fi
 # ── 12. Detectar Traefik e validar roteamento público ───
 TRAEFIK_OWNS_443=$(ss -ltnp 2>/dev/null | grep ':443' | grep -c 'docker-proxy' || true)
 if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
-  warn "Traefik detectado na porta 443 — Nginx do host NÃO recebe tráfego externo."
+  warn "Traefik detectado na porta 443 — roteamento via containers Traefik."
   info "Executando smoke tests completos..."
 
-  # Atualizar container Traefik (sempre, para garantir labels atualizadas)
-  info "Atualizando container funnel-nginx-proxy com labels mais recentes..."
-  bash "$REPO_DIR/self-host/setup-traefik.sh" 2>&1 | tail -5
+  # Atualizar containers (SPA + API proxy + REST proxy)
+  info "Atualizando containers Traefik (funnel-spa, funnel-api-proxy, funnel-rest-proxy)..."
+  bash "$REPO_DIR/self-host/setup-traefik.sh" 2>&1 | tail -10
 
   sleep 3
 
@@ -285,9 +285,9 @@ echo -e "  ${CYAN}Público:${NC}     https://${PUBLIC_DOMAIN}"
 echo -e "  ${CYAN}Dashboard:${NC}  https://${DASHBOARD_DOMAIN}"
 echo -e "  ${CYAN}DB:${NC}         ${DB_HOST}:${DB_PORT}"
 echo -e "  ${CYAN}Serviços:${NC}   pm2 status | pm2 logs"
-if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
-  echo -e "  ${YELLOW}Proxy:${NC}      Traefik (externo) → Nginx (interno)"
-fi
+  if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
+    echo -e "  ${YELLOW}Proxy:${NC}      Traefik → SPA + API proxy + REST proxy (sem Nginx)"
+  fi
 echo ""
 echo -e "  ${CYAN}Validação:${NC}"
 echo -e "    https://${DASHBOARD_DOMAIN}/          → deve abrir SPA"

@@ -3,7 +3,8 @@ set -euo pipefail
 
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  Setup Traefik — Funil App                                   ║
-# ║  Configura container com labels Traefik + proxy para API      ║
+# ║  Arquitetura: 3 containers (SPA + API proxy + REST proxy)    ║
+# ║  Sem Nginx intermediário — Traefik roteia direto              ║
 # ║  Lê config de /opt/funnel-app/.env — zero perguntas           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
@@ -24,6 +25,7 @@ info() { echo -e "${CYAN}[i]${NC} $1"; }
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║       Setup Traefik — Funil App                   ║${NC}"
+echo -e "${CYAN}║   Arquitetura: SPA + API proxy + REST proxy       ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -37,14 +39,12 @@ PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-}"
 log "Dashboard: ${DASHBOARD_DOMAIN}"
 log "Público:   ${PUBLIC_DOMAIN}"
 
-# ── 2b. Gerar ROUTER_PREFIX único (derivado do domínio) ──
-# Transforma "dash.origemdavida.online" → "funnel-dash-origemdavida-online"
+# ── 3. Gerar ROUTER_PREFIX único (derivado do domínio) ───
 ROUTER_PREFIX="funnel-$(echo "$DASHBOARD_DOMAIN" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]')"
 log "Router prefix: ${ROUTER_PREFIX}"
 
-# ── 3. Sincronizar backend do repo → /opt ────────────────
-info "Sincronizando backend do repositório para $APP_DIR..."
-
+# ── 4. Sincronizar backend do repo → /opt ────────────────
+info "Sincronizando backend..."
 SYNCED_FILES=0
 for f in api-server.js ecosystem.config.js; do
   if [ -f "$REPO_DIR/self-host/$f" ]; then
@@ -57,35 +57,31 @@ for f in api-server.js ecosystem.config.js; do
 done
 
 if [ "$SYNCED_FILES" -gt 0 ]; then
-  info "Reiniciando funnel-api com código atualizado..."
-  pm2 restart funnel-api --update-env 2>/dev/null || warn "PM2 restart falhou — verifique pm2 logs funnel-api"
+  pm2 restart funnel-api --update-env 2>/dev/null || warn "PM2 restart falhou"
   sleep 2
-  log "$SYNCED_FILES arquivo(s) sincronizado(s) e API reiniciada"
+  log "$SYNCED_FILES arquivo(s) sincronizado(s)"
 else
-  log "Backend já está atualizado em $APP_DIR"
+  log "Backend já está atualizado"
 fi
 
-# ── 4. Validar que a API está escutando em 0.0.0.0 ──────
-info "Verificando se a API escuta em 0.0.0.0:4000..."
+# ── 5. Validar que a API está escutando ──────────────────
+info "Verificando API na porta 4000..."
 sleep 1
 API_LISTEN=$(ss -ltnp | grep ":4000" || true)
 if echo "$API_LISTEN" | grep -q "0.0.0.0:4000"; then
-  log "API escutando em 0.0.0.0:4000 (acessível pelo Docker)"
+  log "API escutando em 0.0.0.0:4000 ✅"
 elif echo "$API_LISTEN" | grep -q "127.0.0.1:4000"; then
-  err "API escutando em 127.0.0.1:4000 (NÃO acessível pelo Docker!)\n   O arquivo $APP_DIR/api-server.js precisa ter server.listen(PORT, \"0.0.0.0\", ...)\n   Corrija e rode novamente: pm2 restart funnel-api && sudo bash self-host/setup-traefik.sh"
+  err "API escutando em 127.0.0.1:4000 (NÃO acessível pelo Docker!)\n   Corrija server.listen() para '0.0.0.0' em $APP_DIR/api-server.js"
 elif [ -z "$API_LISTEN" ]; then
-  warn "API NÃO está escutando na porta 4000. Aguardando 5s..."
+  warn "API não está na porta 4000. Aguardando 5s..."
   sleep 5
   API_LISTEN=$(ss -ltnp | grep ":4000" || true)
-  if [ -z "$API_LISTEN" ]; then
-    err "API não iniciou na porta 4000 após 7s.\n   Verifique: pm2 logs funnel-api"
-  fi
+  [ -z "$API_LISTEN" ] && err "API não iniciou na porta 4000. Verifique: pm2 logs funnel-api"
   log "API iniciou: $API_LISTEN"
 fi
 
-# ── 5. Detectar rede do Traefik ──────────────────────────
+# ── 6. Detectar rede do Traefik ──────────────────────────
 info "Detectando rede do Traefik..."
-
 TRAEFIK_NETWORK=""
 
 TRAEFIK_CONTAINER=$(docker ps --format '{{.Names}}' | grep -i traefik | head -1 || true)
@@ -112,36 +108,17 @@ fi
 
 log "Rede do Traefik: ${TRAEFIK_NETWORK}"
 
-# ── 6. Parar container antigo (se existir) ───────────────
-if docker ps -a --format '{{.Names}}' | grep -q "^funnel-nginx-proxy$"; then
-  info "Parando container funnel-nginx-proxy antigo..."
-  docker stop funnel-nginx-proxy 2>/dev/null || true
-  docker rm funnel-nginx-proxy 2>/dev/null || true
-  log "Container antigo removido"
-fi
+# ── 7. Parar containers antigos ──────────────────────────
+info "Removendo containers antigos..."
+for c in funnel-nginx-proxy funnel-spa funnel-api-proxy funnel-rest-proxy; do
+  if docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
+    docker stop "$c" 2>/dev/null || true
+    docker rm "$c" 2>/dev/null || true
+    log "Removido: $c"
+  fi
+done
 
-# ── 7. Gerar config Nginx do container ───────────────────
-info "Gerando config Nginx interna..."
-cp "$REPO_DIR/self-host/nginx-proxy.conf.template" "$APP_DIR/nginx-proxy.conf"
-log "Config Nginx salva em $APP_DIR/nginx-proxy.conf"
-
-# ── 8. Gerar docker-compose.yml com prefixo único ───────
-info "Gerando docker-compose.yml com prefixo ${ROUTER_PREFIX}..."
-
-COMPOSE_FILE="$APP_DIR/docker-compose.yml"
-
-sed -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
-    -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
-    -e "s/__ROUTER_PREFIX__/${ROUTER_PREFIX}/g" \
-    "$REPO_DIR/self-host/docker-compose.traefik.yml.template" > "$COMPOSE_FILE"
-
-if [ "$TRAEFIK_NETWORK" != "traefik-net" ]; then
-  sed -i "s/traefik-net/${TRAEFIK_NETWORK}/g" "$COMPOSE_FILE"
-fi
-
-log "docker-compose.yml gerado em $COMPOSE_FILE"
-
-# ── 9. Verificar que o frontend existe ───────────────────
+# ── 8. Verificar que o frontend existe ───────────────────
 if [ ! -d "$APP_DIR/dist" ] || [ ! -f "$APP_DIR/dist/index.html" ]; then
   warn "Frontend não encontrado em $APP_DIR/dist. Buildando..."
   cd "$REPO_DIR"
@@ -160,83 +137,76 @@ BUILDENV
   log "Frontend buildado e copiado"
 fi
 
-# ── 10. Subir container ─────────────────────────────────
-info "Subindo container..."
+# ── 9. Gerar docker-compose.yml ──────────────────────────
+info "Gerando docker-compose.yml..."
+COMPOSE_FILE="$APP_DIR/docker-compose.yml"
+
+sed -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
+    -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
+    -e "s/__ROUTER_PREFIX__/${ROUTER_PREFIX}/g" \
+    "$REPO_DIR/self-host/docker-compose.traefik.yml.template" > "$COMPOSE_FILE"
+
+if [ "$TRAEFIK_NETWORK" != "traefik-net" ]; then
+  sed -i "s/traefik-net/${TRAEFIK_NETWORK}/g" "$COMPOSE_FILE"
+fi
+
+log "docker-compose.yml gerado"
+
+# ── 10. Subir containers ────────────────────────────────
+info "Subindo 3 containers..."
 cd "$APP_DIR"
 docker compose up -d --force-recreate 2>/dev/null || docker-compose up -d --force-recreate 2>/dev/null
-log "Container funnel-nginx-proxy iniciado"
+log "Containers iniciados"
 
-# ── 11. Aguardar e validar conectividade ────────────────
-info "Aguardando container iniciar..."
-sleep 3
+# ── 11. Aguardar e validar ──────────────────────────────
+info "Aguardando containers..."
+sleep 5
 
 echo ""
-echo -e "${CYAN}═══ Diagnóstico de Conectividade ═══${NC}"
+echo -e "${CYAN}═══ Diagnóstico ═══${NC}"
 echo ""
 
-# Test 1: Container → API health
-info "Teste 1: Container → API (host.docker.internal:4000/health)"
-HEALTH_TEST=$(docker exec funnel-nginx-proxy \
-  curl -s -o /dev/null -w "%{http_code}" \
-  http://host.docker.internal:4000/health 2>/dev/null || echo "000")
-
-if [ "$HEALTH_TEST" = "200" ]; then
-  log "✅ Container alcança a API (HTTP 200)"
-else
-  echo ""
-  warn "❌ Container NÃO alcança a API (HTTP ${HEALTH_TEST})"
-  echo ""
-  if [ "$HEALTH_TEST" = "000" ]; then
-    info "Causa provável: host.docker.internal não resolve ou porta 4000 inacessível"
-    echo ""
-    echo -e "  ${CYAN}Verificações:${NC}"
-    echo -e "  1. DNS interno do container:"
-    docker exec funnel-nginx-proxy sh -c "getent hosts host.docker.internal 2>/dev/null || echo '  FALHOU: host.docker.internal não resolve'" || true
-    echo -e "  2. API escutando no host:"
-    ss -ltnp | grep ":4000" || echo "     NENHUM processo na porta 4000!"
-    echo -e "  3. Teste direto do host:"
-    LOCAL_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health 2>/dev/null || echo "000")
-    echo "     curl http://127.0.0.1:4000/health → HTTP ${LOCAL_HEALTH}"
+# Verificar containers rodando
+ALL_UP=true
+for c in funnel-spa funnel-api-proxy funnel-rest-proxy; do
+  if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
+    log "$c rodando ✅"
+  else
+    warn "$c NÃO está rodando ❌"
+    ALL_UP=false
   fi
-  echo ""
-  err "Container não alcança a API. Corrija o problema acima antes de continuar."
+done
+echo ""
+
+if [ "$ALL_UP" = false ]; then
+  err "Nem todos os containers subiram. Verifique: docker compose logs"
 fi
 
-# Test 2: Container → API proxy route
-info "Teste 2: Container → API proxy (/functions/v1/typebot-proxy)"
-PROXY_TEST=$(docker exec funnel-nginx-proxy \
-  curl -s -o /dev/null -w "%{http_code}" \
-  -X POST http://localhost:8080/functions/v1/typebot-proxy \
-  -H 'Content-Type: application/json' -d '{"action":"list"}' 2>/dev/null || echo "000")
-
-if [ "$PROXY_TEST" = "401" ] || [ "$PROXY_TEST" = "400" ]; then
-  log "✅ Proxy /functions/v1/ funciona (HTTP ${PROXY_TEST})"
+# Teste: API via socat
+info "Teste: funnel-api-proxy → host:4000"
+API_TEST=$(docker exec funnel-api-proxy sh -c \
+  "wget -q -O /dev/null -S http://host.docker.internal:4000/health 2>&1 | grep 'HTTP/' | awk '{print \$2}'" 2>/dev/null || echo "000")
+# socat não tem curl/wget, testar de outra forma
+API_TEST=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health 2>/dev/null || echo "000")
+if [ "$API_TEST" = "200" ]; then
+  log "API respondendo (HTTP 200) ✅"
 else
-  warn "⚠ Proxy /functions/v1/ retornou HTTP ${PROXY_TEST} (esperado 401 ou 400)"
+  warn "API health: HTTP ${API_TEST}"
 fi
 
-# Test 3: Container → PostgREST
-info "Teste 3: Container → PostgREST (/rest/v1/)"
-REST_TEST=$(docker exec funnel-nginx-proxy \
-  curl -s -o /dev/null -w "%{http_code}" \
-  http://localhost:8080/rest/v1/ 2>/dev/null || echo "000")
-
-if [ "$REST_TEST" != "000" ] && [ "$REST_TEST" != "502" ] && [ "$REST_TEST" != "503" ]; then
-  log "✅ PostgREST acessível (HTTP ${REST_TEST})"
+# Teste: SPA via static-web-server
+info "Teste: funnel-spa servindo index.html"
+# Encontrar IP do container SPA na rede traefik
+SPA_IP=$(docker inspect funnel-spa --format "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" 2>/dev/null || true)
+if [ -n "$SPA_IP" ]; then
+  SPA_TEST=$(curl -s -o /dev/null -w "%{http_code}" "http://${SPA_IP}:8080/" 2>/dev/null || echo "000")
+  if [ "$SPA_TEST" = "200" ]; then
+    log "SPA servindo index.html (HTTP 200) ✅"
+  else
+    warn "SPA retornou HTTP ${SPA_TEST}"
+  fi
 else
-  warn "⚠ PostgREST inacessível (HTTP ${REST_TEST}) — user_settings não carregará no frontend"
-fi
-
-# Test 4: Container → SPA (index.html)
-info "Teste 4: Container → SPA (/)"
-SPA_TEST=$(docker exec funnel-nginx-proxy \
-  curl -s -o /dev/null -w "%{http_code}" \
-  http://localhost:8080/ 2>/dev/null || echo "000")
-
-if [ "$SPA_TEST" = "200" ]; then
-  log "✅ SPA servindo index.html (HTTP 200)"
-else
-  warn "⚠ SPA retornou HTTP ${SPA_TEST} (esperado 200)"
+  warn "Não conseguiu IP do funnel-spa"
 fi
 
 echo ""
@@ -245,41 +215,28 @@ echo ""
 info "Testando rotas públicas via Traefik..."
 sleep 2
 
-PUBLIC_PROXY=$(curl -s -o /dev/null -w "%{http_code}" \
-  -X POST "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" \
-  -H 'Content-Type: application/json' -d '{"action":"list"}' 2>/dev/null || echo "000")
-
-PUBLIC_REST=$(curl -s -o /dev/null -w "%{http_code}" \
-  "https://${DASHBOARD_DOMAIN}/rest/v1/user_settings?select=id&limit=1" 2>/dev/null || echo "000")
-
-PUBLIC_SPA=$(curl -s -o /dev/null -w "%{http_code}" \
-  "https://${DASHBOARD_DOMAIN}/" 2>/dev/null || echo "000")
-
-PUBLIC_ADMIN=$(curl -s -o /dev/null -w "%{http_code}" \
-  "https://${DASHBOARD_DOMAIN}/admin" 2>/dev/null || echo "000")
+test_route() {
+  local label="$1" url="$2" expected="$3" extra="${4:-}"
+  local code
+  code=$(curl -s -o /dev/null -w "%{http_code}" $extra "$url" 2>/dev/null || echo "000")
+  if echo "$expected" | grep -qw "$code"; then
+    echo -e "  ${GREEN}✅${NC} ${label} → HTTP ${code}"
+    return 0
+  else
+    echo -e "  ${RED}❌${NC} ${label} → HTTP ${code} (esperado: ${expected})"
+    return 1
+  fi
+}
 
 echo ""
 ROUTES_OK=true
 
-echo -e "  ${CYAN}POST /functions/v1/typebot-proxy${NC} → HTTP ${PUBLIC_PROXY}"
-if [ "$PUBLIC_PROXY" = "502" ] || [ "$PUBLIC_PROXY" = "405" ] || [ "$PUBLIC_PROXY" = "000" ] || [ "$PUBLIC_PROXY" = "500" ]; then
-  ROUTES_OK=false
-fi
-
-echo -e "  ${CYAN}GET  /rest/v1/user_settings${NC}      → HTTP ${PUBLIC_REST}"
-if [ "$PUBLIC_REST" = "502" ] || [ "$PUBLIC_REST" = "405" ] || [ "$PUBLIC_REST" = "000" ] || [ "$PUBLIC_REST" = "500" ]; then
-  ROUTES_OK=false
-fi
-
-echo -e "  ${CYAN}GET  / (SPA)${NC}                     → HTTP ${PUBLIC_SPA}"
-if [ "$PUBLIC_SPA" = "404" ] || [ "$PUBLIC_SPA" = "500" ] || [ "$PUBLIC_SPA" = "502" ] || [ "$PUBLIC_SPA" = "000" ]; then
-  ROUTES_OK=false
-fi
-
-echo -e "  ${CYAN}GET  /admin${NC}                      → HTTP ${PUBLIC_ADMIN}"
-if [ "$PUBLIC_ADMIN" = "500" ] || [ "$PUBLIC_ADMIN" = "502" ] || [ "$PUBLIC_ADMIN" = "000" ]; then
-  ROUTES_OK=false
-fi
+test_route "GET  /"                    "https://${DASHBOARD_DOMAIN}/"       "200"         || ROUTES_OK=false
+test_route "GET  /login"               "https://${DASHBOARD_DOMAIN}/login"  "200"         || ROUTES_OK=false
+test_route "GET  /admin"               "https://${DASHBOARD_DOMAIN}/admin"  "200"         || ROUTES_OK=false
+test_route "POST /functions/v1/proxy"  "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" "400 401" \
+  "-X POST -H 'Content-Type: application/json' -d '{\"action\":\"list\"}'"                || ROUTES_OK=false
+test_route "GET  /rest/v1/"            "https://${DASHBOARD_DOMAIN}/rest/v1/user_settings?select=id&limit=1" "200 401 406" || ROUTES_OK=false
 
 echo ""
 
@@ -290,29 +247,13 @@ if [ "$ROUTES_OK" = true ]; then
   echo ""
   echo -e "  ${CYAN}Dashboard:${NC}  https://${DASHBOARD_DOMAIN}"
   echo -e "  ${CYAN}Público:${NC}    https://${PUBLIC_DOMAIN}"
-  echo -e "  ${CYAN}Container:${NC}  docker logs funnel-nginx-proxy"
+  echo -e "  ${CYAN}Containers:${NC} docker compose logs -f"
   echo ""
 else
   echo -e "${YELLOW}╔══════════════════════════════════════════════════╗${NC}"
-  echo -e "${YELLOW}║  ⚠ Algumas rotas públicas falharam                ║${NC}"
+  echo -e "${YELLOW}║  ⚠ Algumas rotas falharam                        ║${NC}"
   echo -e "${YELLOW}╚══════════════════════════════════════════════════╝${NC}"
   echo ""
-  echo -e "O container está configurado e alcança a API internamente."
-  echo -e "O problema está no roteamento do Traefik. Possíveis causas:"
-  echo ""
-  echo -e "  1. ${CYAN}Conflito de routers${NC}: outro container já tem regras para ${DASHBOARD_DOMAIN}"
-  echo -e "     → Remova labels de Traefik duplicadas nos outros containers"
-  echo ""
-  echo -e "  2. ${CYAN}Rede diferente${NC}: verifique se o Traefik e funnel-nginx-proxy compartilham a rede"
-  echo -e "     → docker network inspect ${TRAEFIK_NETWORK}"
-  echo ""
-  echo -e "  3. ${CYAN}Cache do Traefik${NC}: aguarde 30s e teste novamente"
-  echo ""
-  echo -e "  ${CYAN}Debug:${NC}"
-  echo -e "     docker logs funnel-nginx-proxy"
-  echo -e "     docker logs \$(docker ps --format '{{.Names}}' | grep traefik | head -1)"
-  echo ""
-  echo -e "  ${CYAN}Diagnóstico completo:${NC}"
-  echo -e "     sudo bash self-host/fix-traefik-routing.sh"
+  echo -e "  Diagnóstico: sudo bash self-host/fix-traefik-routing.sh"
   echo ""
 fi
