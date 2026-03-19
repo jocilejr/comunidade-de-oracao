@@ -292,17 +292,22 @@ async function handleSignup(req, res) {
   if (!email || !password) return json(res, { error: "email and password required" }, 400);
   if (password.length < 8) return json(res, { error: "Password must be at least 8 characters" }, 400);
 
-  const { rows: existing } = await pool.query("SELECT id FROM auth.users WHERE email = $1", [email]);
-  if (existing.length) return json(res, { error: "User already registered" }, 400);
+  try {
+    const { rows: existing } = await pool.query("SELECT id FROM auth.users WHERE email = $1", [email]);
+    if (existing.length) return json(res, { error: "User already registered" }, 400);
 
-  const hash = await bcrypt.hash(password, 10);
-  const { rows } = await pool.query(
-    "INSERT INTO auth.users (email, encrypted_password) VALUES ($1, $2) RETURNING id, email, created_at",
-    [email, hash]
-  );
-  const user = rows[0];
-  const token = generateToken(user);
-  json(res, { access_token: token, token_type: "bearer", expires_in: JWT_EXP, user: { id: user.id, email: user.email } });
+    const hash = await bcrypt.hash(password, 10);
+    const { rows } = await pool.query(
+      "INSERT INTO auth.users (email, encrypted_password) VALUES ($1, $2) RETURNING id, email, created_at",
+      [email, hash]
+    );
+    const user = rows[0];
+    const token = generateToken(user);
+    json(res, { access_token: token, token_type: "bearer", expires_in: JWT_EXP, user: { id: user.id, email: user.email } });
+  } catch (dbErr) {
+    console.error("DB auth error (signup):", dbErr.message);
+    return json(res, { error: "Database error - check funnel_user permissions on auth schema" }, 500);
+  }
 }
 
 // ── Auth: login (token) ──────────────────────────────────
