@@ -279,23 +279,52 @@ fi
 # Criar diretório para validação SSL via webroot (path completo)
 ACME_ROOT="/var/www/acme-challenge"
 mkdir -p "$ACME_ROOT/.well-known/acme-challenge"
+chown -R www-data:www-data "$ACME_ROOT"
+chmod -R 755 "$ACME_ROOT"
 
-# Config HTTP mínima apenas para os domínios da app + ACME challenge
-cat > /etc/nginx/sites-available/funnel-app <<NGINX_TEMP
-# default_server temporário — garante que ACME challenge seja servido por este bloco
-# mesmo que outro site (ex: zapmanager) tenha default_server. Será substituído pela config final.
+# ── Remover default_server de outros sites (temporariamente) ──
+for SITE_FILE in /etc/nginx/sites-enabled/*; do
+  [ "$(basename "$SITE_FILE")" = "funnel-app" ] && continue
+  [ ! -f "$SITE_FILE" ] && continue
+  REAL_FILE=$(readlink -f "$SITE_FILE")
+  if grep -q "listen 80.*default_server" "$REAL_FILE" 2>/dev/null; then
+    warn "Removendo 'default_server' temporariamente de $(basename "$SITE_FILE")"
+    cp "$REAL_FILE" "${REAL_FILE}.bak-funnel"
+    sed -i 's/listen 80 default_server;/listen 80;/g' "$REAL_FILE"
+  fi
+done
+
+# Config ACME catch-all em conf.d (captura QUALQUER request porta 80 para /.well-known/)
+cat > /etc/nginx/conf.d/000-funnel-acme.conf <<ACME_CONF
 server {
     listen 80 default_server;
-    server_name ${PUBLIC_DOMAIN} ${DASHBOARD_DOMAIN};
+    listen [::]:80 default_server;
+    server_name _;
 
-    # Validação SSL (Let's Encrypt) — ^~ garante prioridade sobre regex de outros sites
     location ^~ /.well-known/acme-challenge/ {
-        root ${ACME_ROOT};
-        allow all;
+        alias ${ACME_ROOT}/.well-known/acme-challenge/;
+        default_type text/plain;
         try_files \$uri =404;
     }
 
-    # Temporário: servir SPA até SSL ser configurado
+    location / {
+        return 444;
+    }
+}
+ACME_CONF
+
+# Bloco do app (sem default_server na porta 80)
+cat > /etc/nginx/sites-available/funnel-app <<NGINX_TEMP
+server {
+    listen 80;
+    server_name ${PUBLIC_DOMAIN} ${DASHBOARD_DOMAIN};
+
+    location ^~ /.well-known/acme-challenge/ {
+        alias ${ACME_ROOT}/.well-known/acme-challenge/;
+        default_type text/plain;
+        try_files \$uri =404;
+    }
+
     root ${APP_DIR}/dist;
     index index.html;
     location / { try_files \$uri \$uri/ /index.html; }
@@ -312,7 +341,6 @@ reload_nginx() {
   if systemctl is-active --quiet nginx; then
     systemctl reload nginx
   elif pidof nginx > /dev/null 2>&1; then
-    # Nginx rodando fora do systemd ou com PID file corrompido
     NGINX_PID=$(pidof -s nginx)
     echo "$NGINX_PID" > /run/nginx.pid
     kill -HUP "$NGINX_PID"
@@ -335,6 +363,20 @@ obtain_cert() {
     return 0
   fi
 
+  warn "Webroot falhou para ${LABEL}. Tentando modo standalone (Nginx será pausado brevemente)..."
+  ask "Deseja tentar o modo standalone? (s/N)"
+  read -r STANDALONE_CONFIRM
+  if [ "$STANDALONE_CONFIRM" = "s" ] || [ "$STANDALONE_CONFIRM" = "S" ]; then
+    systemctl stop nginx 2>/dev/null || nginx -s stop 2>/dev/null || true
+    if certbot certonly --standalone \
+      $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive; then
+      log "SSL obtido via standalone para ${LABEL}"
+      systemctl start nginx 2>/dev/null || nginx 2>/dev/null || true
+      return 0
+    fi
+    systemctl start nginx 2>/dev/null || nginx 2>/dev/null || true
+  fi
+
   warn "Certbot falhou para ${LABEL}. Verifique se o DNS aponta para este servidor."
   warn "  Após corrigir, rode: certbot certonly --webroot -w ${ACME_ROOT} $DOMAINS"
   return 1
@@ -343,18 +385,34 @@ obtain_cert() {
 # ── Diagnóstico: verificar se Nginx serve o webroot corretamente ──
 verify_acme_webroot() {
   local DOMAIN="$1"
-  local TEST_FILE="$ACME_ROOT/.well-known/acme-challenge/lovable-test-$(date +%s)"
+  local TEST_TOKEN="lovable-test-$(date +%s)"
+  local TEST_FILE="$ACME_ROOT/.well-known/acme-challenge/${TEST_TOKEN}"
   echo "acme-test-ok" > "$TEST_FILE"
-  local HTTP_CODE
-  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${DOMAIN}/.well-known/acme-challenge/$(basename "$TEST_FILE")" 2>/dev/null || echo "000")
-  rm -f "$TEST_FILE"
-  if [ "$HTTP_CODE" != "200" ]; then
-    warn "Nginx NÃO está servindo o webroot para ${DOMAIN} (HTTP ${HTTP_CODE})."
-    warn "Provável causa: outro site Nginx (ex: zapmanager) tem 'default_server' na porta 80."
-    warn "Solução: remova 'default_server' do outro site ou adicione ao bloco funnel-app."
+  chown www-data:www-data "$TEST_FILE"
+
+  # Camada 1: teste local com Host forçado
+  local LOCAL_CODE
+  LOCAL_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${DOMAIN}" "http://127.0.0.1/.well-known/acme-challenge/${TEST_TOKEN}" 2>/dev/null || echo "000")
+
+  if [ "$LOCAL_CODE" != "200" ]; then
+    rm -f "$TEST_FILE"
+    warn "Teste LOCAL falhou para ${DOMAIN} (HTTP ${LOCAL_CODE})."
+    warn "  Causa provável: config Nginx ou webroot incorreto."
     return 1
   fi
-  log "Webroot OK para ${DOMAIN} (HTTP 200)"
+  log "Teste local OK para ${DOMAIN} (HTTP 200)"
+
+  # Camada 2: teste público
+  local PUBLIC_CODE
+  PUBLIC_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${DOMAIN}/.well-known/acme-challenge/${TEST_TOKEN}" 2>/dev/null || echo "000")
+  rm -f "$TEST_FILE"
+
+  if [ "$PUBLIC_CODE" != "200" ]; then
+    warn "Teste PÚBLICO falhou para ${DOMAIN} (HTTP ${PUBLIC_CODE})."
+    warn "  Causa provável: DNS não aponta para este servidor ou firewall bloqueia porta 80."
+    return 1
+  fi
+  log "Webroot OK para ${DOMAIN} (local + público)"
   return 0
 }
 
@@ -371,6 +429,15 @@ verify_acme_webroot "${PUBLIC_DOMAIN}" && obtain_cert "$PUBLIC_CERT_DOMAINS" "${
 
 log "Obtendo certificados SSL para dashboard..."
 verify_acme_webroot "${DASHBOARD_DOMAIN}" && obtain_cert "-d ${DASHBOARD_DOMAIN}" "${DASHBOARD_DOMAIN}" || true
+
+# ── Limpar config ACME temporária e restaurar backups ──
+rm -f /etc/nginx/conf.d/000-funnel-acme.conf
+for BAK_FILE in /etc/nginx/sites-available/*.bak-funnel; do
+  [ ! -f "$BAK_FILE" ] && continue
+  ORIG_FILE="${BAK_FILE%.bak-funnel}"
+  mv "$BAK_FILE" "$ORIG_FILE"
+  log "Restaurado backup: $(basename "$ORIG_FILE")"
+done
 
 # Aplicar config completa com dois domínios (apenas se certs existem)
 if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
