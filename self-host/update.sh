@@ -87,7 +87,16 @@ cp "$REPO_DIR/self-host/api-server.js" "$APP_DIR/"
 cp "$REPO_DIR/self-host/ecosystem.config.js" "$APP_DIR/"
 log "Arquivos copiados para $APP_DIR"
 
-# ── 6. Migrations incrementais ──────────────────────────
+# ── 6. Atualizar auth.uid() para versão resiliente ──────
+log "Atualizando função auth.uid()..."
+sudo -u postgres psql -d "${DB_NAME}" -c "
+CREATE OR REPLACE FUNCTION auth.uid()
+RETURNS UUID LANGUAGE sql STABLE
+AS \$\$ SELECT CASE WHEN NULLIF(current_setting('request.jwt.claims', true), '') IS NULL THEN NULL ELSE NULLIF((current_setting('request.jwt.claims', true)::jsonb->>'sub'), '')::uuid END \$\$;
+" 2>/dev/null
+log "auth.uid() atualizada"
+
+# ── 7. Migrations incrementais ──────────────────────────
 log "Verificando migrations..."
 
 sudo -u postgres psql -d "${DB_NAME}" -c "
