@@ -142,7 +142,7 @@ const AudioPlayer = ({ src, time, autoPlay = false, avatar, avatarFallback }: Au
       {/* Avatar */}
       {(avatar || avatarFallback) && (
         <div
-          className="w-[34px] h-[34px] rounded-full overflow-hidden shrink-0"
+          className="w-[45px] h-[45px] rounded-full overflow-hidden shrink-0"
           style={{ backgroundColor: 'hsl(var(--wa-time) / 0.3)' }}
         >
           {avatar ? (
