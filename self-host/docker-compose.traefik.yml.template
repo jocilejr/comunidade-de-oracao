@@ -96,6 +96,19 @@ services:
       - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.middlewares=__ROUTER_PREFIX__-strip-functions"
       - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.service=__ROUTER_PREFIX__-api-svc"
 
+      # ── Router: catch-all público HTTPS → api-server (bot detection + SPA) ──
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.rule=Host(`__PUBLIC_DOMAIN__`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.priority=1"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.service=__ROUTER_PREFIX__-api-svc"
+
+      # ── Router: catch-all público HTTP → redirect HTTPS ──
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.rule=Host(`__PUBLIC_DOMAIN__`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.entrypoints=web"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.middlewares=__ROUTER_PREFIX__-https"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.priority=1"
+
       # Service API (porta 4000 interna do socat)
       - "traefik.http.services.__ROUTER_PREFIX__-api-svc.loadbalancer.server.port=4000"
 
