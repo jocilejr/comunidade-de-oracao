@@ -96,7 +96,7 @@ async function handleShare(req, res, slug, format) {
   const v = Date.now().toString();
   // Imagem servida pelo domínio público para crawlers
   const imageUrl = funnel.preview_image
-    ? `${PUBLIC_ORIGIN}/api/preview-image?slug=${encodeURIComponent(slug)}&v=${v}`
+    ? `${PUBLIC_ORIGIN}/preview-image?slug=${encodeURIComponent(slug)}&v=${v}`
     : "";
 
   const html = `<!DOCTYPE html>
