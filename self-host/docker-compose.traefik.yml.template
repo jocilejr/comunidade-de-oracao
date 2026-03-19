@@ -1,0 +1,45 @@
+# Template gerado por setup-traefik.sh — NÃO edite manualmente
+# Placeholders __DASHBOARD_DOMAIN__ e __PUBLIC_DOMAIN__ são substituídos automaticamente
+
+version: "3.8"
+
+services:
+  funnel-nginx-proxy:
+    image: nginx:alpine
+    container_name: funnel-nginx-proxy
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /opt/funnel-app/dist:/usr/share/nginx/html:ro
+      - /opt/funnel-app/nginx-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+
+      # ── Router API (prioridade ALTA) ──────────────────
+      - "traefik.http.routers.funnel-api.rule=Host(`__DASHBOARD_DOMAIN__`) && (PathPrefix(`/functions/v1`) || PathPrefix(`/auth/v1`) || PathPrefix(`/rest/v1`) || PathPrefix(`/api`))"
+      - "traefik.http.routers.funnel-api.entrypoints=websecure"
+      - "traefik.http.routers.funnel-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.funnel-api.priority=100"
+      - "traefik.http.routers.funnel-api.service=funnel-backend"
+      - "traefik.http.services.funnel-backend.loadbalancer.server.port=8080"
+
+      # ── Router SPA (prioridade BAIXA — fallback) ──────
+      - "traefik.http.routers.funnel-spa.rule=Host(`__DASHBOARD_DOMAIN__`)"
+      - "traefik.http.routers.funnel-spa.entrypoints=websecure"
+      - "traefik.http.routers.funnel-spa.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.funnel-spa.priority=1"
+      - "traefik.http.routers.funnel-spa.service=funnel-backend"
+
+      # ── Router domínio público (preview links) ────────
+      - "traefik.http.routers.funnel-public.rule=Host(`__PUBLIC_DOMAIN__`)"
+      - "traefik.http.routers.funnel-public.entrypoints=websecure"
+      - "traefik.http.routers.funnel-public.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.funnel-public.priority=1"
+      - "traefik.http.routers.funnel-public.service=funnel-backend"
+
+networks:
+  traefik-net:
+    external: true
