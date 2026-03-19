@@ -59,6 +59,7 @@ const Admin = () => {
   const [typebotBaseUrl, setTypebotBaseUrl] = useState('');
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [showKey, setShowKey] = useState(false);
+  const [showTypebotToken, setShowTypebotToken] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [typebotImportDialog, setTypebotImportDialog] = useState(false);
   const [typebotList, setTypebotList] = useState<Array<{ id: string; name: string; createdAt?: string }>>([]);
