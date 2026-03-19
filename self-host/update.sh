@@ -285,9 +285,9 @@ echo -e "  ${CYAN}Público:${NC}     https://${PUBLIC_DOMAIN}"
 echo -e "  ${CYAN}Dashboard:${NC}  https://${DASHBOARD_DOMAIN}"
 echo -e "  ${CYAN}DB:${NC}         ${DB_HOST}:${DB_PORT}"
 echo -e "  ${CYAN}Serviços:${NC}   pm2 status | pm2 logs"
-if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
-  echo -e "  ${YELLOW}Proxy:${NC}      Traefik (externo) → Nginx (interno)"
-fi
+  if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
+    echo -e "  ${YELLOW}Proxy:${NC}      Traefik → SPA + API proxy + REST proxy (sem Nginx)"
+  fi
 echo ""
 echo -e "  ${CYAN}Validação:${NC}"
 echo -e "    https://${DASHBOARD_DOMAIN}/          → deve abrir SPA"
