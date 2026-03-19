@@ -1,36 +1,36 @@
 
 
-# Fix: Share URL usa domínio público configurado na instalação
+# Fix: 404 na URL pública (Traefik)
 
-## Contexto
-O `VITE_PUBLIC_DOMAIN` já é definido no `.env` da VPS durante a instalação (ex: `https://comunidade.seudominio.com`). O sistema já tem a variável — só falta usá-la no código.
+## Problema
+A URL `comunidade.origemdavida.online/pagamento` chega ao SPA via Traefik, mas o React Router só tem a rota `/f/:slug`. Não existe rota para `/:slug` na raiz, resultando em 404.
 
-No Lovable Cloud, essa variável não existe, então usamos fallback para a edge function.
+O Nginx config tem lógica de redirect `/{slug}` → `/f/{slug}`, mas o Traefik não tem equivalente — ele serve o SPA diretamente.
 
-## Alteração: `src/pages/Admin.tsx`
+## Solução
+Adicionar uma rota catch-all `/:slug` no React Router que renderiza o componente Funnel. Essa rota fica com prioridade baixa (antes do `*` NotFound) e tenta carregar o funil pelo slug. Se não encontrar, mostra a mensagem "Funil não encontrado".
 
-Adicionar helper no topo do componente:
+## Alterações
 
-```ts
-function getShareUrl(slug: string): string {
-  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
-  if (publicDomain) {
-    // VPS: URL limpa no domínio público
-    return `${publicDomain.replace(/\/$/, '')}/${slug}`;
-  }
-  // Lovable Cloud: fallback para edge function
-  const v = Date.now();
-  return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${slug}&v=${v}`;
-}
+### 1. `src/App.tsx`
+Adicionar rota `/:slug` antes do `*`:
+
+```tsx
+<Route path="/f/:slug" element={<Funnel />} />
+<Route path="/:slug" element={<Funnel />} />
+<Route path="*" element={<NotFound />} />
 ```
 
-Substituir 3 ocorrências:
-- **Linha 593**: `getShareUrl(funnel.slug)`
-- **Linha 1082**: `getShareUrl(profileDialog?.slug || '')`  (campo readonly)
-- **Linha 1088**: `getShareUrl(profileDialog?.slug || '')`  (botão copiar)
+### 2. `src/pages/Funnel.tsx`
+O componente já usa `useParams<{ slug: string }>()` — funciona tanto com `/f/:slug` quanto `/:slug` sem alteração.
 
 ## Resultado
-- **VPS**: Links geram `https://comunidade.seudominio.com/{slug}` — o Nginx/Traefik já cuida de servir OG tags para crawlers e redirecionar humanos
-- **Lovable Cloud**: Continua usando a edge function `/share` como fallback
-- **Zero hardcode** — lê da variável de ambiente definida na instalação
+- `comunidade.origemdavida.online/pagamento` → carrega o funil "pagamento"
+- `comunidade.origemdavida.online/f/pagamento` → continua funcionando
+- Rotas fixas (`/`, `/login`, `/admin`) têm prioridade por serem mais específicas
+- URLs inválidas que não correspondem a funis mostram "Funil não encontrado"
+
+## Impacto
+- 1 arquivo alterado (`src/App.tsx` — 1 linha adicionada)
+- Zero impacto no Lovable Cloud ou Nginx setup
 
