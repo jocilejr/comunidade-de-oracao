@@ -4,6 +4,7 @@ set -euo pipefail
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  Instalador Self-Host — Funil App                            ║
 # ║  Dois domínios: público (links) + dashboard (admin/API)      ║
+# ║  Detecta Traefik automaticamente e configura containers      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 APP_DIR="/opt/funnel-app"
@@ -19,6 +20,7 @@ log()  { echo -e "${GREEN}[✓]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 ask()  { echo -en "${CYAN}[?]${NC} $1: "; }
+info() { echo -e "${CYAN}[i]${NC} $1"; }
 
 # ── Verificar root ────────────────────────────────────────
 [ "$EUID" -ne 0 ] && err "Execute como root: sudo bash install.sh"
@@ -57,7 +59,6 @@ DB_PASS=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 JWT_SECRET=$(openssl rand -base64 64 | tr -dc 'a-zA-Z0-9' | head -c 64)
 ANON_KEY="self-host-anon-key-$(openssl rand -hex 16)"
 
-# Detectar porta real do PostgreSQL (não assumir 5432)
 PG_PORT="5432"
 
 log "Segredos gerados com sucesso"
@@ -96,7 +97,6 @@ log "Nginx, Certbot, PM2 instalados"
 # ══════════════════════════════════════════════════════════
 log "Configurando PostgreSQL..."
 
-# Detectar porta real do cluster PostgreSQL
 PG_PORT=$(sudo -u postgres psql -tAc "SHOW port;" 2>/dev/null | tr -d '[:space:]')
 [ -z "$PG_PORT" ] && PG_PORT="5432"
 log "Porta do PostgreSQL detectada: ${PG_PORT}"
@@ -151,10 +151,7 @@ for migration in "$REPO_DIR"/supabase/migrations/*.sql; do
 done
 
 sudo -u postgres psql -d funnel_app -c "
--- Owner permissions
 GRANT ALL ON ALL TABLES IN SCHEMA public TO funnel_user, service_role;
-
--- Authenticated users (via PostgREST JWT)
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.user_settings TO authenticated;
 GRANT SELECT, INSERT, DELETE ON public.avatar_gallery TO authenticated;
@@ -162,18 +159,12 @@ GRANT ALL ON public.funnels TO authenticated;
 GRANT ALL ON public.funnel_preview_images TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.funnel_sessions TO authenticated;
 GRANT SELECT, INSERT ON public.funnel_session_events TO authenticated;
-
--- Anonymous visitors (public funnel access)
 GRANT USAGE ON SCHEMA public TO anon;
 GRANT SELECT ON public.funnels TO anon;
 GRANT SELECT ON public.funnel_preview_images TO anon;
 GRANT SELECT, INSERT, UPDATE ON public.funnel_sessions TO anon;
 GRANT SELECT, INSERT ON public.funnel_session_events TO anon;
-
--- Sequences
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO funnel_user, anon, authenticated, service_role;
-
--- Default privileges for future tables
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO funnel_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated;
 "
@@ -184,7 +175,6 @@ log "Migrations executadas"
 # ══════════════════════════════════════════════════════════
 log "Criando usuário administrador..."
 
-# Instalar bcryptjs + jsonwebtoken localmente no APP_DIR
 mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 npm init -y 2>/dev/null || true
@@ -201,7 +191,7 @@ ON CONFLICT (email) DO UPDATE SET encrypted_password = EXCLUDED.encrypted_passwo
 log "Admin criado: ${ADMIN_EMAIL}"
 
 # ══════════════════════════════════════════════════════════
-# 5. INSTALAR PostgREST + GoTrue
+# 5. INSTALAR PostgREST
 # ══════════════════════════════════════════════════════════
 log "Instalando PostgREST..."
 
@@ -226,7 +216,6 @@ log "Configurando aplicação..."
 cp "$REPO_DIR/self-host/api-server.js" "$APP_DIR/"
 cp "$REPO_DIR/self-host/ecosystem.config.js" "$APP_DIR/"
 
-# Criar .env
 cat > "$APP_DIR/.env" <<ENVEOF
 PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
 DASHBOARD_DOMAIN=${DASHBOARD_DOMAIN}
@@ -237,6 +226,7 @@ DB_USER=funnel_user
 DB_PASS=${DB_PASS}
 API_PORT=4000
 API_JWT_SECRET=${JWT_SECRET}
+ANON_KEY=${ANON_KEY}
 PGRST_DB_URI=postgres://funnel_user:${DB_PASS}@127.0.0.1:${PG_PORT}/funnel_app
 PGRST_DB_SCHEMAS=public
 PGRST_DB_ANON_ROLE=anon
@@ -244,7 +234,6 @@ PGRST_JWT_SECRET=${JWT_SECRET}
 PGRST_SERVER_PORT=3100
 ENVEOF
 
-# PostgREST config
 cat > "$APP_DIR/postgrest.conf" <<PGCONF
 db-uri = "postgres://funnel_user:${DB_PASS}@127.0.0.1:${PG_PORT}/funnel_app"
 db-schemas = "public"
@@ -292,37 +281,122 @@ done
 log "Portas disponíveis (ou confirmadas pelo usuário)"
 
 # ══════════════════════════════════════════════════════════
-# 9. NGINX + SSL (não-destrutivo)
+# 9. INICIAR SERVIÇOS COM PM2
 # ══════════════════════════════════════════════════════════
-log "Configurando Nginx..."
+log "Iniciando serviços..."
 
-# Detectar sites existentes e avisar
-EXISTING_SITES=$(ls /etc/nginx/sites-enabled/ 2>/dev/null | grep -v funnel-app || true)
-if [ -n "$EXISTING_SITES" ]; then
-  warn "Sites Nginx existentes detectados (NÃO serão modificados):"
-  for s in $EXISTING_SITES; do echo "       - $s"; done
+cd "$APP_DIR"
+set -a; source "$APP_DIR/.env"; set +a
+
+pm2 delete funnel-api 2>/dev/null || true
+pm2 delete funnel-postgrest 2>/dev/null || true
+pm2 delete funnel-gotrue 2>/dev/null || true
+
+pm2 start ecosystem.config.js
+pm2 save
+
+if ! pm2 startup systemd -u root --hp /root 2>&1 | grep -q "already"; then
+  pm2 startup systemd -u root --hp /root 2>/dev/null || true
 fi
+log "Serviços iniciados (API + PostgREST)"
 
-# Criar diretório para validação SSL via webroot (path completo)
-ACME_ROOT="/var/www/acme-challenge"
-mkdir -p "$ACME_ROOT/.well-known/acme-challenge"
-chown -R www-data:www-data "$ACME_ROOT"
-chmod -R 755 "$ACME_ROOT"
+# ══════════════════════════════════════════════════════════
+# 10. DETECTAR PROXY REVERSO: TRAEFIK vs NGINX
+# ══════════════════════════════════════════════════════════
+TRAEFIK_OWNS_443=$(ss -ltnp 2>/dev/null | grep ':443' | grep -c 'docker-proxy' || true)
 
-# ── Remover default_server de outros sites (temporariamente) ──
-for SITE_FILE in /etc/nginx/sites-enabled/*; do
-  [ "$(basename "$SITE_FILE")" = "funnel-app" ] && continue
-  [ ! -f "$SITE_FILE" ] && continue
-  REAL_FILE=$(readlink -f "$SITE_FILE")
-  if grep -q "listen 80.*default_server" "$REAL_FILE" 2>/dev/null; then
-    warn "Removendo 'default_server' temporariamente de $(basename "$SITE_FILE")"
-    cp "$REAL_FILE" "${REAL_FILE}.bak-funnel"
-    sed -i 's/listen 80 default_server;/listen 80;/g' "$REAL_FILE"
+if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
+  # ── MODO TRAEFIK ────────────────────────────────────────
+  info "Traefik detectado na porta 443 — configurando containers..."
+
+  # Gerar ROUTER_PREFIX único
+  ROUTER_PREFIX="funnel-$(echo "$DASHBOARD_DOMAIN" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]')"
+  log "Router prefix: ${ROUTER_PREFIX}"
+
+  # Verificar API escutando
+  sleep 2
+  API_LISTEN=$(ss -ltnp | grep ":4000" || true)
+  if echo "$API_LISTEN" | grep -q "127.0.0.1:4000"; then
+    warn "API escutando em 127.0.0.1:4000 — Docker NÃO alcança!"
+    warn "Corrija server.listen() para '0.0.0.0' em $APP_DIR/api-server.js"
   fi
-done
 
-# Config ACME catch-all em conf.d (captura QUALQUER request porta 80 para /.well-known/)
-cat > /etc/nginx/conf.d/000-funnel-acme.conf <<ACME_CONF
+  # Detectar rede do Traefik
+  TRAEFIK_NETWORK=""
+  TRAEFIK_CONTAINER=$(docker ps --format '{{.Names}}' | grep -i traefik | head -1 || true)
+  if [ -n "$TRAEFIK_CONTAINER" ]; then
+    TRAEFIK_NETWORK=$(docker inspect "$TRAEFIK_CONTAINER" \
+      --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null \
+      | tr ' ' '\n' | grep -v '^bridge$' | grep -v '^$' | head -1 || true)
+  fi
+  if [ -z "$TRAEFIK_NETWORK" ]; then
+    for net in traefik-net traefik proxy web; do
+      if docker network inspect "$net" >/dev/null 2>&1; then
+        TRAEFIK_NETWORK="$net"; break
+      fi
+    done
+  fi
+  if [ -z "$TRAEFIK_NETWORK" ]; then
+    docker network create traefik-net 2>/dev/null || true
+    TRAEFIK_NETWORK="traefik-net"
+  fi
+  log "Rede do Traefik: ${TRAEFIK_NETWORK}"
+
+  # Remover containers antigos
+  for c in funnel-nginx-proxy funnel-spa funnel-api-proxy funnel-rest-proxy; do
+    if docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
+      docker stop "$c" 2>/dev/null || true
+      docker rm "$c" 2>/dev/null || true
+    fi
+  done
+
+  # Gerar docker-compose.yml
+  COMPOSE_FILE="$APP_DIR/docker-compose.yml"
+  sed -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
+      -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
+      -e "s/__ROUTER_PREFIX__/${ROUTER_PREFIX}/g" \
+      "$REPO_DIR/self-host/docker-compose.traefik.yml.template" > "$COMPOSE_FILE"
+  if [ "$TRAEFIK_NETWORK" != "traefik-net" ]; then
+    sed -i "s/traefik-net/${TRAEFIK_NETWORK}/g" "$COMPOSE_FILE"
+  fi
+
+  # Subir containers
+  cd "$APP_DIR"
+  docker compose up -d --force-recreate 2>/dev/null || docker-compose up -d --force-recreate 2>/dev/null
+  log "Containers Traefik iniciados (funnel-spa, funnel-api-proxy, funnel-rest-proxy)"
+
+  # Desativar Nginx para evitar conflito
+  warn "Traefik gerencia SSL/rotas — Nginx não será usado para este app."
+
+else
+  # ── MODO NGINX ──────────────────────────────────────────
+  log "Nginx gerenciará SSL e roteamento..."
+
+  EXISTING_SITES=$(ls /etc/nginx/sites-enabled/ 2>/dev/null | grep -v funnel-app || true)
+  if [ -n "$EXISTING_SITES" ]; then
+    warn "Sites Nginx existentes (NÃO serão modificados):"
+    for s in $EXISTING_SITES; do echo "       - $s"; done
+  fi
+
+  ACME_ROOT="/var/www/acme-challenge"
+  mkdir -p "$ACME_ROOT/.well-known/acme-challenge"
+  chown -R www-data:www-data "$ACME_ROOT"
+  chmod -R 755 "$ACME_ROOT"
+
+  # Remover default_server de outros sites
+  for SITE_FILE in /etc/nginx/sites-enabled/*; do
+    [ "$(basename "$SITE_FILE")" = "funnel-app" ] && continue
+    [ ! -f "$SITE_FILE" ] && continue
+    REAL_FILE=$(readlink -f "$SITE_FILE")
+    if grep -q "listen 80.*default_server" "$REAL_FILE" 2>/dev/null; then
+      warn "Removendo 'default_server' temporariamente de $(basename "$SITE_FILE")"
+      cp "$REAL_FILE" "${REAL_FILE}.bak-funnel"
+      sed -i 's/listen 80 default_server;/listen 80;/g' "$REAL_FILE"
+    fi
+  done
+
+  # Config ACME catch-all
+  cat > /etc/nginx/conf.d/000-funnel-acme.conf <<ACME_CONF
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -340,8 +414,7 @@ server {
 }
 ACME_CONF
 
-# Bloco do app (sem default_server na porta 80)
-cat > /etc/nginx/sites-available/funnel-app <<NGINX_TEMP
+  cat > /etc/nginx/sites-available/funnel-app <<NGINX_TEMP
 server {
     listen 80;
     server_name ${PUBLIC_DOMAIN} ${DASHBOARD_DOMAIN};
@@ -358,156 +431,128 @@ server {
 }
 NGINX_TEMP
 
-ln -sf /etc/nginx/sites-available/funnel-app /etc/nginx/sites-enabled/
+  ln -sf /etc/nginx/sites-available/funnel-app /etc/nginx/sites-enabled/
 
-# Função para reload seguro do Nginx (detecta systemd vs processo direto)
-reload_nginx() {
-  if ! nginx -t 2>/dev/null; then
-    err "Configuração Nginx inválida! Verifique /etc/nginx/sites-available/funnel-app"
-  fi
-  if systemctl is-active --quiet nginx; then
-    systemctl reload nginx
-  elif pidof nginx > /dev/null 2>&1; then
-    NGINX_PID=$(pidof -s nginx)
-    echo "$NGINX_PID" > /run/nginx.pid
-    kill -HUP "$NGINX_PID"
-  else
-    systemctl start nginx
-  fi
-}
-
-reload_nginx
-log "Nginx recarregado com sucesso"
-
-# Função para obter SSL com fallback standalone
-obtain_cert() {
-  local DOMAINS="$1"
-  local LABEL="$2"
-
-  if certbot certonly --webroot -w "$ACME_ROOT" \
-    $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive; then
-    log "SSL obtido via webroot para ${LABEL}"
-    return 0
-  fi
-
-  warn "Webroot falhou para ${LABEL}. Tentando modo standalone (Nginx será pausado brevemente)..."
-  ask "Deseja tentar o modo standalone? (s/N)"
-  read -r STANDALONE_CONFIRM
-  if [ "$STANDALONE_CONFIRM" = "s" ] || [ "$STANDALONE_CONFIRM" = "S" ]; then
-    systemctl stop nginx 2>/dev/null || nginx -s stop 2>/dev/null || true
-    if certbot certonly --standalone \
-      $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive; then
-      log "SSL obtido via standalone para ${LABEL}"
-      systemctl start nginx 2>/dev/null || nginx 2>/dev/null || true
-      return 0
+  reload_nginx() {
+    if ! nginx -t 2>/dev/null; then
+      err "Configuração Nginx inválida!"
     fi
-    systemctl start nginx 2>/dev/null || nginx 2>/dev/null || true
-  fi
-
-  warn "Certbot falhou para ${LABEL}. Verifique se o DNS aponta para este servidor."
-  warn "  Após corrigir, rode: certbot certonly --webroot -w ${ACME_ROOT} $DOMAINS"
-  return 1
-}
-
-# ── Diagnóstico: verificar se Nginx serve o webroot corretamente ──
-verify_acme_webroot() {
-  local DOMAIN="$1"
-  local TEST_TOKEN="lovable-test-$(date +%s)"
-  local TEST_FILE="$ACME_ROOT/.well-known/acme-challenge/${TEST_TOKEN}"
-  echo "acme-test-ok" > "$TEST_FILE"
-  chown www-data:www-data "$TEST_FILE"
-
-  # Camada 1: teste local com Host forçado
-  local LOCAL_CODE
-  LOCAL_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${DOMAIN}" "http://127.0.0.1/.well-known/acme-challenge/${TEST_TOKEN}" 2>/dev/null || echo "000")
-
-  if [ "$LOCAL_CODE" != "200" ]; then
-    rm -f "$TEST_FILE"
-    warn "Teste LOCAL falhou para ${DOMAIN} (HTTP ${LOCAL_CODE})."
-    warn "  Causa provável: config Nginx ou webroot incorreto."
-    return 1
-  fi
-  log "Teste local OK para ${DOMAIN} (HTTP 200)"
-
-  # Camada 2: teste público
-  local PUBLIC_CODE
-  PUBLIC_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${DOMAIN}/.well-known/acme-challenge/${TEST_TOKEN}" 2>/dev/null || echo "000")
-  rm -f "$TEST_FILE"
-
-  if [ "$PUBLIC_CODE" != "200" ]; then
-    warn "Teste PÚBLICO falhou para ${DOMAIN} (HTTP ${PUBLIC_CODE})."
-    warn "  Causa provável: DNS não aponta para este servidor ou firewall bloqueia porta 80."
-    return 1
-  fi
-  log "Webroot OK para ${DOMAIN} (local + público)"
-  return 0
-}
-
-# Verificar se www resolve antes de incluí-lo
-log "Obtendo certificados SSL para domínio público..."
-PUBLIC_CERT_DOMAINS="-d ${PUBLIC_DOMAIN}"
-if dig +short "www.${PUBLIC_DOMAIN}" A 2>/dev/null | grep -q .; then
-  PUBLIC_CERT_DOMAINS="$PUBLIC_CERT_DOMAINS -d www.${PUBLIC_DOMAIN}"
-  log "DNS para www.${PUBLIC_DOMAIN} encontrado, incluindo no certificado"
-else
-  warn "www.${PUBLIC_DOMAIN} não resolve no DNS. Certificado será apenas para ${PUBLIC_DOMAIN}"
-fi
-verify_acme_webroot "${PUBLIC_DOMAIN}" && obtain_cert "$PUBLIC_CERT_DOMAINS" "${PUBLIC_DOMAIN}" || true
-
-log "Obtendo certificados SSL para dashboard..."
-verify_acme_webroot "${DASHBOARD_DOMAIN}" && obtain_cert "-d ${DASHBOARD_DOMAIN}" "${DASHBOARD_DOMAIN}" || true
-
-# ── Limpar config ACME temporária e restaurar backups ──
-rm -f /etc/nginx/conf.d/000-funnel-acme.conf
-for BAK_FILE in /etc/nginx/sites-available/*.bak-funnel; do
-  [ ! -f "$BAK_FILE" ] && continue
-  ORIG_FILE="${BAK_FILE%.bak-funnel}"
-  mv "$BAK_FILE" "$ORIG_FILE"
-  log "Restaurado backup: $(basename "$ORIG_FILE")"
-done
-
-# Aplicar config completa com dois domínios (apenas se certs existem)
-if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
-   [ -f "/etc/letsencrypt/live/${DASHBOARD_DOMAIN}/fullchain.pem" ]; then
-  sed -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
-      -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
-      "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
+    if systemctl is-active --quiet nginx; then
+      systemctl reload nginx
+    elif pidof nginx > /dev/null 2>&1; then
+      kill -HUP "$(pidof -s nginx)"
+    else
+      systemctl start nginx
+    fi
+  }
 
   reload_nginx
-  log "Nginx configurado com SSL"
-else
-  warn "Certificados SSL incompletos. Nginx rodando apenas em HTTP."
-  warn "Após configurar DNS, rode: certbot certonly --webroot -w ${ACME_ROOT} -d DOMINIO"
+  log "Nginx recarregado"
+
+  obtain_cert() {
+    local DOMAINS="$1" LABEL="$2"
+    if certbot certonly --webroot -w "$ACME_ROOT" \
+      $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive; then
+      log "SSL obtido via webroot para ${LABEL}"
+      return 0
+    fi
+    warn "Webroot falhou para ${LABEL}. Tentando standalone..."
+    ask "Deseja tentar o modo standalone? (s/N)"
+    read -r STANDALONE_CONFIRM
+    if [ "$STANDALONE_CONFIRM" = "s" ] || [ "$STANDALONE_CONFIRM" = "S" ]; then
+      systemctl stop nginx 2>/dev/null || true
+      if certbot certonly --standalone \
+        $DOMAINS --email "${SSL_EMAIL}" --agree-tos --non-interactive; then
+        log "SSL obtido via standalone para ${LABEL}"
+        systemctl start nginx 2>/dev/null || true
+        return 0
+      fi
+      systemctl start nginx 2>/dev/null || true
+    fi
+    warn "Certbot falhou para ${LABEL}. Verifique DNS."
+    return 1
+  }
+
+  verify_acme_webroot() {
+    local DOMAIN="$1"
+    local TEST_TOKEN="lovable-test-$(date +%s)"
+    local TEST_FILE="$ACME_ROOT/.well-known/acme-challenge/${TEST_TOKEN}"
+    echo "acme-test-ok" > "$TEST_FILE"
+    chown www-data:www-data "$TEST_FILE"
+
+    local LOCAL_CODE
+    LOCAL_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${DOMAIN}" "http://127.0.0.1/.well-known/acme-challenge/${TEST_TOKEN}" 2>/dev/null || echo "000")
+    if [ "$LOCAL_CODE" != "200" ]; then
+      rm -f "$TEST_FILE"
+      warn "Teste LOCAL falhou para ${DOMAIN} (HTTP ${LOCAL_CODE})."
+      return 1
+    fi
+    log "Teste local OK para ${DOMAIN}"
+
+    local PUBLIC_CODE
+    PUBLIC_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${DOMAIN}/.well-known/acme-challenge/${TEST_TOKEN}" 2>/dev/null || echo "000")
+    rm -f "$TEST_FILE"
+    if [ "$PUBLIC_CODE" != "200" ]; then
+      warn "Teste PÚBLICO falhou para ${DOMAIN} (HTTP ${PUBLIC_CODE})."
+      return 1
+    fi
+    log "Webroot OK para ${DOMAIN}"
+    return 0
+  }
+
+  # Obter certificados SSL
+  log "Obtendo certificados SSL para domínio público..."
+  PUBLIC_CERT_DOMAINS="-d ${PUBLIC_DOMAIN}"
+  if dig +short "www.${PUBLIC_DOMAIN}" A 2>/dev/null | grep -q .; then
+    PUBLIC_CERT_DOMAINS="$PUBLIC_CERT_DOMAINS -d www.${PUBLIC_DOMAIN}"
+    log "www.${PUBLIC_DOMAIN} encontrado, incluindo no certificado"
+  fi
+  verify_acme_webroot "${PUBLIC_DOMAIN}" && obtain_cert "$PUBLIC_CERT_DOMAINS" "${PUBLIC_DOMAIN}" || true
+
+  log "Obtendo certificados SSL para dashboard..."
+  verify_acme_webroot "${DASHBOARD_DOMAIN}" && obtain_cert "-d ${DASHBOARD_DOMAIN}" "${DASHBOARD_DOMAIN}" || true
+
+  # Limpar config ACME temporária
+  rm -f /etc/nginx/conf.d/000-funnel-acme.conf
+  for BAK_FILE in /etc/nginx/sites-available/*.bak-funnel; do
+    [ ! -f "$BAK_FILE" ] && continue
+    ORIG_FILE="${BAK_FILE%.bak-funnel}"
+    mv "$BAK_FILE" "$ORIG_FILE"
+    log "Restaurado backup: $(basename "$ORIG_FILE")"
+  done
+
+  # Aplicar config final com SSL
+  if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
+     [ -f "/etc/letsencrypt/live/${DASHBOARD_DOMAIN}/fullchain.pem" ]; then
+    sed -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
+        -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
+        "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
+    reload_nginx
+    log "Nginx configurado com SSL"
+  else
+    warn "Certificados SSL incompletos. Nginx rodando apenas em HTTP."
+  fi
 fi
 
 # ══════════════════════════════════════════════════════════
-# 10. INICIAR SERVIÇOS COM PM2
-# ══════════════════════════════════════════════════════════
-log "Iniciando serviços..."
-
-cd "$APP_DIR"
-set -a; source "$APP_DIR/.env"; set +a
-
-# Parar processos anteriores desta app (se existirem), sem tocar em outros
-pm2 delete funnel-api 2>/dev/null || true
-pm2 delete funnel-postgrest 2>/dev/null || true
-pm2 delete funnel-gotrue 2>/dev/null || true
-
-pm2 start ecosystem.config.js
-pm2 save
-
-# Só configurar startup se não houver um já configurado
-if ! pm2 startup systemd -u root --hp /root 2>&1 | grep -q "already"; then
-  pm2 startup systemd -u root --hp /root 2>/dev/null || true
-fi
-log "Serviços iniciados (API + PostgREST)"
-
-# ══════════════════════════════════════════════════════════
-# 10. CRON PARA ROTAÇÃO DE IMAGENS
+# 11. CRON PARA ROTAÇÃO DE IMAGENS
 # ══════════════════════════════════════════════════════════
 CRON_CMD="0 * * * * curl -s -X POST http://127.0.0.1:4000/rotate-preview-images > /dev/null 2>&1"
 (crontab -l 2>/dev/null | grep -v "rotate-preview-images"; echo "$CRON_CMD") | crontab -
 log "Cron de rotação configurado (a cada hora)"
+
+# ══════════════════════════════════════════════════════════
+# 12. SMOKE TESTS
+# ══════════════════════════════════════════════════════════
+info "Validando serviços..."
+sleep 3
+
+HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health 2>/dev/null || echo "000")
+if [ "$HEALTH" = "200" ]; then
+  log "API respondendo (HTTP 200) ✅"
+else
+  warn "API health check: HTTP ${HEALTH}. Verifique: pm2 logs funnel-api"
+fi
 
 # ══════════════════════════════════════════════════════════
 # PRONTO!
@@ -523,8 +568,13 @@ echo -e "  ${CYAN}Login:${NC}               https://${DASHBOARD_DOMAIN}/login"
 echo -e "  ${CYAN}Admin email:${NC}         ${ADMIN_EMAIL}"
 echo ""
 echo -e "  ${CYAN}Links de funil:${NC}      https://${PUBLIC_DOMAIN}/meu-slug"
-echo -e "  (Preview social funciona automaticamente!)"
+if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
+  echo -e "  ${CYAN}Proxy:${NC}              Traefik → containers (sem Nginx)"
+else
+  echo -e "  ${CYAN}Proxy:${NC}              Nginx + SSL"
+fi
 echo ""
-echo -e "  ${CYAN}Serviços:${NC}  pm2 status | pm2 logs | pm2 restart all"
-echo -e "  ${CYAN}Dados em:${NC}  ${APP_DIR}"
+echo -e "  ${CYAN}Atualizar:${NC}  sudo bash self-host/update.sh"
+echo -e "  ${CYAN}Serviços:${NC}   pm2 status | pm2 logs"
+echo -e "  ${CYAN}Dados em:${NC}   ${APP_DIR}"
 echo ""
