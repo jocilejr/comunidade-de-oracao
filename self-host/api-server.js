@@ -182,7 +182,7 @@ async function handleOpenaiProxy(req, res) {
   const body = JSON.parse(await readBody(req));
   const { messages, model, tools } = body;
 
-  const { rows } = await pool.query(
+  const { rows } = await queryWithRLS(userId,
     `SELECT openai_api_key FROM user_settings WHERE user_id = $1 LIMIT 1`,
     [userId]
   );
