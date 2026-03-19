@@ -90,7 +90,16 @@ server {
 server {
     listen 80;
     server_name __DASHBOARD_DOMAIN__;
-    return 301 https://$host$request_uri;
+
+    location ^~ /.well-known/acme-challenge/ {
+        alias /var/www/acme-challenge/.well-known/acme-challenge/;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
 }
 
 server {
