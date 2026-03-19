@@ -198,7 +198,7 @@ log "Serviços reiniciados"
 log "Validando serviços..."
 sleep 2
 
-# Testar health
+# Testar health local
 HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health 2>/dev/null || echo "000")
 if [ "$HEALTH" = "200" ]; then
   log "API respondendo (HTTP 200)"
@@ -206,7 +206,30 @@ else
   warn "API não respondeu ao health check (HTTP ${HEALTH}). Verifique: pm2 logs funnel-api"
 fi
 
-# ── 12. Resumo ──────────────────────────────────────────
+# ── 12. Detectar Traefik e validar roteamento público ───
+TRAEFIK_OWNS_443=$(ss -ltnp 2>/dev/null | grep ':443' | grep -c 'docker-proxy' || true)
+if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
+  warn "Traefik detectado na porta 443 — Nginx do host NÃO recebe tráfego externo."
+  warn "O roteamento de /functions/v1/ depende das labels do Traefik."
+
+  # Validar URL pública
+  if [ -n "${DASHBOARD_DOMAIN:-}" ]; then
+    FUNC_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
+      -X POST "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" \
+      -H 'Content-Type: application/json' -d '{"action":"list"}' 2>/dev/null || echo "000")
+
+    if [ "$FUNC_TEST" = "401" ] || [ "$FUNC_TEST" = "400" ]; then
+      log "Rota pública /functions/v1/ OK (HTTP ${FUNC_TEST})"
+    else
+      warn "⚠ /functions/v1/ retornou HTTP ${FUNC_TEST} (esperado 401 ou 400)"
+      warn "Execute: sudo bash self-host/fix-traefik-routing.sh"
+    fi
+  fi
+else
+  log "Nginx do host controla a porta 443"
+fi
+
+# ── 13. Resumo ──────────────────────────────────────────
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║          ✅ Update concluído!                    ║${NC}"
@@ -216,4 +239,7 @@ echo -e "  ${CYAN}Público:${NC}     https://${PUBLIC_DOMAIN}"
 echo -e "  ${CYAN}Dashboard:${NC}  https://${DASHBOARD_DOMAIN}"
 echo -e "  ${CYAN}DB:${NC}         ${DB_HOST}:${DB_PORT}"
 echo -e "  ${CYAN}Serviços:${NC}   pm2 status | pm2 logs"
+if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
+  echo -e "  ${YELLOW}Proxy:${NC}      Traefik (externo) → Nginx (interno)"
+fi
 echo ""
