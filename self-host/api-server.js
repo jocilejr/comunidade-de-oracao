@@ -58,7 +58,19 @@ function readBody(req) {
 }
 
 // ── Route: /share ─────────────────────────────────────────
-async function handleShare(req, res, slug) {
+async function handleShare(req, res, slug, format) {
+  // JSON format: return full funnel data (used by SPA on public domain)
+  if (format === 'json') {
+    const { rows } = await pool.query(
+      `SELECT id, slug, name, created_at, flow, bot_name, bot_avatar,
+              preview_image, page_title, page_description, user_id
+       FROM funnels WHERE slug = $1 LIMIT 1`,
+      [slug]
+    );
+    if (!rows.length) return json(res, { error: "Not found" }, 404);
+    return json(res, rows[0]);
+  }
+
   const { rows } = await pool.query(
     `SELECT name, slug, page_title, page_description, preview_image, bot_name, bot_avatar
      FROM funnels WHERE slug = $1 LIMIT 1`,
