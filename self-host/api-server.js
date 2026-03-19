@@ -386,8 +386,25 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`✅ API server running on http://127.0.0.1:${PORT}`);
-  console.log(`   Public domain:    https://${PUBLIC_DOMAIN}`);
-  console.log(`   Dashboard domain: https://${DASHBOARD_DOMAIN}`);
-});
+// ── Startup: DB ping + log ────────────────────────────────
+async function startServer() {
+  const dbTarget = `${pool.options.host || '127.0.0.1'}:${pool.options.port || 5432}/${pool.options.database || '?'}@${pool.options.user || '?'}`;
+  console.log(`🔌 DB target: ${dbTarget}`);
+
+  try {
+    await pool.query("SELECT 1");
+    console.log("✅ DB connection OK");
+  } catch (err) {
+    console.error(`❌ DB connection FAILED: ${err.message}`);
+    console.error(`   Hint: verifique DB_HOST, DB_PORT, DB_USER, DB_PASS no .env`);
+    console.error(`   Target: ${dbTarget}`);
+  }
+
+  server.listen(PORT, "127.0.0.1", () => {
+    console.log(`✅ API server running on http://127.0.0.1:${PORT}`);
+    console.log(`   Public domain:    https://${PUBLIC_DOMAIN}`);
+    console.log(`   Dashboard domain: https://${DASHBOARD_DOMAIN}`);
+  });
+}
+
+startServer();

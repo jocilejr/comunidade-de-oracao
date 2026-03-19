@@ -57,6 +57,9 @@ DB_PASS=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 JWT_SECRET=$(openssl rand -base64 64 | tr -dc 'a-zA-Z0-9' | head -c 64)
 ANON_KEY="self-host-anon-key-$(openssl rand -hex 16)"
 
+# Detectar porta real do PostgreSQL (não assumir 5432)
+PG_PORT="5432"
+
 log "Segredos gerados com sucesso"
 
 # ══════════════════════════════════════════════════════════
@@ -92,6 +95,11 @@ log "Nginx, Certbot, PM2 instalados"
 # 2. POSTGRESQL — BANCO E USUARIO
 # ══════════════════════════════════════════════════════════
 log "Configurando PostgreSQL..."
+
+# Detectar porta real do cluster PostgreSQL
+PG_PORT=$(sudo -u postgres psql -tAc "SHOW port;" 2>/dev/null | tr -d '[:space:]')
+[ -z "$PG_PORT" ] && PG_PORT="5432"
+log "Porta do PostgreSQL detectada: ${PG_PORT}"
 
 sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='funnel_user'" | grep -q 1 || \
   sudo -u postgres psql -c "CREATE ROLE funnel_user WITH LOGIN PASSWORD '${DB_PASS}';"
@@ -204,13 +212,13 @@ cat > "$APP_DIR/.env" <<ENVEOF
 PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
 DASHBOARD_DOMAIN=${DASHBOARD_DOMAIN}
 DB_HOST=127.0.0.1
-DB_PORT=5432
+DB_PORT=${PG_PORT}
 DB_NAME=funnel_app
 DB_USER=funnel_user
 DB_PASS=${DB_PASS}
 API_PORT=4000
 API_JWT_SECRET=${JWT_SECRET}
-PGRST_DB_URI=postgres://funnel_user:${DB_PASS}@127.0.0.1:5432/funnel_app
+PGRST_DB_URI=postgres://funnel_user:${DB_PASS}@127.0.0.1:${PG_PORT}/funnel_app
 PGRST_DB_SCHEMAS=public
 PGRST_DB_ANON_ROLE=anon
 PGRST_JWT_SECRET=${JWT_SECRET}
@@ -219,7 +227,7 @@ ENVEOF
 
 # PostgREST config
 cat > "$APP_DIR/postgrest.conf" <<PGCONF
-db-uri = "postgres://funnel_user:${DB_PASS}@127.0.0.1:5432/funnel_app"
+db-uri = "postgres://funnel_user:${DB_PASS}@127.0.0.1:${PG_PORT}/funnel_app"
 db-schemas = "public"
 db-anon-role = "anon"
 jwt-secret = "${JWT_SECRET}"
