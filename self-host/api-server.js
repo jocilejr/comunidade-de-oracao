@@ -273,6 +273,79 @@ async function handleTypebotProxy(req, res) {
   json(res, { error: "Ação inválida. Use 'list' ou 'get'." }, 400);
 }
 
+// ── Route: /user-settings ─────────────────────────────────
+async function handleUserSettings(req, res) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer "))
+    return json(res, { error: "Missing authorization" }, 401);
+
+  let userId;
+  try {
+    const decoded = jwt.verify(authHeader.replace("Bearer ", ""), JWT_SECRET, { algorithms: ["HS256"] });
+    userId = decoded.sub;
+  } catch (e) {
+    return json(res, { error: "Invalid token" }, 401);
+  }
+
+  if (req.method === "GET") {
+    const { rows } = await pool.query(
+      `SELECT openai_api_key, typebot_api_token, typebot_workspace_id, typebot_base_url
+       FROM user_settings WHERE user_id = $1 LIMIT 1`,
+      [userId]
+    );
+    if (!rows.length) return json(res, { status: "empty" });
+    return json(res, {
+      status: "ok",
+      data: {
+        openai_api_key: rows[0].openai_api_key || "",
+        typebot_api_token: rows[0].typebot_api_token || "",
+        typebot_workspace_id: rows[0].typebot_workspace_id || "",
+        typebot_base_url: rows[0].typebot_base_url || "",
+      },
+    });
+  }
+
+  // POST: upsert settings
+  const body = JSON.parse(await readBody(req));
+  const fields = {};
+  if (body.openai_api_key !== undefined) fields.openai_api_key = body.openai_api_key;
+  if (body.typebot_api_token !== undefined) fields.typebot_api_token = body.typebot_api_token;
+  if (body.typebot_workspace_id !== undefined) fields.typebot_workspace_id = body.typebot_workspace_id;
+  if (body.typebot_base_url !== undefined) fields.typebot_base_url = body.typebot_base_url;
+
+  const { rows: existing } = await pool.query(
+    `SELECT id FROM user_settings WHERE user_id = $1 LIMIT 1`,
+    [userId]
+  );
+
+  if (existing.length) {
+    const setClauses = [];
+    const values = [userId];
+    let i = 2;
+    for (const [key, val] of Object.entries(fields)) {
+      setClauses.push(`${key} = $${i}`);
+      values.push(val);
+      i++;
+    }
+    if (setClauses.length > 0) {
+      await pool.query(
+        `UPDATE user_settings SET ${setClauses.join(", ")}, updated_at = now() WHERE user_id = $1`,
+        values
+      );
+    }
+  } else {
+    const cols = ["user_id", ...Object.keys(fields)];
+    const vals = [userId, ...Object.values(fields)];
+    const placeholders = vals.map((_, idx) => `$${idx + 1}`).join(", ");
+    await pool.query(
+      `INSERT INTO user_settings (${cols.join(", ")}) VALUES (${placeholders})`,
+      vals
+    );
+  }
+
+  return json(res, { status: "ok" });
+}
+
 // ── Route: /rotate-preview-images ─────────────────────────
 async function handleRotateImages(req, res) {
   const { rows: images } = await pool.query(
