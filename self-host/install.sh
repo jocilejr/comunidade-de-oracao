@@ -338,6 +338,24 @@ obtain_cert() {
   return 1
 }
 
+# ── Diagnóstico: verificar se Nginx serve o webroot corretamente ──
+verify_acme_webroot() {
+  local DOMAIN="$1"
+  local TEST_FILE="$ACME_ROOT/.well-known/acme-challenge/lovable-test-$(date +%s)"
+  echo "acme-test-ok" > "$TEST_FILE"
+  local HTTP_CODE
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${DOMAIN}/.well-known/acme-challenge/$(basename "$TEST_FILE")" 2>/dev/null || echo "000")
+  rm -f "$TEST_FILE"
+  if [ "$HTTP_CODE" != "200" ]; then
+    warn "Nginx NÃO está servindo o webroot para ${DOMAIN} (HTTP ${HTTP_CODE})."
+    warn "Provável causa: outro site Nginx (ex: zapmanager) tem 'default_server' na porta 80."
+    warn "Solução: remova 'default_server' do outro site ou adicione ao bloco funnel-app."
+    return 1
+  fi
+  log "Webroot OK para ${DOMAIN} (HTTP 200)"
+  return 0
+}
+
 # Verificar se www resolve antes de incluí-lo
 log "Obtendo certificados SSL para domínio público..."
 PUBLIC_CERT_DOMAINS="-d ${PUBLIC_DOMAIN}"
