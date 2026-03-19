@@ -41,20 +41,10 @@ services:
       - "traefik.http.routers.__ROUTER_PREFIX__-spa-http.priority=1"
 
       # ══ PUBLIC — __PUBLIC_DOMAIN__ ════════════════════
-      # SPA público HTTPS
-      - "traefik.http.routers.__ROUTER_PREFIX__-pub.rule=Host(`__PUBLIC_DOMAIN__`)"
-      - "traefik.http.routers.__ROUTER_PREFIX__-pub.entrypoints=websecure"
-      - "traefik.http.routers.__ROUTER_PREFIX__-pub.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.__ROUTER_PREFIX__-pub.priority=1"
-      - "traefik.http.routers.__ROUTER_PREFIX__-pub.service=__ROUTER_PREFIX__-spa-svc"
+      # REMOVIDO: público agora é roteado inteiramente pelo api-server (funnel-api-proxy)
+      # para suportar bot detection (OG tags) e SPA fallback
 
-      # SPA público HTTP → redirect HTTPS
-      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.rule=Host(`__PUBLIC_DOMAIN__`)"
-      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.entrypoints=web"
-      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.middlewares=__ROUTER_PREFIX__-https"
-      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.priority=1"
-
-      # Service SPA (porta 8080)
+      # Service SPA (porta 8080) — usado apenas pelo dashboard
       - "traefik.http.services.__ROUTER_PREFIX__-spa-svc.loadbalancer.server.port=8080"
 
   # ── API Proxy: TCP forward para host:4000 ───────────────
@@ -105,6 +95,19 @@ services:
       - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.priority=100"
       - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.middlewares=__ROUTER_PREFIX__-strip-functions"
       - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.service=__ROUTER_PREFIX__-api-svc"
+
+      # ── Router: catch-all público HTTPS → api-server (bot detection + SPA) ──
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.rule=Host(`__PUBLIC_DOMAIN__`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.priority=1"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub.service=__ROUTER_PREFIX__-api-svc"
+
+      # ── Router: catch-all público HTTP → redirect HTTPS ──
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.rule=Host(`__PUBLIC_DOMAIN__`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.entrypoints=web"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.middlewares=__ROUTER_PREFIX__-https"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-http.priority=1"
 
       # Service API (porta 4000 interna do socat)
       - "traefik.http.services.__ROUTER_PREFIX__-api-svc.loadbalancer.server.port=4000"
