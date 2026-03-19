@@ -94,6 +94,8 @@ const BotBubble = ({ message, botAvatar, botName, isFirst = true, isLast = true 
             src={message.mediaUrl}
             time={time}
             autoPlay
+            avatar={botAvatar}
+            avatarFallback={botName}
           />
         </div>
       </div>
