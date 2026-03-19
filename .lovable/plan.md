@@ -1,31 +1,23 @@
 
 
-# Fix: RLS bloqueia funnel_user na tabela user_settings
+## Correção do Audio Bubble — Adicionar avatar circular à direita
 
-## Causa raiz
-O `api-server.js` conecta como `funnel_user` via `pool.query`. A tabela `user_settings` tem RLS ativo com políticas que verificam `auth.uid() = user_id`. Como o pool não define claims JWT, `auth.uid()` = NULL → RLS bloqueia INSERT e UPDATE.
+### Problema
+No WhatsApp real (imagem 1), o bubble de áudio exibe a **foto/avatar do bot** em um círculo à direita da waveform. Atualmente (imagem 2), o avatar não aparece dentro do bubble de áudio.
 
-## Solução
-Conceder `BYPASSRLS` ao role `funnel_user`. O api-server já valida o JWT e filtra por `user_id` explicitamente em todas as queries — o RLS é redundante nesse contexto.
+### Alterações
 
-### Arquivos alterados
+**1. `src/components/chat/AudioPlayer.tsx`**
+- Adicionar prop opcional `avatar?: string` e `avatarFallback?: string`
+- Após a waveform (lado direito do flex), renderizar um círculo de ~34px com a imagem do avatar (ou fallback com inicial do nome)
+- Estilo: `rounded-full`, `overflow-hidden`, `shrink-0`, posicionado como último item no flex row principal
 
-**1. `self-host/install.sh`** — Na criação do role, adicionar BYPASSRLS:
-```sql
-CREATE ROLE funnel_user WITH LOGIN PASSWORD '...' BYPASSRLS;
+**2. `src/components/chat/BotBubble.tsx`**
+- No bloco de renderização do áudio (~linha 93), passar `avatar={botAvatar}` e `avatarFallback={botName}` para o `AudioPlayer`
+
+### Layout resultante
+```text
+[ ▶ ] [|||waveform|||] [ 🟢avatar ]
+       0:12              14:32
 ```
-E para instalações existentes, adicionar após a criação:
-```sql
-ALTER ROLE funnel_user BYPASSRLS;
-```
-
-**2. `self-host/update.sh`** — Adicionar no bloco de grants (seção 6b):
-```sql
-ALTER ROLE funnel_user BYPASSRLS;
-```
-
-### Deploy
-1. Rodar `update.sh` na VPS (aplica o ALTER ROLE)
-2. `pm2 restart funnel-api`
-3. Testar salvar configurações
 
