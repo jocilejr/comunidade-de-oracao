@@ -4,7 +4,7 @@ set -euo pipefail
 # ╔══════════════════════════════════════════════════════════════╗
 # ║  Update Self-Host — Funil App                                ║
 # ║  Lê config de /opt/funnel-app/.env — zero perguntas          ║
-# ║  Inclui smoke tests e auto-heal para ambientes com Traefik   ║
+# ║  Detecta Traefik vs Nginx e atualiza automaticamente         ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 APP_DIR="/opt/funnel-app"
@@ -41,51 +41,37 @@ DB_NAME="${DB_NAME:-funnel_app}"
 DB_USER="${DB_USER:-funnel_user}"
 DB_PASS="${DB_PASS:-}"
 
-# Testar conexão atual
 if PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1" >/dev/null 2>&1; then
   log "Conexão com banco OK (${DB_HOST}:${DB_PORT})"
 else
-  warn "Conexão falhou em ${DB_HOST}:${DB_PORT}. Detectando porta real do PostgreSQL..."
+  warn "Conexão falhou em ${DB_HOST}:${DB_PORT}. Detectando porta real..."
 
-  # Detectar porta real via peer auth (funciona mesmo quando TCP falha)
   REAL_PORT=$(sudo -u postgres psql -tAc "SHOW port;" 2>/dev/null | tr -d '[:space:]')
-
-  if [ -z "$REAL_PORT" ]; then
-    err "Não foi possível detectar a porta do PostgreSQL. Verifique se o serviço está rodando."
-  fi
+  [ -z "$REAL_PORT" ] && err "Não foi possível detectar a porta do PostgreSQL."
 
   log "Porta real detectada: ${REAL_PORT}"
-
-  # Garantir que a senha do funnel_user está sincronizada
   sudo -u postgres psql -c "ALTER ROLE ${DB_USER} WITH PASSWORD '${DB_PASS}';" >/dev/null 2>&1
   sudo systemctl reload postgresql 2>/dev/null || true
 
-  # Testar com porta real
   if PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$REAL_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1" >/dev/null 2>&1; then
     log "Conexão OK com porta ${REAL_PORT}. Atualizando configurações..."
 
-    # Atualizar DB_PORT no .env
     if grep -q "^DB_PORT=" "$ENV_FILE"; then
       sed -i "s/^DB_PORT=.*/DB_PORT=${REAL_PORT}/" "$ENV_FILE"
     else
       echo "DB_PORT=${REAL_PORT}" >> "$ENV_FILE"
     fi
-
-    # Atualizar PGRST_DB_URI no .env
     sed -i "s|^PGRST_DB_URI=.*|PGRST_DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${REAL_PORT}/${DB_NAME}|" "$ENV_FILE"
 
-    # Atualizar postgrest.conf
     if [ -f "$APP_DIR/postgrest.conf" ]; then
       sed -i "s|^db-uri = .*|db-uri = \"postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${REAL_PORT}/${DB_NAME}\"|" "$APP_DIR/postgrest.conf"
-      log "postgrest.conf atualizado"
     fi
 
-    # Recarregar variáveis
     DB_PORT="$REAL_PORT"
     set -a; source "$ENV_FILE"; set +a
     log "Configurações corrigidas: DB_PORT=${REAL_PORT}"
   else
-    err "Conexão falhou mesmo com porta ${REAL_PORT}. Verifique DB_HOST, DB_USER e DB_PASS no $ENV_FILE."
+    err "Conexão falhou mesmo com porta ${REAL_PORT}. Verifique DB_HOST, DB_USER e DB_PASS."
   fi
 fi
 
@@ -119,9 +105,7 @@ for migration in "$REPO_DIR"/supabase/migrations/*.sql; do
   already=$(sudo -u postgres psql -d "${DB_NAME}" -tAc \
     "SELECT 1 FROM public.migrations_applied WHERE filename='${filename}';" 2>/dev/null || echo "")
 
-  if [ "$already" = "1" ]; then
-    continue
-  fi
+  if [ "$already" = "1" ]; then continue; fi
 
   FILTERED=$(sed '/pg_cron/d; /pg_net/d' "$migration")
   echo "$FILTERED" | sudo -u postgres psql -d "${DB_NAME}" -v ON_ERROR_STOP=0 2>/dev/null || true
@@ -139,7 +123,6 @@ done
 log "Buildando frontend..."
 cd "$REPO_DIR"
 
-# Recarregar .env (pode ter sido atualizado pelo auto-heal)
 set -a; source "$ENV_FILE"; set +a
 
 cat > "$REPO_DIR/.env.local" <<BUILDENV
@@ -153,41 +136,11 @@ npm ci --prefer-offline 2>/dev/null || npm install 2>/dev/null
 npm run build
 log "Frontend buildado"
 
-# ── 8. Copiar dist ──────────────────────────────────────
 rm -rf "$APP_DIR/dist"
 cp -r "$REPO_DIR/dist" "$APP_DIR/dist"
 log "Frontend copiado para $APP_DIR/dist"
 
-# ── 9. Atualizar Nginx ──────────────────────────────────
-if [ -f "$REPO_DIR/self-host/nginx.conf.template" ]; then
-  if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
-     [ -f "/etc/letsencrypt/live/${DASHBOARD_DOMAIN}/fullchain.pem" ]; then
-    sed -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
-        -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
-        "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
-
-    # Garantir symlink ativo (evita config desatualizada)
-    ln -sf /etc/nginx/sites-available/funnel-app /etc/nginx/sites-enabled/funnel-app
-
-    if nginx -t 2>/dev/null; then
-      systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
-      log "Nginx atualizado e recarregado"
-
-      # Validação pós-reload: garantir que rotas críticas existem
-      if grep -q "functions/v1" /etc/nginx/sites-enabled/funnel-app; then
-        log "Rota /functions/v1/ confirmada no Nginx"
-      else
-        warn "Rota /functions/v1/ NÃO encontrada no Nginx — edge functions podem falhar"
-      fi
-    else
-      warn "Nginx config inválida — não recarregado"
-    fi
-  else
-    warn "Certificados SSL não encontrados — Nginx não atualizado"
-  fi
-fi
-
-# ── 10. Reiniciar serviços (com --update-env) ───────────
+# ── 8. Reiniciar serviços PM2 ───────────────────────────
 log "Reiniciando serviços..."
 cd "$APP_DIR"
 set -a; source "$ENV_FILE"; set +a
@@ -196,86 +149,176 @@ pm2 restart funnel-postgrest --update-env 2>/dev/null || true
 pm2 save 2>/dev/null
 log "Serviços reiniciados"
 
-# ── 11. Validação pós-restart ───────────────────────────
+# ── 9. Validação pós-restart ────────────────────────────
 log "Validando serviços..."
 sleep 2
 
-# Testar health local
 HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health 2>/dev/null || echo "000")
 if [ "$HEALTH" = "200" ]; then
-  log "API respondendo (HTTP 200)"
+  log "API respondendo (HTTP 200) ✅"
 else
   warn "API não respondeu ao health check (HTTP ${HEALTH}). Verifique: pm2 logs funnel-api"
 fi
 
-# ── 12. Detectar Traefik e validar roteamento público ───
+# ── 10. Detectar proxy e atualizar ──────────────────────
 TRAEFIK_OWNS_443=$(ss -ltnp 2>/dev/null | grep ':443' | grep -c 'docker-proxy' || true)
+
 if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
-  warn "Traefik detectado na porta 443 — roteamento via containers Traefik."
-  info "Executando smoke tests completos..."
+  # ════════════════════════════════════════════════════════
+  # MODO TRAEFIK — atualizar containers
+  # ════════════════════════════════════════════════════════
+  info "Traefik detectado — atualizando containers..."
 
-  # Atualizar containers (SPA + API proxy + REST proxy)
-  info "Atualizando containers Traefik (funnel-spa, funnel-api-proxy, funnel-rest-proxy)..."
-  bash "$REPO_DIR/self-host/setup-traefik.sh" 2>&1 | tail -10
+  ROUTER_PREFIX="funnel-$(echo "$DASHBOARD_DOMAIN" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]')"
 
-  sleep 3
+  # Detectar rede do Traefik
+  TRAEFIK_NETWORK=""
+  TRAEFIK_CONTAINER=$(docker ps --format '{{.Names}}' | grep -i traefik | head -1 || true)
+  if [ -n "$TRAEFIK_CONTAINER" ]; then
+    TRAEFIK_NETWORK=$(docker inspect "$TRAEFIK_CONTAINER" \
+      --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null \
+      | tr ' ' '\n' | grep -v '^bridge$' | grep -v '^$' | head -1 || true)
+  fi
+  if [ -z "$TRAEFIK_NETWORK" ]; then
+    for net in traefik-net traefik proxy web; do
+      if docker network inspect "$net" >/dev/null 2>&1; then
+        TRAEFIK_NETWORK="$net"; break
+      fi
+    done
+  fi
+  [ -z "$TRAEFIK_NETWORK" ] && TRAEFIK_NETWORK="traefik-net"
+  log "Rede Traefik: ${TRAEFIK_NETWORK}"
 
-  # ── Smoke tests completos ──────────────────────────────
+  # Remover containers antigos
+  for c in funnel-nginx-proxy funnel-spa funnel-api-proxy funnel-rest-proxy; do
+    if docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
+      docker stop "$c" 2>/dev/null || true
+      docker rm "$c" 2>/dev/null || true
+    fi
+  done
+
+  # Gerar e subir docker-compose
+  COMPOSE_FILE="$APP_DIR/docker-compose.yml"
+  sed -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
+      -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
+      -e "s/__ROUTER_PREFIX__/${ROUTER_PREFIX}/g" \
+      "$REPO_DIR/self-host/docker-compose.traefik.yml.template" > "$COMPOSE_FILE"
+  if [ "$TRAEFIK_NETWORK" != "traefik-net" ]; then
+    sed -i "s/traefik-net/${TRAEFIK_NETWORK}/g" "$COMPOSE_FILE"
+  fi
+
+  cd "$APP_DIR"
+  docker compose up -d --force-recreate 2>/dev/null || docker-compose up -d --force-recreate 2>/dev/null
+  log "Containers atualizados"
+
+  # ── Smoke tests ────────────────────────────────────────
+  sleep 4
+  info "Smoke tests..."
+  echo ""
+
   SMOKE_OK=true
 
-  FUNC_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
-    -X POST "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" \
-    -H 'Content-Type: application/json' -d '{"action":"list"}' 2>/dev/null || echo "000")
-  echo -e "  POST /functions/v1/typebot-proxy → HTTP ${FUNC_TEST}"
-  if [ "$FUNC_TEST" = "401" ] || [ "$FUNC_TEST" = "400" ]; then
-    log "Rota /functions/v1/ OK"
-  else
-    warn "⚠ /functions/v1/ retornou HTTP ${FUNC_TEST}"
-    SMOKE_OK=false
-  fi
+  test_route() {
+    local label="$1" url="$2" expected="$3"
+    shift 3
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" "$@" "$url" 2>/dev/null || echo "000")
+    if echo "$expected" | grep -qw "$code"; then
+      echo -e "  ${GREEN}✅${NC} ${label} → HTTP ${code}"
+      return 0
+    else
+      echo -e "  ${RED}❌${NC} ${label} → HTTP ${code} (esperado: ${expected})"
+      return 1
+    fi
+  }
 
-  SPA_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
-    "https://${DASHBOARD_DOMAIN}/" 2>/dev/null || echo "000")
-  echo -e "  GET  /                          → HTTP ${SPA_TEST}"
-  if [ "$SPA_TEST" = "200" ]; then
-    log "SPA / OK"
-  else
-    warn "⚠ SPA / retornou HTTP ${SPA_TEST} (esperado 200)"
-    SMOKE_OK=false
-  fi
+  test_route "GET  /"                    "https://${DASHBOARD_DOMAIN}/"       "200"         || SMOKE_OK=false
+  test_route "GET  /login"               "https://${DASHBOARD_DOMAIN}/login"  "200"         || SMOKE_OK=false
+  test_route "GET  /admin"               "https://${DASHBOARD_DOMAIN}/admin"  "200"         || SMOKE_OK=false
+  test_route "POST /functions/v1/proxy"  "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" "400 401" \
+    -X POST -H "Content-Type: application/json" -d '{"action":"list"}'                      || SMOKE_OK=false
+  test_route "GET  /rest/v1/"            "https://${DASHBOARD_DOMAIN}/rest/v1/user_settings?select=id&limit=1" "200 401 406" || SMOKE_OK=false
 
-  LOGIN_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
-    "https://${DASHBOARD_DOMAIN}/login" 2>/dev/null || echo "000")
-  echo -e "  GET  /login                     → HTTP ${LOGIN_TEST}"
-  if [ "$LOGIN_TEST" = "200" ]; then
-    log "SPA /login OK"
-  else
-    warn "⚠ SPA /login retornou HTTP ${LOGIN_TEST}"
-    SMOKE_OK=false
-  fi
+  echo ""
 
-  ADMIN_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
-    "https://${DASHBOARD_DOMAIN}/admin" 2>/dev/null || echo "000")
-  echo -e "  GET  /admin                     → HTTP ${ADMIN_TEST}"
-  if [ "$ADMIN_TEST" = "200" ]; then
-    log "SPA /admin OK"
+  if [ "$SMOKE_OK" = true ]; then
+    echo -e "${GREEN}  ✅ Todas as rotas OK${NC}"
   else
-    warn "⚠ SPA /admin retornou HTTP ${ADMIN_TEST}"
-    SMOKE_OK=false
-  fi
-
-  if [ "$SMOKE_OK" = false ]; then
+    warn "Algumas rotas falharam. Diagnóstico:"
     echo ""
-    warn "Alguns smoke tests falharam. Possíveis causas:"
-    echo -e "  1. ${CYAN}Conflito de routers Traefik${NC} — outro container pode ter labels para ${DASHBOARD_DOMAIN}"
-    echo -e "  2. ${CYAN}Cache do Traefik${NC} — aguarde 30s e teste novamente"
-    echo -e "  3. ${CYAN}Diagnóstico completo:${NC} sudo bash self-host/fix-traefik-routing.sh"
+
+    # ── Diagnóstico inline ───────────────────────────────
+    info "Status dos containers:"
+    for c in funnel-spa funnel-api-proxy funnel-rest-proxy; do
+      if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
+        log "  $c ✅"
+      else
+        warn "  $c ❌ NÃO rodando"
+      fi
+    done
+
+    if docker ps --format '{{.Names}}' | grep -q "^funnel-nginx-proxy$"; then
+      warn "  Container ANTIGO funnel-nginx-proxy ainda existe! Remova-o."
+    fi
+
+    echo ""
+    info "Rede dos containers:"
+    if [ -n "$TRAEFIK_CONTAINER" ]; then
+      TRAEFIK_NETS=$(docker inspect "$TRAEFIK_CONTAINER" \
+        --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)
+      echo -e "  Traefik: ${TRAEFIK_NETS}"
+      for c in funnel-spa funnel-api-proxy funnel-rest-proxy; do
+        if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
+          NETS=$(docker inspect "$c" \
+            --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)
+          echo -e "  $c: ${NETS}"
+        fi
+      done
+    fi
+
+    echo ""
+    info "Conflitos de host-rule para ${DASHBOARD_DOMAIN}:"
+    CONFLICTS=0
+    for cid in $(docker ps -q); do
+      name=$(docker inspect --format '{{.Name}}' "$cid" | sed 's/^\///')
+      case "$name" in funnel-spa|funnel-api-proxy|funnel-rest-proxy) continue;; esac
+      labels=$(docker inspect --format '{{json .Config.Labels}}' "$cid" 2>/dev/null)
+      if echo "$labels" | grep -qi "$DASHBOARD_DOMAIN"; then
+        echo -e "  ${RED}⚠ CONFLITO:${NC} ${name}"
+        CONFLICTS=$((CONFLICTS + 1))
+      fi
+    done
+    [ "$CONFLICTS" -eq 0 ] && log "  Nenhum conflito ✅"
+    echo ""
   fi
+
 else
+  # ════════════════════════════════════════════════════════
+  # MODO NGINX — atualizar config
+  # ════════════════════════════════════════════════════════
+  if [ -f "$REPO_DIR/self-host/nginx.conf.template" ]; then
+    if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
+       [ -f "/etc/letsencrypt/live/${DASHBOARD_DOMAIN}/fullchain.pem" ]; then
+      sed -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
+          -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
+          "$REPO_DIR/self-host/nginx.conf.template" > /etc/nginx/sites-available/funnel-app
+
+      ln -sf /etc/nginx/sites-available/funnel-app /etc/nginx/sites-enabled/funnel-app
+
+      if nginx -t 2>/dev/null; then
+        systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
+        log "Nginx atualizado e recarregado"
+      else
+        warn "Nginx config inválida — não recarregado"
+      fi
+    else
+      warn "Certificados SSL não encontrados — Nginx não atualizado"
+    fi
+  fi
   log "Nginx do host controla a porta 443"
 fi
 
-# ── 13. Resumo ──────────────────────────────────────────
+# ── 11. Resumo ──────────────────────────────────────────
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║          ✅ Update concluído!                    ║${NC}"
@@ -285,12 +328,9 @@ echo -e "  ${CYAN}Público:${NC}     https://${PUBLIC_DOMAIN}"
 echo -e "  ${CYAN}Dashboard:${NC}  https://${DASHBOARD_DOMAIN}"
 echo -e "  ${CYAN}DB:${NC}         ${DB_HOST}:${DB_PORT}"
 echo -e "  ${CYAN}Serviços:${NC}   pm2 status | pm2 logs"
-  if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
-    echo -e "  ${YELLOW}Proxy:${NC}      Traefik → SPA + API proxy + REST proxy (sem Nginx)"
-  fi
-echo ""
-echo -e "  ${CYAN}Validação:${NC}"
-echo -e "    https://${DASHBOARD_DOMAIN}/          → deve abrir SPA"
-echo -e "    https://${DASHBOARD_DOMAIN}/login     → deve abrir login"
-echo -e "    https://${DASHBOARD_DOMAIN}/admin     → deve abrir admin"
+if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
+  echo -e "  ${CYAN}Proxy:${NC}      Traefik → containers (sem Nginx)"
+else
+  echo -e "  ${CYAN}Proxy:${NC}      Nginx + SSL"
+fi
 echo ""
