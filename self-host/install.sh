@@ -276,9 +276,9 @@ if [ -n "$EXISTING_SITES" ]; then
   for s in $EXISTING_SITES; do echo "       - $s"; done
 fi
 
-# Criar diretório para validação SSL via webroot
+# Criar diretório para validação SSL via webroot (path completo)
 ACME_ROOT="/var/www/acme-challenge"
-mkdir -p "$ACME_ROOT"
+mkdir -p "$ACME_ROOT/.well-known/acme-challenge"
 
 # Config HTTP mínima apenas para os domínios da app + ACME challenge
 cat > /etc/nginx/sites-available/funnel-app <<NGINX_TEMP
@@ -286,8 +286,8 @@ server {
     listen 80;
     server_name ${PUBLIC_DOMAIN} ${DASHBOARD_DOMAIN};
 
-    # Validação SSL (Let's Encrypt)
-    location /.well-known/acme-challenge/ {
+    # Validação SSL (Let's Encrypt) — ^~ garante prioridade sobre regex de outros sites
+    location ^~ /.well-known/acme-challenge/ {
         root ${ACME_ROOT};
         allow all;
         try_files \$uri =404;
@@ -338,6 +338,24 @@ obtain_cert() {
   return 1
 }
 
+# ── Diagnóstico: verificar se Nginx serve o webroot corretamente ──
+verify_acme_webroot() {
+  local DOMAIN="$1"
+  local TEST_FILE="$ACME_ROOT/.well-known/acme-challenge/lovable-test-$(date +%s)"
+  echo "acme-test-ok" > "$TEST_FILE"
+  local HTTP_CODE
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${DOMAIN}/.well-known/acme-challenge/$(basename "$TEST_FILE")" 2>/dev/null || echo "000")
+  rm -f "$TEST_FILE"
+  if [ "$HTTP_CODE" != "200" ]; then
+    warn "Nginx NÃO está servindo o webroot para ${DOMAIN} (HTTP ${HTTP_CODE})."
+    warn "Provável causa: outro site Nginx (ex: zapmanager) tem 'default_server' na porta 80."
+    warn "Solução: remova 'default_server' do outro site ou adicione ao bloco funnel-app."
+    return 1
+  fi
+  log "Webroot OK para ${DOMAIN} (HTTP 200)"
+  return 0
+}
+
 # Verificar se www resolve antes de incluí-lo
 log "Obtendo certificados SSL para domínio público..."
 PUBLIC_CERT_DOMAINS="-d ${PUBLIC_DOMAIN}"
@@ -347,10 +365,10 @@ if dig +short "www.${PUBLIC_DOMAIN}" A 2>/dev/null | grep -q .; then
 else
   warn "www.${PUBLIC_DOMAIN} não resolve no DNS. Certificado será apenas para ${PUBLIC_DOMAIN}"
 fi
-obtain_cert "$PUBLIC_CERT_DOMAINS" "${PUBLIC_DOMAIN}" || true
+verify_acme_webroot "${PUBLIC_DOMAIN}" && obtain_cert "$PUBLIC_CERT_DOMAINS" "${PUBLIC_DOMAIN}" || true
 
 log "Obtendo certificados SSL para dashboard..."
-obtain_cert "-d ${DASHBOARD_DOMAIN}" "${DASHBOARD_DOMAIN}" || true
+verify_acme_webroot "${DASHBOARD_DOMAIN}" && obtain_cert "-d ${DASHBOARD_DOMAIN}" "${DASHBOARD_DOMAIN}" || true
 
 # Aplicar config completa com dois domínios (apenas se certs existem)
 if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
