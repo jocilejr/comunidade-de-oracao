@@ -236,7 +236,7 @@ test_route "GET  /"                    "https://${DASHBOARD_DOMAIN}/"       "200
 test_route "GET  /login"               "https://${DASHBOARD_DOMAIN}/login"  "200"         || ROUTES_OK=false
 test_route "GET  /admin"               "https://${DASHBOARD_DOMAIN}/admin"  "200"         || ROUTES_OK=false
 test_route "POST /functions/v1/proxy"  "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" "400 401" \
-  "-X POST -H 'Content-Type: application/json' -d '{\"action\":\"list\"}'"                || ROUTES_OK=false
+  -X POST -H "Content-Type: application/json" -d '{"action":"list"}'                      || ROUTES_OK=false
 test_route "GET  /rest/v1/"            "https://${DASHBOARD_DOMAIN}/rest/v1/user_settings?select=id&limit=1" "200 401 406" || ROUTES_OK=false
 
 echo ""
