@@ -307,8 +307,10 @@ async function handleSignup(req, res) {
 
 // ── Auth: login (token) ──────────────────────────────────
 async function handleToken(req, res) {
+  const reqUrl = new URL(req.url, `http://${req.headers.host}`);
   const body = JSON.parse(await readBody(req));
-  const { email, password, grant_type } = body;
+  const grant_type = body.grant_type || reqUrl.searchParams.get("grant_type");
+  const { email, password } = body;
 
   if (grant_type === "refresh_token") {
     // Para refresh, decodificar o token antigo e gerar um novo
