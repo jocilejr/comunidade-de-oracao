@@ -354,7 +354,12 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const url = new URL(req.url, `http://localhost:${PORT}`);
-    const path = url.pathname;
+    let path = url.pathname;
+
+    // Compatibilidade com supabase.functions.invoke()
+    if (path.startsWith('/functions/v1/')) {
+      path = '/' + path.slice('/functions/v1/'.length);
+    }
 
     // Auth endpoints (GoTrue-compatible)
     if (path === "/auth/v1/signup" && req.method === "POST") return await handleSignup(req, res);
