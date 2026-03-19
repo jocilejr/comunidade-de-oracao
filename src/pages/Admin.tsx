@@ -597,8 +597,7 @@ const Admin = () => {
                               <Eye className="w-3.5 h-3.5" />
                             </Button>
                             <Button variant="outline" size="sm" className="h-8 px-2.5 gap-1.5 text-[11px] font-medium" title="Copiar link para WhatsApp (com preview)" onClick={() => {
-                              const v = Date.now();
-                              const shareUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${funnel.slug}&v=${v}`;
+                              const shareUrl = getShareUrl(funnel.slug);
                               navigator.clipboard.writeText(shareUrl);
                               toast({ title: 'Link copiado!', description: 'Cole este link no WhatsApp para compartilhar com preview de imagem.' });
                             }}>
