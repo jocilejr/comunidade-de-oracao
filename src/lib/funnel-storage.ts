@@ -360,23 +360,42 @@ export interface UserSettings {
   typebot_base_url: string;
 }
 
-export async function getUserSettings(): Promise<UserSettings | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+export type UserSettingsResult =
+  | { status: 'ok'; data: UserSettings }
+  | { status: 'empty' }
+  | { status: 'error'; message: string };
 
-  const { data, error } = await supabase
-    .from('user_settings')
-    .select('openai_api_key, typebot_api_token, typebot_workspace_id, typebot_base_url')
-    .eq('user_id', user.id)
-    .maybeSingle();
+export async function getUserSettings(): Promise<UserSettingsResult> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { status: 'empty' };
 
-  if (error || !data) return null;
-  return {
-    openai_api_key: data.openai_api_key || '',
-    typebot_api_token: (data as any).typebot_api_token || '',
-    typebot_workspace_id: (data as any).typebot_workspace_id || '',
-    typebot_base_url: (data as any).typebot_base_url || '',
-  };
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('openai_api_key, typebot_api_token, typebot_workspace_id, typebot_base_url')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('getUserSettings error:', error);
+      return { status: 'error', message: error.message };
+    }
+
+    if (!data) return { status: 'empty' };
+
+    return {
+      status: 'ok',
+      data: {
+        openai_api_key: data.openai_api_key || '',
+        typebot_api_token: (data as any).typebot_api_token || '',
+        typebot_workspace_id: (data as any).typebot_workspace_id || '',
+        typebot_base_url: (data as any).typebot_base_url || '',
+      },
+    };
+  } catch (err: any) {
+    console.error('getUserSettings exception:', err);
+    return { status: 'error', message: err?.message || 'Erro de conexão' };
+  }
 }
 
 export async function saveUserSettings(settings: {

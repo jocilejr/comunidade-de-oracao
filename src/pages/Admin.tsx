@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, FunnelPreviewImage, UserSettings, AvatarGalleryItem } from '@/lib/funnel-storage';
+import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
 import { supabase } from '@/integrations/supabase/client';
 import FunnelInspector from '@/components/admin/FunnelInspector';
 import SessionLogs from '@/components/admin/SessionLogs';
@@ -58,6 +58,7 @@ const Admin = () => {
   const [typebotWorkspaceId, setTypebotWorkspaceId] = useState('');
   const [typebotBaseUrl, setTypebotBaseUrl] = useState('');
   const [loadingSettings, setLoadingSettings] = useState(true);
+  const [backendError, setBackendError] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [showTypebotToken, setShowTypebotToken] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
@@ -90,18 +91,21 @@ const Admin = () => {
     const load = async () => {
       setLoadingFunnels(true);
       setLoadingSettings(true);
-      const [funnelData, galleryData, settingsData] = await Promise.all([
+      const [funnelData, galleryData, settingsResult] = await Promise.all([
         getAllFunnelsMeta(),
         getAvatarGallery(),
         getUserSettings(),
       ]);
       setFunnels(funnelData);
       setGallery(galleryData);
-      if (settingsData) {
-        setOpenaiKey(settingsData.openai_api_key);
-        setTypebotToken(settingsData.typebot_api_token);
-        setTypebotWorkspaceId(settingsData.typebot_workspace_id);
-        setTypebotBaseUrl(settingsData.typebot_base_url);
+      if (settingsResult.status === 'ok') {
+        setOpenaiKey(settingsResult.data.openai_api_key);
+        setTypebotToken(settingsResult.data.typebot_api_token);
+        setTypebotWorkspaceId(settingsResult.data.typebot_workspace_id);
+        setTypebotBaseUrl(settingsResult.data.typebot_base_url);
+        setBackendError(null);
+      } else if (settingsResult.status === 'error') {
+        setBackendError(settingsResult.message);
       }
       setLoadingSettings(false);
       setLoadingFunnels(false);
@@ -427,6 +431,14 @@ const Admin = () => {
               </Link>
             </div>
           </header>
+
+          {backendError && (
+            <div className="mx-8 mt-4 p-3 rounded-lg border border-destructive/50 bg-destructive/10 text-destructive text-sm flex items-center gap-2">
+              <span className="font-medium">⚠ Backend indisponível:</span>
+              <span>{backendError}</span>
+              <span className="text-muted-foreground ml-1">— suas configurações podem não ter sido carregadas, mas não foram perdidas.</span>
+            </div>
+          )}
 
           <div className="px-8 py-6">
             {/* ===== FUNNELS TAB ===== */}

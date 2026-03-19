@@ -71,10 +71,21 @@ certbot renew       # Renovar SSL (automático via cron)
 
 ## Atualização
 
+> **Importante**: O PM2 executa o código de `/opt/funnel-app/`, **não** do diretório do repositório.
+> Um simples `git pull + pm2 restart` **não** atualiza o código em produção.
+
+Use **sempre** o script de atualização oficial:
+
 ```bash
-cd /tmp/funnel-app && git pull
-sudo bash self-host/update.sh
+cd /tmp/funnel-app && git pull   # ou ~/comunidade-de-oracao
+sudo bash self-host/update.sh    # sincroniza para /opt, rebuild, restart
 ```
+
+O `update.sh` cuida de:
+1. Copiar `api-server.js` e `ecosystem.config.js` para `/opt/funnel-app/`
+2. Executar migrations SQL pendentes
+3. Rebuild do frontend (se necessário)
+4. `pm2 restart` com `--update-env`
 
 ## Traefik (proxy externo)
 
