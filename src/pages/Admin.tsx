@@ -1211,7 +1211,10 @@ const Admin = () => {
                           const { data, error } = await supabase.functions.invoke('typebot-proxy', {
                             body: { action: 'get', typebotId: bot.id },
                           });
-                          if (error) throw error;
+                          if (error) {
+                            const serverMsg = data?.error || error?.message || 'Erro desconhecido';
+                            throw new Error(serverMsg);
+                          }
                           const flow = data?.typebot || data;
                           const result = validateTypebotJson(flow);
                           if (!result.valid || !result.flow) {
