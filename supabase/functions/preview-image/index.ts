@@ -56,6 +56,7 @@ Deno.serve(async (req) => {
     headers: {
       ...corsHeaders,
       "Content-Type": mimeType,
+      "Content-Length": bytes.length.toString(),
       "Cache-Control": "no-cache, no-store, must-revalidate",
       "Pragma": "no-cache",
     },
