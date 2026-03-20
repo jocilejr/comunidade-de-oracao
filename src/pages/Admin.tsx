@@ -32,11 +32,13 @@ const NAV_ITEMS = [
   { id: 'settings', label: 'Configurações', icon: Settings },
 ] as const;
 
-const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUrl, onRemove }: {
+const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUrl, onRemove, onRotateNow, rotating }: {
   previewImages: FunnelPreviewImage[];
   loadingPreviews: boolean;
   activeDataUrl?: string | null;
   onRemove: (id: string) => void;
+  onRotateNow: () => void;
+  rotating: boolean;
 }) => {
   const [minutesLeft, setMinutesLeft] = useState(0);
 
@@ -59,10 +61,23 @@ const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUr
         Adicione múltiplas imagens de preview. A cada hora o sistema alterna automaticamente qual imagem será exibida.
       </p>
 
+      {previewImages.length === 1 && (
+        <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-1.5">
+          <AlertTriangle className="w-3 h-3 shrink-0" />
+          <span>Adicione pelo menos <strong>2 imagens</strong> para a rotação automática funcionar.</span>
+        </div>
+      )}
+
       {previewImages.length > 1 && (
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/50 rounded-lg px-2.5 py-1.5">
-          <Clock className="w-3 h-3" />
-          <span>Próxima rotação em <strong className="text-foreground">{minutesLeft} min</strong></span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/50 rounded-lg px-2.5 py-1.5">
+            <Clock className="w-3 h-3" />
+            <span>Próxima rotação em <strong className="text-foreground">{minutesLeft} min</strong></span>
+          </div>
+          <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1" onClick={onRotateNow} disabled={rotating}>
+            <RefreshCw className={`w-3 h-3 ${rotating ? 'animate-spin' : ''}`} />
+            Rotacionar agora
+          </Button>
         </div>
       )}
 
