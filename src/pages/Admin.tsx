@@ -389,14 +389,10 @@ const Admin = () => {
       const baseUrl = import.meta.env.VITE_SUPABASE_URL || '';
       const resp = await fetch(`${baseUrl}/functions/v1/rotate-preview-images`, { method: 'POST' });
       if (resp.ok) {
-        // Refresh funnel data to get new active image
-        await refresh();
-        const updatedFunnels = await getAllFunnelsMeta();
-        const updated = updatedFunnels.find(f => f.id === previewGalleryDialog.id);
-        if (updated) {
-          setActivePreviewUrl(updated.previewImage || null);
-          setPreviewGalleryDialog(updated);
-        }
+        // Fetch only the active preview image (lightweight query)
+        const { getActiveFunnelPreview } = await import('@/lib/funnel-storage');
+        const newActiveUrl = await getActiveFunnelPreview(previewGalleryDialog.id);
+        setActivePreviewUrl(newActiveUrl || null);
         toast({ title: 'Rotação executada!', description: 'A imagem ativa foi atualizada.' });
       } else {
         toast({ title: 'Erro', description: 'Falha ao executar rotação.', variant: 'destructive' });
