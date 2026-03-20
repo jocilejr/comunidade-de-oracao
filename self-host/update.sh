@@ -188,10 +188,31 @@ else
   warn "API não respondeu ao health check (HTTP ${HEALTH}). Verifique: pm2 logs funnel-api"
 fi
 
-# ── 10. Detectar proxy e atualizar ──────────────────────
-TRAEFIK_OWNS_443=$(ss -ltnp 2>/dev/null | grep ':443' | grep -c 'docker-proxy' || true)
+# ── 10. Detectar proxy (melhorado) ──────────────────────
+# PROXY_MODE override: set PROXY_MODE=traefik or PROXY_MODE=nginx in .env to skip auto-detect
+PROXY_MODE="${PROXY_MODE:-auto}"
+if [ "$PROXY_MODE" = "auto" ]; then
+  # Real detection: check for Traefik container with dashboard domain in labels
+  TRAEFIK_CONTAINER=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i traefik | head -1 || true)
+  if [ -n "$TRAEFIK_CONTAINER" ]; then
+    HAS_DASHBOARD_LABEL=$(docker inspect "$TRAEFIK_CONTAINER" --format '{{json .Config.Labels}}' 2>/dev/null | grep -c "$DASHBOARD_DOMAIN" || true)
+    if [ "$HAS_DASHBOARD_LABEL" -gt 0 ]; then
+      PROXY_MODE="traefik"
+    fi
+  fi
+  # Fallback: check if docker-proxy owns 443
+  if [ "$PROXY_MODE" = "auto" ]; then
+    TRAEFIK_OWNS_443=$(ss -ltnp 2>/dev/null | grep ':443' | grep -c 'docker-proxy' || true)
+    if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
+      PROXY_MODE="traefik"
+    else
+      PROXY_MODE="nginx"
+    fi
+  fi
+fi
+info "Modo proxy detectado: ${PROXY_MODE}"
 
-if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
+if [ "$PROXY_MODE" = "traefik" ]; then
   # ════════════════════════════════════════════════════════
   # MODO TRAEFIK — atualizar containers
   # ════════════════════════════════════════════════════════
