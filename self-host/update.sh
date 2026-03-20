@@ -462,9 +462,6 @@ echo -e "  ${CYAN}Público:${NC}     https://${PUBLIC_DOMAIN}"
 echo -e "  ${CYAN}Dashboard:${NC}  https://${DASHBOARD_DOMAIN}"
 echo -e "  ${CYAN}DB:${NC}         ${DB_HOST}:${DB_PORT}"
 echo -e "  ${CYAN}Serviços:${NC}   pm2 status | pm2 logs"
-if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
-  echo -e "  ${CYAN}Proxy:${NC}      Traefik → containers (sem Nginx)"
-else
-  echo -e "  ${CYAN}Proxy:${NC}      Nginx + SSL"
-fi
+echo -e "  ${CYAN}Proxy:${NC}      ${PROXY_MODE}"
+echo -e "  ${CYAN}Diagnóstico:${NC} curl -sf https://${DASHBOARD_DOMAIN}/__funnel_diag | python3 -m json.tool"
 echo ""
