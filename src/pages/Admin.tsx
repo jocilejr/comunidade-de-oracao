@@ -179,6 +179,8 @@ const Admin = () => {
   const [previewGalleryDialog, setPreviewGalleryDialog] = useState<StoredFunnel | null>(null);
   const [previewImages, setPreviewImages] = useState<FunnelPreviewImage[]>([]);
   const [loadingPreviews, setLoadingPreviews] = useState(false);
+  const [rotating, setRotating] = useState(false);
+  const [activePreviewUrl, setActivePreviewUrl] = useState<string | null>(null);
   const { toast } = useToast();
   const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
