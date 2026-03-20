@@ -420,9 +420,13 @@ const Admin = () => {
     }
     const reader = new FileReader();
     reader.onload = async () => {
-      const dataUrl = reader.result as string;
+      const rawDataUrl = reader.result as string;
+      // Compress to JPEG for faster WhatsApp preview delivery
+      const dataUrl = await compressPreviewImage(rawDataUrl);
       const updated = await addFunnelPreviewImage(previewGalleryDialog.id, dataUrl);
       setPreviewImages(updated);
+      // Update active preview URL if this is the first image
+      if (updated.length === 1) setActivePreviewUrl(dataUrl);
       await refresh();
       toast({ title: 'Preview adicionado!' });
     };
