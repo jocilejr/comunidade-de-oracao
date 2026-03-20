@@ -346,6 +346,31 @@ export async function removeFromAvatarGallery(imageId: string): Promise<AvatarGa
 
 // ---- Utilities ----
 
+/** Compress an image dataUrl to JPEG, max 1200px wide, quality 0.85 */
+export function compressPreviewImage(dataUrl: string, maxWidth = 1200, quality = 0.85): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width;
+      let h = img.height;
+      if (w > maxWidth) {
+        h = Math.round(h * (maxWidth / w));
+        w = maxWidth;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(dataUrl); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL('image/jpeg', quality);
+      resolve(compressed);
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = dataUrl;
+  });
+}
+
 export function slugify(text: string): string {
   return text
     .toLowerCase()
