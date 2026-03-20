@@ -82,7 +82,7 @@ server {
         }
 
         # Humano → redireciona para o SPA no dashboard
-        rewrite ^/(.+)$ https://__DASHBOARD_DOMAIN__/f/$1 redirect;
+        rewrite ^/(.+)$ https://__DASHBOARD_DOMAIN__/$1 redirect;
     }
 
     gzip on;

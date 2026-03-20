@@ -1325,7 +1325,7 @@ const Admin = () => {
                           const slug = slugify(name) || 'funil-' + Date.now();
                           await saveFunnel(name, slug, result.flow);
                           await refresh();
-                          toast({ title: 'Importado!', description: `"${name}" disponível em /f/${slug}` });
+                          toast({ title: 'Importado!', description: `"${name}" disponível em /${slug}` });
                           setTypebotImportDialog(false);
                         } catch (err: any) {
                           toast({ title: 'Erro', description: err?.message || 'Falha ao importar.', variant: 'destructive' });
