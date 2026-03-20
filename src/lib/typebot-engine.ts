@@ -57,8 +57,13 @@ export class TypebotEngine {
 
     // On public domain, use the api-server endpoint for logging instead of Supabase client
     const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
-    if (publicDomain && window.location.hostname === publicDomain) {
-      this.useApiLog = true;
+    if (publicDomain) {
+      try {
+        const pubHost = new URL(publicDomain).hostname;
+        if (window.location.hostname === pubHost) {
+          this.useApiLog = true;
+        }
+      } catch { /* ignore */ }
     }
 
     // Initialize variables
