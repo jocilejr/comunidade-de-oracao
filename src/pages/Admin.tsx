@@ -358,7 +358,8 @@ const Admin = () => {
     }
     const reader = new FileReader();
     reader.onload = async () => {
-      const dataUrl = reader.result as string;
+      const rawDataUrl = reader.result as string;
+      const dataUrl = await compressPreviewImage(rawDataUrl);
       const success = await updateFunnelPreviewImage(uploadingPreviewSlug, dataUrl);
       if (success) {
         await refresh();
