@@ -235,6 +235,18 @@ export async function updateFunnelPreviewImage(slug: string, previewImage: strin
   return !error;
 }
 
+/** Lightweight fetch of only the active preview_image for a funnel */
+export async function getActiveFunnelPreview(funnelId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('funnels')
+    .select('preview_image')
+    .eq('id', funnelId)
+    .maybeSingle();
+
+  if (error || !data) return '';
+  return data.preview_image || '';
+}
+
 // ---- Funnel Preview Images (Supabase) ----
 
 export interface FunnelPreviewImage {
