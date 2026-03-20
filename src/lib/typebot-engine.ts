@@ -796,7 +796,14 @@ export class TypebotEngine {
         return;
       }
 
-      const proxyUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-proxy`;
+      // VPS: route to local api-server; Cloud: route to Supabase edge function
+      const vpsPublic = import.meta.env.VITE_PUBLIC_DOMAIN;
+      const vpsDash = import.meta.env.VITE_DASHBOARD_ORIGIN;
+      const isVps = (vpsPublic && window.location.hostname === vpsPublic) ||
+                    (vpsDash && window.location.origin === vpsDash);
+      const proxyUrl = isVps
+        ? `${window.location.origin}/openai-proxy`
+        : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-proxy`;
       const response = await fetch(proxyUrl, {
         method: 'POST',
         headers: {
