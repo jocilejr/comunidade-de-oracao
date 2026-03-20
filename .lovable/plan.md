@@ -1,47 +1,45 @@
 
 
-## Duas correções
+## Remover totalmente o prefixo `/f/` — funis servidos direto em `/:slug`
 
-### 1. Por que o `/f/` existe — e o bug de loop infinito
+### Abordagem
 
-O prefixo `/f/` serve para separar a **URL de compartilhamento** (`/:slug`) da **URL do SPA** (`/f/:slug`). No modo robusto, quando alguém acessa `/:slug`, o servidor retorna HTML com OG tags e um meta-refresh que redireciona o navegador para `/f/:slug` (onde o SPA carrega o funil).
+Em vez de ter duas rotas (`/:slug` para OG + redirect e `/f/:slug` para o SPA), tudo vai funcionar em `/:slug` diretamente. O modo robusto no `api-server.js` vai **injetar as OG tags dentro do próprio `index.html`** do SPA e servir tudo numa única resposta — sem redirect, sem meta-refresh, sem `/f/`.
 
-**Problema atual**: a regex `^\/(?:f\/)?([a-zA-Z0-9_-]+)\/?$` intercepta TAMBÉM `/f/:slug`, criando um loop infinito (OG HTML → redirect para `/f/slug` → OG HTML → redirect...). O navegador fica preso.
+Crawlers leem as OG tags do `<head>`. Navegadores carregam o React normalmente. Zero redirecionamento.
 
-**Correção**: Alterar a regex para interceptar APENAS `/:slug` (sem `/f/`):
+### Mudanças
 
-```javascript
-// Só intercepta /:slug, NÃO /f/:slug
-const slugMatch = path.match(/^\/([a-zA-Z0-9_-]+)\/?$/);
-```
+**1. `self-host/api-server.js`**
+- `handleShareRobust`: em vez de gerar HTML separado com meta-refresh, ler o `index.html` do SPA e injetar as OG tags (`og:title`, `og:description`, `og:image`, etc.) no `<head>` antes de servir. Remover o meta-refresh e o script de redirect
+- Remover `f` da lista RESERVED
+- Remover referências a `/f/` em `handleShare` e `handleShareRobust` (as variáveis `spaUrl` que apontavam para `/f/slug`)
+- O catch-all de slug continua com a regex `^\/([a-zA-Z0-9_-]+)\/?$` interceptando `/:slug`, mas agora serve o SPA com OG injetado em vez de HTML separado
 
-Assim `/f/:slug` cai direto no SPA fallback (index.html) como esperado.
+**2. `src/App.tsx`**
+- Remover as rotas `<Route path="/f/:slug">` (ambos os blocos, público e dashboard)
+- Manter apenas `<Route path="/:slug" element={<Funnel />} />`
 
-### 2. Logs não aparecem no dashboard
+**3. `src/pages/Admin.tsx`**
+- Trocar todas as referências visuais `/f/slug` por `/slug` (labels, toasts, inputs)
 
-A causa mais provável é que no domínio público (VPS), os visitantes abrem o funil e o `typebot-engine` tenta criar sessões via `supabase.from('funnel_sessions').insert(...)`. Porém, no domínio público, o `VITE_PUBLIC_DOMAIN` está setado, e o `getFunnelBySlug` usa o endpoint `/functions/v1/share?format=json` em vez do Supabase client. **Mas o engine ainda usa o Supabase client diretamente** para criar sessões — e no VPS, esse client aponta para o PostgREST local que pode não estar configurado corretamente para aceitar inserções anônimas.
+**4. `supabase/functions/share/index.ts`**
+- Mudar `redirectUrl` de `${appOrigin}/f/${slug}` para `${appOrigin}/${slug}`
 
-**Correção**: No `typebot-engine.ts`, quando `VITE_PUBLIC_DOMAIN` está ativo, usar o endpoint do api-server (via fetch) para criar sessões e logar eventos, em vez do Supabase client direto. Alternativamente, garantir que o PostgREST local aceita as inserções.
+**5. `self-host/nginx.conf.template`**
+- No domínio público, remover o redirect para `/f/$1` — redirecionar direto para `/__DASHBOARD_DOMAIN__/$1`
 
-**Abordagem mais simples**: Criar um endpoint no `api-server.js` para receber sessões e eventos (`POST /functions/v1/session-log`), e adaptar o engine para usá-lo no domínio público.
+### Fluxo resultante
 
-### Arquivos modificados
-
-1. **`self-host/api-server.js`**:
-   - Corrigir regex de `^\/(?:f\/)?` para `^\/` (sem capturar `/f/`)
-   - Adicionar endpoint `POST /functions/v1/session-log` para receber dados de sessão
-
-2. **`src/lib/typebot-engine.ts`**:
-   - No domínio público, enviar logs de sessão via fetch ao api-server em vez do Supabase client
-
-### Validação
-
-Após deploy na VPS:
-```bash
-# Deve retornar OG HTML com meta-refresh
-curl -s http://127.0.0.1:4000/meu-slug | head -15
-
-# Deve retornar o SPA (index.html normal)
-curl -s http://127.0.0.1:4000/f/meu-slug | head -5
+```text
+Visitante → GET /meu-slug
+  api-server:
+    1. Match regex → slug = "meu-slug"
+    2. Query DB → título, descrição, imagem
+    3. Lê index.html, injeta OG tags no <head>
+    4. Serve HTML completo (SPA + OG tags)
+    5. Crawler lê OG tags ✓
+    6. Navegador executa React, renderiza funil ✓
+    7. Zero redirect ✓
 ```
 
