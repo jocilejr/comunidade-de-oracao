@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   const appOrigin = Deno.env.get("APP_ORIGIN") || "https://comunidade-de-oracao.lovable.app";
-  const redirectUrl = `${appOrigin}/f/${slug}`;
+  const redirectUrl = `${appOrigin}/${slug}`;
 
   if (!funnel) {
     return Response.redirect(redirectUrl, 302);

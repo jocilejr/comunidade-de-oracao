@@ -46,7 +46,6 @@ const App = () => {
               {publicOnly ? (
                 /* Domínio público: apenas funis */
                 <Routes>
-                  <Route path="/f/:slug" element={<Funnel />} />
                   <Route path="/:slug" element={<Funnel />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
@@ -56,7 +55,6 @@ const App = () => {
                   <Route path="/" element={<Index />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
-                  <Route path="/f/:slug" element={<Funnel />} />
                   <Route path="/:slug" element={<Funnel />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>

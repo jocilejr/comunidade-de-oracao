@@ -236,7 +236,7 @@ const Admin = () => {
       const slug = slugify(name) || 'funil-' + Date.now();
       await saveFunnel(name, slug, result.flow);
       await refresh();
-      toast({ title: 'Funil adicionado!', description: `"${name}" disponível em /f/${slug}` });
+      toast({ title: 'Funil adicionado!', description: `"${name}" disponível em /${slug}` });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Arquivo JSON inválido.';
       toast({ title: 'Erro', description: message, variant: 'destructive' });
@@ -677,7 +677,7 @@ const Admin = () => {
                             <div className="flex items-center gap-2 mt-0.5">
                               {editingSlug === funnel.slug ? (
                                 <div className="flex items-center gap-1">
-                                  <span className="text-[11px] text-muted-foreground">/f/</span>
+                                  <span className="text-[11px] text-muted-foreground">/</span>
                                   <Input
                                     value={newSlug}
                                     onChange={e => setNewSlug(e.target.value)}
@@ -690,7 +690,7 @@ const Admin = () => {
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-1">
-                                  <span className="text-[11px] text-muted-foreground font-mono">/f/{funnel.slug}</span>
+                                  <span className="text-[11px] text-muted-foreground font-mono">/{funnel.slug}</span>
                                   <button
                                     onClick={() => { setEditingSlug(funnel.slug); setNewSlug(funnel.slug); }}
                                     className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
@@ -853,7 +853,7 @@ const Admin = () => {
                                 {f.name}
                               </div>
                             </td>
-                            <td className="px-4 py-2.5 font-mono text-[11px] text-muted-foreground">/f/{f.slug}</td>
+                            <td className="px-4 py-2.5 font-mono text-[11px] text-muted-foreground">/{f.slug}</td>
                             <td className="px-4 py-2.5 text-[13px] text-muted-foreground">{f.flow.groups.length}</td>
                             <td className="px-4 py-2.5 text-[13px] text-muted-foreground">{f.flow.groups.reduce((s, g) => s + g.blocks.length, 0)}</td>
                             <td className="px-4 py-2.5 text-[13px] text-muted-foreground">{new Date(f.uploadedAt).toLocaleDateString('pt-BR')}</td>
@@ -1325,7 +1325,7 @@ const Admin = () => {
                           const slug = slugify(name) || 'funil-' + Date.now();
                           await saveFunnel(name, slug, result.flow);
                           await refresh();
-                          toast({ title: 'Importado!', description: `"${name}" disponível em /f/${slug}` });
+                          toast({ title: 'Importado!', description: `"${name}" disponível em /${slug}` });
                           setTypebotImportDialog(false);
                         } catch (err: any) {
                           toast({ title: 'Erro', description: err?.message || 'Falha ao importar.', variant: 'destructive' });
