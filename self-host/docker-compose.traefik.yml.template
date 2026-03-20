@@ -23,6 +23,10 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-net"
 
+      # ── Middleware: redirect HTTP → HTTPS ──────────────
+      - "traefik.http.middlewares.__ROUTER_PREFIX__-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.__ROUTER_PREFIX__-https.redirectscheme.permanent=true"
+
       # ── Middleware: StripPrefix para /functions/v1 ─────
       - "traefik.http.middlewares.__ROUTER_PREFIX__-strip-functions.stripprefix.prefixes=/functions/v1"
       - "traefik.http.middlewares.__ROUTER_PREFIX__-strip-api.stripprefix.prefixes=/api"
@@ -49,6 +53,19 @@ services:
       - "traefik.http.routers.__ROUTER_PREFIX__-api-raw.priority=100"
       - "traefik.http.routers.__ROUTER_PREFIX__-api-raw.middlewares=__ROUTER_PREFIX__-strip-api"
       - "traefik.http.routers.__ROUTER_PREFIX__-api-raw.service=__ROUTER_PREFIX__-api-svc"
+
+      # ══ DASHBOARD — catch-all HTTPS → api-server (SPA + assets) ══
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash.rule=Host(`__DASHBOARD_DOMAIN__`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash.priority=1"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash.service=__ROUTER_PREFIX__-api-svc"
+
+      # ══ DASHBOARD — HTTP → redirect HTTPS ══
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.rule=Host(`__DASHBOARD_DOMAIN__`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.entrypoints=web"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.middlewares=__ROUTER_PREFIX__-https"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-http.priority=1"
 
       # ── Router: /functions/v1/* (público) ──────────────
       - "traefik.http.routers.__ROUTER_PREFIX__-pub-functions.rule=Host(`__PUBLIC_DOMAIN__`) && PathPrefix(`/functions/v1`)"

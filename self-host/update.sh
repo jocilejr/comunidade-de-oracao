@@ -218,7 +218,7 @@ if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
   log "Rede Traefik: ${TRAEFIK_NETWORK}"
 
   # Remover containers antigos
-  for c in funnel-nginx-proxy funnel-spa funnel-api-proxy funnel-rest-proxy; do
+  for c in funnel-spa funnel-nginx-proxy funnel-api-proxy funnel-rest-proxy; do
     if docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
       docker stop "$c" 2>/dev/null || true
       docker rm "$c" 2>/dev/null || true
