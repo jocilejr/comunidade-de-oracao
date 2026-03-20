@@ -1250,8 +1250,10 @@ const Admin = () => {
             <RotationCountdownGallery
               previewImages={previewImages}
               loadingPreviews={loadingPreviews}
-              activeDataUrl={previewGalleryDialog?.previewImage}
+              activeDataUrl={activePreviewUrl}
               onRemove={handleRemovePreviewImage}
+              onRotateNow={handleRotateNow}
+              rotating={rotating}
             />
 
             <Button variant="outline" size="sm" className="w-full" onClick={() => previewGalleryRef.current?.click()}>
