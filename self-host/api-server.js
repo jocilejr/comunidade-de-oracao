@@ -103,10 +103,10 @@ async function handleShare(req, res, slug, format) {
     if (fallbackImgs.length) previewUrl = fallbackImgs[0].data_url;
   }
 
-  const v = Date.now().toString();
-  // Imagem servida pelo domínio público para crawlers
+const v = Date.now().toString();
+  // Imagem servida pelo domínio público para crawlers (Com .jpg falso no final para o WhatsApp)
   const imageUrl = previewUrl
-    ? `${PUBLIC_ORIGIN}/preview-image?slug=${encodeURIComponent(slug)}&v=${v}`
+    ? `${PUBLIC_ORIGIN}/preview-image?slug=${encodeURIComponent(slug)}&v=${v}&file=banner.jpg`
     : "";
 
   // Detectar MIME real para og:image:type
