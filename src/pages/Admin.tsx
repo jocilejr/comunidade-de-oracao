@@ -355,11 +355,11 @@ const Admin = () => {
         <aside className="w-64 bg-sidebar flex flex-col shrink-0">
           <div className="px-5 py-5 border-b border-sidebar-border">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
-                <Bot className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl overflow-hidden shrink-0 shadow-sm">
+                <img src="/logo-ov.png" alt="Origem Viva" className="w-full h-full object-cover" />
               </div>
               <div>
-                <h1 className="text-[13px] font-extrabold text-sidebar-foreground leading-tight tracking-tight">Funil Monitorado</h1>
+                <h1 className="text-[13px] font-extrabold text-sidebar-foreground leading-tight tracking-tight">Typebot Inteligente</h1>
                 <p className="text-[10px] text-sidebar-foreground/50 font-medium tracking-wide uppercase">Origem Viva</p>
               </div>
             </div>

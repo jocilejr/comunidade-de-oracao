@@ -17,7 +17,7 @@ const UserBubble = ({ content }: UserBubbleProps) => {
           style={{ color: 'hsl(var(--wa-user-bubble))' }}
         >
           <path
-            d="M3 0H0v1h4c.2 0 .4.1.6.2L7 3.3c.8.8 1 1.7 1 2.7v7L5 7C4.5 5.7 3.8 4 3.5 3 3.3 2.2 3 1.5 3 1V0z"
+            d="M1 0v13l2-2c.6-.6 1.3-1 2-1h3V0z"
             fill="currentColor"
           />
         </svg>

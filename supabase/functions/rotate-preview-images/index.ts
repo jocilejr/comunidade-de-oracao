@@ -45,9 +45,18 @@ Deno.serve(async (req) => {
       const idx = currentHour % funnelImages.length;
       const activeImage = funnelImages[idx];
 
+      // Validate data_url before updating
+      const url = activeImage.data_url;
+      if (!url || (!url.startsWith("data:") && !url.startsWith("http"))) {
+        console.warn(`Skipping invalid data_url for funnel ${funnelId}, image ${activeImage.id}`);
+        continue;
+      }
+
+      console.log(`Rotating funnel ${funnelId} to image ${activeImage.id} (position ${activeImage.position})`);
+
       const { error: updateErr } = await supabase
         .from("funnels")
-        .update({ preview_image: activeImage.data_url })
+        .update({ preview_image: url })
         .eq("id", funnelId);
 
       if (!updateErr) updated++;
