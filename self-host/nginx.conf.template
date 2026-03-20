@@ -122,6 +122,22 @@ server {
     root /opt/funnel-app/dist;
     index index.html;
 
+    # ── CRITICAL: Static assets — serve file or 404, NEVER index.html ──
+    location ^~ /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Funnel-Served-By "nginx";
+        add_header X-Funnel-Route "static-asset";
+    }
+
+    # Catch-all for known static file extensions — 404 if missing (never SPA fallback)
+    location ~* \.(js|mjs|css|map|json|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|webp|mp3)$ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Funnel-Served-By "nginx";
+        add_header X-Funnel-Route "static-ext";
+    }
+
     # API endpoints
     location /api/ {
         proxy_pass http://127.0.0.1:4000/;
@@ -158,9 +174,12 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # SPA fallback
+    # SPA fallback — ONLY for navigation routes (no file extension)
     location / {
         try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-store";
+        add_header X-Funnel-Served-By "nginx";
+        add_header X-Funnel-Route "spa-fallback";
     }
 
     gzip on;

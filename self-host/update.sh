@@ -267,22 +267,51 @@ if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
     -X POST -H "Content-Type: application/json" -d '{"action":"list"}'                      || SMOKE_OK=false
   test_route "GET  /rest/v1/"            "https://${DASHBOARD_DOMAIN}/rest/v1/user_settings?select=id&limit=1" "200 401 406" || SMOKE_OK=false
 
-  # ── Frontend MIME smoke test ───────────────────────────
+  # ── Frontend MIME smoke test (deep) ──────────────────────
   info "Verificando MIME dos assets JS..."
   INDEX_HTML=$(curl -sf "https://${DASHBOARD_DOMAIN}/" 2>/dev/null || true)
   JS_SRC=$(echo "$INDEX_HTML" | grep -oP 'src="(/assets/[^"]+\.js)"' | head -1 | grep -oP '/assets/[^"]+\.js' || true)
   if [ -n "$JS_SRC" ]; then
-    JS_MIME=$(curl -sf -o /dev/null -w "%{content_type}" "https://${DASHBOARD_DOMAIN}${JS_SRC}" 2>/dev/null || echo "FAIL")
-    JS_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "https://${DASHBOARD_DOMAIN}${JS_SRC}" 2>/dev/null || echo "000")
-    if echo "$JS_MIME" | grep -q "javascript"; then
-      echo -e "  ${GREEN}✅${NC} JS asset (${JS_SRC}) → ${JS_CODE} ${JS_MIME}"
+    JS_RESP=$(curl -sf -D- "https://${DASHBOARD_DOMAIN}${JS_SRC}" 2>/dev/null || echo "FAIL")
+    JS_CODE=$(echo "$JS_RESP" | head -1 | grep -oP '\d{3}' | head -1 || echo "000")
+    JS_MIME=$(echo "$JS_RESP" | grep -i '^content-type:' | head -1 | tr -d '\r' || echo "unknown")
+    JS_SERVED=$(echo "$JS_RESP" | grep -i '^x-funnel-served-by:' | head -1 | tr -d '\r' || echo "")
+    JS_ROUTE=$(echo "$JS_RESP" | grep -i '^x-funnel-route:' | head -1 | tr -d '\r' || echo "")
+    JS_BODY_START=$(echo "$JS_RESP" | tail -c 200 || true)
+
+    if echo "$JS_MIME" | grep -qi "javascript"; then
+      echo -e "  ${GREEN}✅${NC} JS asset OK: ${JS_SRC} → HTTP ${JS_CODE}"
+      [ -n "$JS_SERVED" ] && echo -e "      ${JS_SERVED} | ${JS_ROUTE}"
     else
-      echo -e "  ${RED}❌${NC} JS asset MIME ERRADO: ${JS_MIME} (HTTP ${JS_CODE})"
-      echo -e "  ${RED}   Isso causa tela branca! Verifique se api-server serve /assets/* corretamente.${NC}"
+      echo -e "  ${RED}❌${NC} JS asset MIME ERRADO!"
+      echo -e "      URL:  ${JS_SRC}"
+      echo -e "      HTTP: ${JS_CODE}"
+      echo -e "      ${JS_MIME}"
+      [ -n "$JS_SERVED" ] && echo -e "      ${JS_SERVED} | ${JS_ROUTE}"
+      if echo "$JS_BODY_START" | grep -qi "<!DOCTYPE\|<html"; then
+        echo -e "  ${RED}   ⚠ O corpo começa com HTML — o fallback SPA está interceptando este arquivo!${NC}"
+        echo -e "  ${RED}   Verifique: Nginx/Traefik não deve rotear /assets/* para index.html${NC}"
+      fi
       SMOKE_OK=false
+    fi
+
+    # ── Also test via localhost to bypass proxy ──
+    JS_LOCAL_MIME=$(curl -sf -o /dev/null -w "%{content_type}" "http://127.0.0.1:4000${JS_SRC}" 2>/dev/null || echo "FAIL")
+    JS_LOCAL_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "http://127.0.0.1:4000${JS_SRC}" 2>/dev/null || echo "000")
+    if echo "$JS_LOCAL_MIME" | grep -qi "javascript"; then
+      echo -e "  ${GREEN}✅${NC} Direto (localhost:4000): HTTP ${JS_LOCAL_CODE} ${JS_LOCAL_MIME}"
+    else
+      echo -e "  ${YELLOW}⚠${NC} Direto (localhost:4000): HTTP ${JS_LOCAL_CODE} ${JS_LOCAL_MIME}"
+      if [ "$JS_LOCAL_CODE" = "404" ]; then
+        echo -e "  ${RED}   O arquivo ${JS_SRC} NÃO EXISTE no dist/! O build pode ter gerado hash diferente.${NC}"
+        echo -e "  ${RED}   Verifique: ls ${APP_DIR}/dist/assets/ | grep index${NC}"
+      fi
     fi
   else
     echo -e "  ${YELLOW}⚠${NC} Não encontrou tag <script src=\"/assets/...js\"> no HTML"
+    echo -e "  ${YELLOW}   Conteúdo da resposta (primeiros 500 chars):${NC}"
+    echo "$INDEX_HTML" | head -c 500
+    echo ""
   fi
 
   echo ""
