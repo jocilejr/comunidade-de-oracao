@@ -1,39 +1,50 @@
 
+Objetivo: corrigir o preview social e a rotação no ambiente VPS (sem depender de dados da Cloud), e eliminar de vez o “fragmento” da bolha do usuário.
 
-## Correções: Link Preview + Card Admin + Bubble do Usuário
+1) Corrigir rotação no backend VPS (causa provável do “sempre primeira imagem”)
+- Arquivos: `self-host/update.sh` e `self-host/install.sh`
+- Ajustes:
+  - Garantir/recriar o cron da rotação também no `update.sh` (hoje só existe no `install.sh`).
+  - Garantir serviço de cron ativo no servidor (enable/start).
+  - Trocar cron silencioso por cron com log (ex.: `/var/log/funnel-rotate.log`) para diagnosticar execução real.
+- Resultado: cada hora o endpoint `/rotate-preview-images` é chamado de forma confiável após updates.
 
-### 1. Link preview sumiu — remover meta-refresh para crawlers
+2) Fortalecer endpoint de rotação e observabilidade
+- Arquivo: `self-host/api-server.js`
+- Ajustes:
+  - Em `handleRotateImages`, manter ordenação determinística por `funnel_id, position`.
+  - Validar `data_url` antes de atualizar `funnels.preview_image`.
+  - Retornar payload de debug por funil (quantas imagens, índice escolhido, id da imagem ativa) para facilitar verificação.
+- Resultado: rotação previsível e fácil de auditar quando houver dúvida.
 
-**Problema**: No `handleShare` (api-server.js, linha 122), o HTML servido aos crawlers contém `<meta http-equiv="refresh" content="0;url=...">`. O WhatsApp segue este redirect imediatamente antes de processar as OG tags, resultando em preview vazio.
+3) Corrigir preview social (WhatsApp/Facebook) no VPS
+- Arquivo: `self-host/api-server.js` (e compatibilidade em `self-host/nginx.conf.template`)
+- Ajustes:
+  - `handleShare`: se `funnels.preview_image` estiver vazio, usar fallback da primeira imagem de `funnel_preview_images`.
+  - `og:image:type` dinâmico conforme MIME real do `data_url` (não fixo em PNG).
+  - Suportar ambos caminhos de imagem (`/preview-image` e `/api/preview-image`) para evitar quebra por modo de proxy.
+- Resultado: OG tags sempre têm imagem válida e estável para crawler.
 
-**Correção em `self-host/api-server.js`**:
-- Remover a linha `<meta http-equiv="refresh" content="0;url=${escapeHtml(spaUrl)}" />` do HTML servido aos crawlers
-- O HTML já contém um link `<a>` no body para humanos que eventualmente acessem essa URL — isso é suficiente
+4) Mostrar “imagem ativa agora” corretamente no modal (sem estado stale)
+- Arquivo: `src/pages/Admin.tsx`
+- Ajustes:
+  - Hoje o modal usa `previewGalleryDialog?.previewImage` (snapshot antigo). Substituir por estado “activePreviewUrl” atualizado via leitura periódica do funil (polling curto enquanto modal aberto).
+  - Recalcular badge de ativa/próxima com base no estado atualizado.
+  - Exibir aviso explícito quando houver `< 2` imagens (“com 1 imagem não há alternância”).
+  - Adicionar botão “Rotacionar agora” no modal para teste imediato e refresh automático da lista/cards.
+- Resultado: o modal reflete a imagem realmente ativa no backend, sem impressão falsa de “travado na primeira”.
 
-### 2. Card do funil — mostrar preview ativa (já funciona)
+5) Remover definitivamente o fragmento visual da bolha do usuário
+- Arquivo: `src/components/chat/UserBubble.tsx`
+- Ajustes:
+  - Remover o SVG final (checks azuis) e qualquer elemento decorativo residual na bolha do usuário.
+  - Manter apenas texto + horário, sem cauda/fragmentos.
+- Resultado: bolha limpa, sem detalhe visual extra.
 
-O card já exibe `funnel.previewImage` (que é `funnels.preview_image` do DB) — linha 515-516 do Admin.tsx. Como a rotação do cron atualiza essa coluna, o card já mostra a imagem ativa. Se a primeira imagem está aparecendo sempre, é porque só há 1 imagem na galeria (confirmado: `funnel_preview_images` tem só 1 registro para esse funil) ou o cron não está alternando (com 1 imagem, não alterna).
-
-### 3. Countdown no modal de previews
-
-**Correção em `src/pages/Admin.tsx`** — no dialog de Preview Gallery:
-- Calcular: `nextRotation = próxima hora UTC cheia`
-- Mostrar countdown "Próxima rotação em XX min" abaixo do texto explicativo
-- Usar `setInterval` de 60s para atualizar o countdown
-- Indicar claramente qual imagem está ativa (já tem a estrela) e qual será a próxima (calculada com `(currentHour + 1) % total`)
-
-### 4. Remover cauda da bubble do usuário
-
-**Correção em `src/components/chat/UserBubble.tsx`**:
-- Remover completamente o SVG da cauda (linhas 12-23)
-- Remover `rounded-tr-none` do div da bubble (linha 10) — fica com cantos uniformes
-- Resultado: bubble verde retangular arredondada sem qualquer fragmento
-
-### Arquivos alterados
-
-| Arquivo | Mudança |
-|---|---|
-| `self-host/api-server.js` | Remover meta-refresh do HTML de crawlers |
-| `src/components/chat/UserBubble.tsx` | Remover SVG da cauda completamente |
-| `src/pages/Admin.tsx` | Adicionar countdown de rotação no modal de previews + indicar próxima imagem |
-
+Validação final (VPS)
+- Rodar `bash update.sh`.
+- Verificar cron instalado e logs de execução.
+- No admin: abrir modal com 3 imagens, usar “Rotacionar agora”, confirmar troca de ativa.
+- Testar crawler:
+  - `curl -A "WhatsApp/2.24" https://SEU_DOMINIO_PUBLICO/SEU_SLUG`
+  - Confirmar presença de `og:image`, `og:image:secure_url`, `og:image:type`.
