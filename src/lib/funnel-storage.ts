@@ -51,7 +51,7 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
     flow: { id: '', name: '', groups: [], edges: [] } as unknown as TypebotFlow,
     botName: row.bot_name || '',
     botAvatar: row.bot_avatar || '',
-    previewImage: '',
+    previewImage: row.preview_image || '',
     pageTitle: row.page_title || '',
     pageDescription: row.page_description || '',
   }));
