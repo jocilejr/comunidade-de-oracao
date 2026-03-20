@@ -390,8 +390,8 @@ const Admin = () => {
       const resp = await fetch(`${baseUrl}/functions/v1/rotate-preview-images`, { method: 'POST' });
       if (resp.ok) {
         // Fetch only the active preview image (lightweight query)
-        const { getActiveFunnelPreview } = await import('@/lib/funnel-storage');
         const newActiveUrl = await getActiveFunnelPreview(previewGalleryDialog.id);
+        setActivePreviewUrl(newActiveUrl || null);
         setActivePreviewUrl(newActiveUrl || null);
         toast({ title: 'Rotação executada!', description: 'A imagem ativa foi atualizada.' });
       } else {
