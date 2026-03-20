@@ -158,7 +158,92 @@ const v = Date.now().toString();
   res.end(html);
 }
 
-// ── Route: /preview-image (with in-memory cache) ─────────
+// ── Robust share: OG tags for ALL visitors + client-side redirect ──
+async function handleShareRobust(req, res, slug) {
+  const { rows } = await pool.query(
+    `SELECT id, name, slug, page_title, page_description, preview_image, bot_name, bot_avatar
+     FROM funnels WHERE slug = $1 LIMIT 1`,
+    [slug]
+  );
+
+  // URL do SPA para redirect do navegador humano
+  const spaUrl = `${PUBLIC_ORIGIN}/f/${slug}`;
+
+  if (!rows.length) {
+    // Funil não encontrado → redireciona para o SPA normalmente
+    res.writeHead(302, { Location: spaUrl });
+    return res.end();
+  }
+
+  const funnel = rows[0];
+  const title = escapeHtml(funnel.page_title || funnel.name || "Funil");
+  const description = escapeHtml(funnel.page_description || "Aperte aqui e Receba");
+  const canonicalUrl = `${PUBLIC_ORIGIN}/${slug}`;
+
+  // Fallback: se preview_image está vazio, buscar da galeria
+  let previewUrl = funnel.preview_image;
+  if (!previewUrl) {
+    const { rows: fallbackImgs } = await pool.query(
+      `SELECT data_url FROM funnel_preview_images WHERE funnel_id = $1 ORDER BY position ASC LIMIT 1`,
+      [funnel.id]
+    );
+    if (fallbackImgs.length) previewUrl = fallbackImgs[0].data_url;
+  }
+
+  const v = Date.now().toString();
+  const imageUrl = previewUrl
+    ? `${PUBLIC_ORIGIN}/preview-image?slug=${encodeURIComponent(slug)}&v=${v}&file=banner.jpg`
+    : "";
+
+  let ogImageType = "image/png";
+  if (previewUrl) {
+    const mimeMatch = previewUrl.match(/^data:([^;]+);/);
+    if (mimeMatch) ogImageType = mimeMatch[1];
+    else if (previewUrl.match(/\.jpe?g/i)) ogImageType = "image/jpeg";
+    else if (previewUrl.match(/\.webp/i)) ogImageType = "image/webp";
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+  <meta name="description" content="${description}" />
+  <meta http-equiv="refresh" content="0;url=${escapeHtml(spaUrl)}" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="${description}" />
+  <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
+  ${imageUrl ? `
+  <meta property="og:image" content="${escapeHtml(imageUrl)}" />
+  <meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />
+  <meta property="og:image:type" content="${ogImageType}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  ` : ""}
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${title}" />
+  <meta name="twitter:description" content="${description}" />
+  ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}
+</head>
+<body>
+  <p>Redirecionando para <a href="${escapeHtml(spaUrl)}">${title}</a>...</p>
+  <script>window.location.replace(${JSON.stringify(spaUrl)});</script>
+</body>
+</html>`;
+
+  res.writeHead(200, {
+    ...corsHeaders,
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+  });
+  res.end(html);
+}
+
+
 const previewCache = new Map(); // slug -> { buffer, mime, ts }
 const PREVIEW_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
