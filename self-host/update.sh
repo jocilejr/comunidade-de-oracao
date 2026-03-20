@@ -171,21 +171,50 @@ log "Cron de rotação configurado (a cada hora, log em /var/log/funnel-rotate.l
 # ── 8. Reiniciar serviços PM2 ───────────────────────────
 log "Reiniciando serviços..."
 cd "$APP_DIR"
+
+# Validar que o código novo está no disco
+if grep -q "__funnel_diag" "$APP_DIR/api-server.js"; then
+  log "api-server.js contém __funnel_diag ✅"
+else
+  err "api-server.js NÃO contém __funnel_diag — cópia falhou!"
+fi
+
+# Exportar env vars para que PM2 herde do shell
 set -a; source "$ENV_FILE"; set +a
-pm2 restart funnel-api --update-env 2>/dev/null || true
-pm2 restart funnel-postgrest --update-env 2>/dev/null || true
-pm2 save 2>/dev/null
-log "Serviços reiniciados"
+
+# Force clean start — pm2 restart não recarrega código de disco
+pm2 delete funnel-api 2>/dev/null || true
+pm2 delete funnel-postgrest 2>/dev/null || true
+pm2 start "$APP_DIR/ecosystem.config.js"
+pm2 save
+log "Serviços reiniciados (clean start)"
 
 # ── 9. Validação pós-restart ────────────────────────────
 log "Validando serviços..."
-sleep 2
+sleep 3
 
+# Testar health básico
 HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health 2>/dev/null || echo "000")
 if [ "$HEALTH" = "200" ]; then
   log "API respondendo (HTTP 200) ✅"
 else
   warn "API não respondeu ao health check (HTTP ${HEALTH}). Verifique: pm2 logs funnel-api"
+fi
+
+# Testar __funnel_diag e validar que env vars foram carregadas
+DIAG=$(curl -sf http://127.0.0.1:4000/__funnel_diag 2>/dev/null || echo "")
+if echo "$DIAG" | grep -q '"servedBy"'; then
+  log "/__funnel_diag respondendo ✅"
+  DIAG_DASHBOARD=$(echo "$DIAG" | grep -oP '"dashboardDomain"\s*:\s*"[^"]*"' | grep -oP ':\s*"\K[^"]+')
+  if [ "$DIAG_DASHBOARD" = "localhost" ] || [ -z "$DIAG_DASHBOARD" ]; then
+    warn "⚠ dashboardDomain='${DIAG_DASHBOARD}' — env vars NÃO foram carregadas no PM2!"
+    warn "  Esperado: ${DASHBOARD_DOMAIN}"
+    warn "  Tente: pm2 logs funnel-api --lines 20"
+  else
+    log "dashboardDomain='${DIAG_DASHBOARD}' ✅"
+  fi
+else
+  warn "/__funnel_diag não respondeu. Verifique: pm2 logs funnel-api --lines 20"
 fi
 
 # ── 10. Detectar proxy (melhorado) ──────────────────────
@@ -238,11 +267,23 @@ if [ "$PROXY_MODE" = "traefik" ]; then
   [ -z "$TRAEFIK_NETWORK" ] && TRAEFIK_NETWORK="traefik-net"
   log "Rede Traefik: ${TRAEFIK_NETWORK}"
 
-  # Remover containers antigos
+  # Remover containers antigos E qualquer container com labels do DASHBOARD_DOMAIN
   for c in funnel-spa funnel-nginx-proxy funnel-api-proxy funnel-rest-proxy; do
     if docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
       docker stop "$c" 2>/dev/null || true
       docker rm "$c" 2>/dev/null || true
+    fi
+  done
+
+  # Matar containers fantasma que interceptam o domínio
+  for cid in $(docker ps -q 2>/dev/null); do
+    cname=$(docker inspect --format '{{.Name}}' "$cid" 2>/dev/null | sed 's/^\///')
+    case "$cname" in funnel-api-proxy|funnel-rest-proxy) continue;; esac
+    labels=$(docker inspect --format '{{json .Config.Labels}}' "$cid" 2>/dev/null || echo "{}")
+    if echo "$labels" | grep -qi "$DASHBOARD_DOMAIN"; then
+      warn "Container fantasma com label do dashboard: ${cname} — removendo..."
+      docker stop "$cid" 2>/dev/null || true
+      docker rm "$cid" 2>/dev/null || true
     fi
   done
 
