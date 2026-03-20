@@ -1124,12 +1124,13 @@ const Admin = () => {
             </DialogTitle>
           </DialogHeader>
 
-          <RotationCountdownGallery
-            previewImages={previewImages}
-            loadingPreviews={loadingPreviews}
-            activeDataUrl={previewGalleryDialog?.previewImage}
-            onRemove={handleRemovePreviewImage}
-          />
+          <div className="space-y-4 pt-2">
+            <RotationCountdownGallery
+              previewImages={previewImages}
+              loadingPreviews={loadingPreviews}
+              activeDataUrl={previewGalleryDialog?.previewImage}
+              onRemove={handleRemovePreviewImage}
+            />
 
             <Button variant="outline" size="sm" className="w-full" onClick={() => previewGalleryRef.current?.click()}>
               <Plus className="w-3.5 h-3.5 mr-1.5" /> Adicionar imagem
