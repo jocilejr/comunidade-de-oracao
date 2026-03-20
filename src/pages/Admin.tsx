@@ -373,10 +373,37 @@ const Admin = () => {
 
   const openPreviewGallery = async (funnel: StoredFunnel) => {
     setPreviewGalleryDialog(funnel);
+    setActivePreviewUrl(funnel.previewImage || null);
     setLoadingPreviews(true);
     const imgs = await getFunnelPreviewImages(funnel.id);
     setPreviewImages(imgs);
     setLoadingPreviews(false);
+  };
+
+  const handleRotateNow = async () => {
+    if (!previewGalleryDialog || rotating) return;
+    setRotating(true);
+    try {
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      const resp = await fetch(`${baseUrl}/functions/v1/rotate-preview-images`, { method: 'POST' });
+      if (resp.ok) {
+        // Refresh funnel data to get new active image
+        await refresh();
+        const updatedFunnels = await getAllFunnelsMeta();
+        const updated = updatedFunnels.find(f => f.id === previewGalleryDialog.id);
+        if (updated) {
+          setActivePreviewUrl(updated.previewImage || null);
+          setPreviewGalleryDialog(updated);
+        }
+        toast({ title: 'Rotação executada!', description: 'A imagem ativa foi atualizada.' });
+      } else {
+        toast({ title: 'Erro', description: 'Falha ao executar rotação.', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Erro', description: 'Não foi possível conectar ao servidor.', variant: 'destructive' });
+    } finally {
+      setRotating(false);
+    }
   };
 
   const handlePreviewGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
