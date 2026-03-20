@@ -642,16 +642,25 @@ const server = http.createServer(async (req, res) => {
     if (isStaticAsset) {
       const filePath = nodePath.join(DIST_DIR, path);
       const safePath = nodePath.resolve(filePath);
-      if (!safePath.startsWith(nodePath.resolve(DIST_DIR))) return json(res, { error: "Forbidden" }, 403);
+      if (!safePath.startsWith(nodePath.resolve(DIST_DIR))) {
+        res.writeHead(403, { "Content-Type": "text/plain", "X-Funnel-Served-By": "api-server", "X-Funnel-Route": "forbidden" });
+        return res.end("Forbidden");
+      }
       try {
         const data = fs.readFileSync(safePath);
         const ext = nodePath.extname(safePath).toLowerCase();
         const mime = MIME_TYPES[ext] || "application/octet-stream";
-        res.writeHead(200, { "Content-Type": mime, "Cache-Control": "public, max-age=31536000, immutable" });
+        res.writeHead(200, {
+          "Content-Type": mime,
+          "Cache-Control": "public, max-age=31536000, immutable",
+          "X-Funnel-Served-By": "api-server",
+          "X-Funnel-Route": "static-asset",
+        });
         return res.end(data);
       } catch {
-        // CRITICAL: return 404, never fallback to index.html for assets
-        res.writeHead(404, { "Content-Type": "text/plain" });
+        // CRITICAL: return 404 with text/plain, never fallback to index.html for assets
+        console.warn(`[404] Static asset not found: ${path}`);
+        res.writeHead(404, { "Content-Type": "text/plain", "X-Funnel-Served-By": "api-server", "X-Funnel-Route": "static-asset-404" });
         return res.end("Not found");
       }
     }
@@ -661,14 +670,23 @@ const server = http.createServer(async (req, res) => {
     if (ext && MIME_TYPES[ext] && ext !== ".html") {
       const filePath = nodePath.join(DIST_DIR, path);
       const safePath = nodePath.resolve(filePath);
-      if (!safePath.startsWith(nodePath.resolve(DIST_DIR))) return json(res, { error: "Forbidden" }, 403);
+      if (!safePath.startsWith(nodePath.resolve(DIST_DIR))) {
+        res.writeHead(403, { "Content-Type": "text/plain", "X-Funnel-Served-By": "api-server", "X-Funnel-Route": "forbidden" });
+        return res.end("Forbidden");
+      }
       try {
         const data = fs.readFileSync(safePath);
         const mime = MIME_TYPES[ext] || "application/octet-stream";
-        res.writeHead(200, { "Content-Type": mime, "Cache-Control": "public, max-age=31536000, immutable" });
+        res.writeHead(200, {
+          "Content-Type": mime,
+          "Cache-Control": "public, max-age=31536000, immutable",
+          "X-Funnel-Served-By": "api-server",
+          "X-Funnel-Route": "static-ext",
+        });
         return res.end(data);
       } catch {
-        res.writeHead(404, { "Content-Type": "text/plain" });
+        console.warn(`[404] File not found: ${path}`);
+        res.writeHead(404, { "Content-Type": "text/plain", "X-Funnel-Served-By": "api-server", "X-Funnel-Route": "static-ext-404" });
         return res.end("Not found");
       }
     }
@@ -692,10 +710,12 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
+        "X-Funnel-Served-By": "api-server",
+        "X-Funnel-Route": "spa-fallback",
       });
       return res.end(indexHtml);
     } catch {
-      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.writeHead(404, { "Content-Type": "text/plain", "X-Funnel-Served-By": "api-server", "X-Funnel-Route": "spa-missing" });
       return res.end("index.html not found — check DIST_DIR");
     }
   } catch (err) {
