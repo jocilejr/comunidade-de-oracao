@@ -110,6 +110,8 @@ async function handleShare(req, res, slug, format) {
   <meta property="og:title" content="${title}" />
   <meta property="og:description" content="${description}" />
   ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />` : ""}
+  ${imageUrl ? `<meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />` : ""}
+  ${imageUrl ? `<meta property="og:image:type" content="image/png" />` : ""}
   ${imageUrl ? `<meta property="og:image:width" content="1200" />` : ""}
   ${imageUrl ? `<meta property="og:image:height" content="630" />` : ""}
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
@@ -159,7 +161,9 @@ async function handlePreviewImage(req, res, slug) {
   res.writeHead(200, {
     ...corsHeaders,
     "Content-Type": mimeType,
-    "Cache-Control": "public, max-age=300, s-maxage=60",
+    "Content-Length": buffer.length,
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
   });
   res.end(buffer);
 }
@@ -167,19 +171,20 @@ async function handlePreviewImage(req, res, slug) {
 // ── Route: /openai-proxy ──────────────────────────────────
 async function handleOpenaiProxy(req, res) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer "))
-    return json(res, { error: "Missing authorization" }, 401);
-
-  let userId;
-  try {
-    const decoded = jwt.verify(authHeader.replace("Bearer ", ""), JWT_SECRET, { algorithms: ["HS256"] });
-    userId = decoded.sub;
-  } catch (e) {
-    return json(res, { error: "Invalid token" }, 401);
-  }
 
   const body = JSON.parse(await readBody(req));
   const { messages, model, tools } = body;
+
+  // Try JWT first; fall back to body.userId (public funnels use anon key)
+  let userId;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const decoded = jwt.verify(authHeader.replace("Bearer ", ""), JWT_SECRET, { algorithms: ["HS256"] });
+      if (decoded.sub) userId = decoded.sub;
+    } catch (_) { /* JWT invalid — try body fallback */ }
+  }
+  if (!userId && body.userId) userId = body.userId;
+  if (!userId) return json(res, { error: "Missing user identification" }, 401);
 
   const { rows } = await pool.query(
     `SELECT openai_api_key FROM user_settings WHERE user_id = $1 LIMIT 1`,
