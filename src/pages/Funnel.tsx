@@ -39,7 +39,7 @@ const Funnel = () => {
     setMeta('meta[name="twitter:description"]', 'content', funnel.pageDescription || '');
     setMeta('meta[name="twitter:image"]', 'content', funnel.previewImage || '');
 
-    return () => { document.title = 'Funil Monitorado — Origem Viva'; };
+    return () => { document.title = 'Typebot Inteligente Origem Viva'; };
   }, [funnel]);
 
   if (funnel === undefined) {
