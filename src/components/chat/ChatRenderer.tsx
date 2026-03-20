@@ -72,10 +72,15 @@ const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId, forceNewTab, funn
       switch (event.type) {
         case 'messages': {
           for (const msg of event.messages) {
+            // First message: ultra-fast typing to appear instant
+            const isFirst = isFirstMessageRef.current;
+            if (isFirst) isFirstMessageRef.current = false;
+            const typeDuration = isFirst ? FIRST_MSG_TYPING : typingDelay(msg.content || '');
+
             setIsTyping(true);
             setDisplayItems(prev => [...prev, { type: 'typing' }]);
             scrollToBottom();
-            await delay(typingDelay(msg.content || ''));
+            await delay(typeDuration);
 
             setDisplayItems(prev => {
               const items = prev.filter(i => i.type !== 'typing');
@@ -84,7 +89,7 @@ const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId, forceNewTab, funn
             setIsTyping(false);
             playNotificationSound();
             scrollToBottom();
-            await delay(MESSAGE_DELAY);
+            await delay(isFirst ? 100 : MESSAGE_DELAY);
           }
           break;
         }
