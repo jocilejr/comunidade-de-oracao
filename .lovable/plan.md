@@ -1,77 +1,68 @@
 
 
-## Diagnóstico do link preview
+## Correção definitiva: modo robusto para link preview
 
-O problema tem **duas camadas** que precisam ser resolvidas:
+### Problema real
 
-### Problema 1: Bot detection não cobre `/f/:slug`
-Linha 728 do `api-server.js`:
-```javascript
-const slugMatch = path.match(/^\/([a-zA-Z0-9_-]+)\/?$/);
-```
-Essa regex só captura `/:slug`. URLs `/f/:slug` caem direto no SPA fallback (linha 740), que serve o `index.html` estático com metadados genéricos ("Comunidade", "Aperte aqui e Receba", imagem do Lovable R2).
+O disparador de links não envia User-Agent de crawler (WhatsApp, facebookexternalhit, etc.). A detecção por UA falha, e o servidor entrega o `index.html` do SPA com metadados genéricos ("Comunidade", "Aperte aqui e Receba", imagem Typebot Runtime). Isso explica por que a ferramenta manual mostra correto (ela lê as OG tags do HTML dinâmico via endpoint /share) mas o WhatsApp real mostra errado.
 
-### Problema 2: `index.html` tem OG tags estáticas genéricas
-O `index.html` (buildado pelo Vite) contém:
-```html
-<meta property="og:title" content="Comunidade">
-<meta property="og:description" content="Aperte aqui e Receba">
-<meta property="og:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/...">
-```
-Quando o crawler **não é interceptado** pelo bot detection, ele recebe esse HTML — que tem título/descrição genéricos e uma imagem do R2 (o screenshot "Typebot Runtime").
+### Solução: servir OG tags dinâmicas para TODOS os visitantes em rotas de slug
 
-### Problema 3: Mesmo para `/:slug`, o `PUBLIC_DOMAIN` pode estar `localhost`
-Se o PM2 não herdou as env vars, as OG tags dinâmicas apontam para `https://localhost/preview-image?slug=...` — inacessível.
+Em vez de depender de User-Agent, o `api-server.js` vai **sempre** retornar HTML com OG tags dinâmicas para rotas `/:slug` e `/f/:slug`. Humanos serão redirecionados via `<meta http-equiv="refresh">` e JavaScript no body, que crawlers ignoram mas navegadores executam.
 
----
+Isso elimina completamente a dependência de detecção de bot.
 
-## Plano de correção
+### Mudanças
 
-### 1. Expandir bot detection para cobrir `/f/:slug` (`api-server.js`, linha 728)
+**Arquivo: `self-host/api-server.js`** (linhas 726-738)
 
-**Antes:**
-```javascript
-const slugMatch = path.match(/^\/([a-zA-Z0-9_-]+)\/?$/);
-```
-
-**Depois:**
-```javascript
-const slugMatch = path.match(/^\/(?:f\/)?([a-zA-Z0-9_-]+)\/?$/);
-```
-
-Isso intercepta crawlers em ambos `/:slug` e `/f/:slug`.
-
-### 2. Adicionar exclusão de rotas reservadas
-
-Para evitar que `/login`, `/admin`, `/assets` etc. sejam tratados como slugs:
+Substituir o bloco de bot detection por lógica que sempre serve HTML com OG tags + redirect client-side:
 
 ```javascript
+// ── Public domain catch-all: /{slug} or /f/{slug} — always serve OG HTML ──
 const RESERVED = /^(login|admin|assets|api|rest|auth|functions|health|__funnel_diag|share|preview-image|rotate-preview-images|openai-proxy|typebot-proxy|user-settings)$/i;
 const slugMatch = path.match(/^\/(?:f\/)?([a-zA-Z0-9_-]+)\/?$/);
 if (slugMatch && !RESERVED.test(slugMatch[1]) && req.method === "GET") {
+  const slug = slugMatch[1];
+  console.log(`[SHARE] Serving OG HTML for slug="${slug}", path="${path}"`);
+  return await handleShareRobust(req, res, slug);
+}
 ```
 
-### 3. Adicionar log de diagnóstico para debug
+**Nova função `handleShareRobust`** — semelhante a `handleShare` mas o HTML inclui:
+- Todas as OG tags dinâmicas (título, descrição, imagem do funil)
+- `<meta http-equiv="refresh" content="0;url=...">` para redirect instantâneo
+- `<script>window.location.replace("...")</script>` como fallback
+- Crawlers (WhatsApp, Google etc.) ignoram meta refresh e JS, leem apenas as OG tags
+- Navegadores humanos são redirecionados imediatamente para o SPA (`/f/slug`)
 
-Adicionar um `console.log` temporário quando um bot é detectado, para que possamos verificar nos logs do PM2 se a interceptação está funcionando.
+O redirect para humanos apontará para o próprio domínio público `/f/slug` (que cairá no SPA fallback normalmente), mantendo a experiência atual.
 
-### Arquivo modificado
-- `self-host/api-server.js` (linhas 726-736)
+**Importante**: No domínio público com Traefik, toda requisição já vai ao `api-server`. O Nginx template também já roteia tudo para o api-server. Então essa mudança funciona em ambas as configurações.
 
-### Validação pós-deploy
+### Fluxo resultante
 
-Após `git pull && sudo bash self-host/update.sh`, execute estes 3 comandos e me envie a saída:
+```text
+Visitante → GET /meu-slug
+  api-server:
+    1. Match regex → slug = "meu-slug"
+    2. Query DB → título, descrição, imagem
+    3. Retorna HTML com:
+       - <meta og:title="Oração Poderosa">
+       - <meta og:image="https://comunidade.../preview-image?slug=...">
+       - <meta http-equiv="refresh" content="0;url=/f/meu-slug">
+       - <script>window.location.replace("/f/meu-slug")</script>
+    4. Crawler lê OG tags ✓
+    5. Navegador redireciona instantaneamente para SPA ✓
+```
 
+### Arquivos modificados
+- `self-host/api-server.js` — nova função + substituição do bloco de bot detection
+
+### Após deploy
 ```bash
-# 1. Verificar que env vars estão corretas
-curl -sf http://127.0.0.1:4000/__funnel_diag | python3 -m json.tool
-
-# 2. Simular crawler no formato /:slug
-curl -sA "WhatsApp/2.24" http://127.0.0.1:4000/a-verdadeira-oracao-de-1-minuto | head -30
-
-# 3. Simular crawler no formato /f/:slug  
-curl -sA "WhatsApp/2.24" http://127.0.0.1:4000/f/a-verdadeira-oracao-de-1-minuto | head -30
+cd /root/comunidade-de-oracao && git pull && sudo bash self-host/update.sh
+curl -s http://127.0.0.1:4000/a-verdadeira-oracao-de-1-minuto | head -20
 ```
-
-Os comandos 2 e 3 devem retornar HTML com `og:title` contendo o título do funil (não "Comunidade") e `og:image` apontando para o domínio público real (não `localhost` nem R2).
+O HTML deve conter `og:title` com o título do funil e `meta http-equiv="refresh"`.
 
