@@ -157,21 +157,33 @@ const v = Date.now().toString();
   res.end(html);
 }
 
-// ── Robust share: OG tags for ALL visitors + client-side redirect ──
+// ── Robust share: OG tags injected into SPA index.html — zero redirect ──
 async function handleShareRobust(req, res, slug) {
+  const DIST_DIR = process.env.DIST_DIR || "/opt/funnel-app/dist";
+  let indexHtml;
+  try {
+    indexHtml = fs.readFileSync(nodePath.join(DIST_DIR, "index.html"), "utf-8");
+  } catch {
+    res.writeHead(500, { "Content-Type": "text/plain" });
+    return res.end("index.html not found");
+  }
+
   const { rows } = await pool.query(
     `SELECT id, name, slug, page_title, page_description, preview_image, bot_name, bot_avatar
      FROM funnels WHERE slug = $1 LIMIT 1`,
     [slug]
   );
 
-  // URL do SPA para redirect do navegador humano
-  const spaUrl = `${PUBLIC_ORIGIN}/f/${slug}`;
-
   if (!rows.length) {
-    // Funil não encontrado → redireciona para o SPA normalmente
-    res.writeHead(302, { Location: spaUrl });
-    return res.end();
+    // Funnel not found — serve plain SPA, React will show "not found"
+    res.writeHead(200, {
+      ...corsHeaders,
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Funnel-Served-By": "api-server",
+      "X-Funnel-Route": "spa-slug-notfound",
+    });
+    return res.end(indexHtml);
   }
 
   const funnel = rows[0];
@@ -202,42 +214,34 @@ async function handleShareRobust(req, res, slug) {
     else if (previewUrl.match(/\.webp/i)) ogImageType = "image/webp";
   }
 
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${title}</title>
-  <meta name="description" content="${description}" />
-  <meta http-equiv="refresh" content="0;url=${escapeHtml(spaUrl)}" />
-
+  // Build OG meta tags to inject
+  const ogTags = `
   <meta property="og:type" content="website" />
   <meta property="og:title" content="${title}" />
   <meta property="og:description" content="${description}" />
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
-  ${imageUrl ? `
-  <meta property="og:image" content="${escapeHtml(imageUrl)}" />
+  ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />
   <meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />
   <meta property="og:image:type" content="${ogImageType}" />
   <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
-  ` : ""}
-
+  <meta property="og:image:height" content="630" />` : ""}
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${description}" />
-  ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}
-</head>
-<body>
-  <p>Redirecionando para <a href="${escapeHtml(spaUrl)}">${title}</a>...</p>
-  <script>window.location.replace(${JSON.stringify(spaUrl)});</script>
-</body>
-</html>`;
+  ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}`;
+
+  // Inject OG tags into <head> and replace <title>
+  let html = indexHtml
+    .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
+    .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${description}">`)
+    .replace("</head>", `${ogTags}\n</head>`);
 
   res.writeHead(200, {
     ...corsHeaders,
     "Content-Type": "text/html; charset=utf-8",
     "Cache-Control": "no-cache, no-store, must-revalidate",
+    "X-Funnel-Served-By": "api-server",
+    "X-Funnel-Route": "robust-og-spa",
   });
   res.end(html);
 }
