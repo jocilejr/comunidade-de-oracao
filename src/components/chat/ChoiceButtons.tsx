@@ -21,19 +21,16 @@ const ChoiceButtons = ({ block, onSelect }: ChoiceButtonsProps) => {
               <button
                 key={item.id}
                 onClick={() => onSelect(item.id, label)}
-                className="rounded-xl overflow-hidden text-left transition-all active:scale-95 hover:opacity-90 border"
-                style={{
-                  backgroundColor: 'hsl(var(--wa-bot-bubble))',
-                  borderColor: 'hsl(var(--wa-send) / 0.3)',
-                }}
+                className="rounded-xl overflow-hidden text-left transition-all duration-200 active:scale-95 hover:shadow-lg shadow-md"
+                style={{ backgroundColor: 'hsl(var(--wa-cta))' }}
               >
                 {picSrc && (
                   <img src={picSrc} alt={label} className="w-full h-28 object-cover" loading="lazy" />
                 )}
                 <div className="p-2.5">
-                  <span className="block text-sm font-medium" style={{ color: 'hsl(var(--wa-bot-foreground))' }}>{label}</span>
+                  <span className="block text-sm font-semibold" style={{ color: 'hsl(var(--wa-cta-foreground))' }}>{label}</span>
                   {description && (
-                    <span className="block text-xs mt-0.5" style={{ color: 'hsl(var(--wa-time))' }}>{description}</span>
+                    <span className="block text-xs mt-0.5 opacity-80" style={{ color: 'hsl(var(--wa-cta-foreground))' }}>{description}</span>
                   )}
                 </div>
               </button>
@@ -44,11 +41,13 @@ const ChoiceButtons = ({ block, onSelect }: ChoiceButtonsProps) => {
             <button
               key={item.id}
               onClick={() => onSelect(item.id, label)}
-              className="w-full rounded-xl px-4 py-2.5 text-sm font-medium text-center transition-all active:scale-95 hover:opacity-80 border bg-transparent"
+              className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-center transition-all duration-200 active:scale-95 shadow-md hover:shadow-lg"
               style={{
-                borderColor: 'hsl(var(--wa-send))',
-                color: 'hsl(var(--wa-send))',
+                backgroundColor: 'hsl(var(--wa-cta))',
+                color: 'hsl(var(--wa-cta-foreground))',
               }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--wa-cta-hover))'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--wa-cta))'}
             >
               {label}
             </button>
