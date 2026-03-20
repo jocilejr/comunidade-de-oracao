@@ -327,7 +327,7 @@ if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
     CONFLICTS=0
     for cid in $(docker ps -q); do
       name=$(docker inspect --format '{{.Name}}' "$cid" | sed 's/^\///')
-      case "$name" in funnel-spa|funnel-api-proxy|funnel-rest-proxy) continue;; esac
+      case "$name" in funnel-api-proxy|funnel-rest-proxy) continue;; esac
       labels=$(docker inspect --format '{{json .Config.Labels}}' "$cid" 2>/dev/null)
       if echo "$labels" | grep -qi "$DASHBOARD_DOMAIN"; then
         echo -e "  ${RED}⚠ CONFLITO:${NC} ${name}"
