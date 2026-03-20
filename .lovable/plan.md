@@ -1,49 +1,53 @@
-## Correção de 4 Bugs
 
-### 1. Fragmento visual no UserBubble (tail SVG)
 
-**Arquivo:** `src/components/chat/UserBubble.tsx`
+## Correções: OpenAI nos funis + Preview image largura máxima
 
-- O path SVG do "tail" (linha 20) está gerando um artefato visual ao lado do bubble
-- Substituir pelo path correto do WhatsApp que se encaixa sem artefatos: `M1 0v13l2-2c.6-.6 1.3-1 2-1h3V0z` (triangulo simples alinhado ao topo)
+### Problema 1: OpenAI não funciona nos funis (VPS)
 
-### 2. Preview images somem após rotação do cron
+**Causa raiz:** `typebot-engine.ts` (linha 799) chama `${VITE_SUPABASE_URL}/functions/v1/openai-proxy`. Na VPS, esse URL aponta para o Supabase Cloud (ou para o dash), não para o api-server local. Além disso, o `handleOpenaiProxy` no api-server exige JWT válido (`jwt.verify`), mas o frontend envia o anon key, cujo `sub` não é um userId real.
 
-**Problema raiz:** A edge function `preview-image` tem `Cache-Control: public, max-age=300, s-maxage=60`. Quando o cron roda e atualiza `funnels.preview_image`, Cloudflare/CDN ainda serve a resposta cacheada. Se a resposta anterior foi um 404 (durante a transição), fica cacheado como 404.  
-  
-Outro problema é que a imagem fica pequena no link preview. O padrão está sendo a imagem ao lado do titulo e descrição. QUero que seja a imagem ocupando todo o espaço e abaixo o titulo e descrição.
+**Correção em `src/lib/typebot-engine.ts` (linha ~799):**
+- Detectar se está no domínio público VPS (`VITE_PUBLIC_DOMAIN`) ou no dash VPS (`VITE_DASHBOARD_ORIGIN`)
+- Se `window.location.origin` bater com algum deles, usar `${window.location.origin}/openai-proxy` (api-server local)
+- Senão, manter o URL atual do Supabase (para preview no Lovable)
 
-**Arquivo:** `supabase/functions/preview-image/index.ts`
+**Correção em `self-host/api-server.js` — `handleOpenaiProxy` (linhas 168-228):**
+- Tornar JWT opcional: tentar `jwt.verify` primeiro; se falhar, aceitar `body.userId` como fallback
+- Isso permite funis públicos (sem JWT de usuário) funcionarem usando o `ownerUserId` passado no body — exatamente como a edge function faz
 
-- Remover cache: usar `Cache-Control: no-cache, no-store, must-revalidate` para garantir que cada request busque o dado atual do banco
-- Adicionar validação: se `data_url` estiver vazio/inválido, retornar 404 com mensagem clara
+```text
+Fluxo corrigido (VPS - domínio público):
+  Browser → comunidade.dominio.com/openai-proxy → api-server:4000 → busca key com body.userId → OpenAI
 
-**Arquivo:** `supabase/functions/rotate-preview-images/index.ts`
+Fluxo corrigido (VPS - dashboard):
+  Browser → dash.dominio.com/openai-proxy → api-server:4000 → mesma lógica
 
-- Adicionar validação: só atualizar `funnels.preview_image` se `data_url` começa com `data:` ou `http`
-- Logar qual imagem foi ativada para debug
+Fluxo Lovable preview (inalterado):
+  Browser → supabase.co/functions/v1/openai-proxy → edge function → OpenAI
+```
 
-### 3. Favicon não altera
+---
 
-**Arquivo:** `index.html`
+### Problema 2: Preview image sem largura máxima (VPS)
 
-- Copiar `logo-ov.png` (enviada pelo usuário) para `public/favicon.png`
-- Adicionar `<link rel="icon" href="/favicon.png" type="image/png">` no `<head>`
+**Causa raiz:** No `api-server.js`, o `handlePreviewImage` (linha 162) ainda tem `Cache-Control: public, max-age=300` — diferente da edge function que já foi corrigida. Além disso, faltam os headers `og:image:secure_url` e `og:image:type` no HTML do `handleShare`.
 
-### 4. Título e logo do dashboard
+**Correção em `self-host/api-server.js`:**
 
-**Arquivo:** `src/pages/Admin.tsx` (linhas 357-364)
+1. **`handlePreviewImage` (linha 162):** Mudar para `Cache-Control: no-cache, no-store, must-revalidate` e adicionar `Content-Length`
 
-- Trocar `<Bot>` icon por `<img src="/logo-ov.png">` (34x34px, rounded)
-- Trocar "Funil Monitorado" por "Typebot Inteligente"
-- Trocar "Origem Viva" (subtítulo) permanece igual
+2. **`handleShare` (linhas 112-119):** Adicionar as meta tags que faltam:
+   - `og:image:secure_url`
+   - `og:image:type` = `image/png`
+   
+   (As tags `og:image:width=1200`, `og:image:height=630` e `twitter:card=summary_large_image` já estão presentes)
 
-**Arquivo:** `index.html`
+---
 
-- Alterar `<title>` para "Typebot Inteligente Origem Viva"
+### Arquivos alterados
 
-**Arquivo:** `src/pages/Funnel.tsx` (linha 42)
+| Arquivo | Mudança |
+|---|---|
+| `src/lib/typebot-engine.ts` | URL dinâmico do proxy OpenAI (VPS vs Cloud) |
+| `self-host/api-server.js` | JWT opcional no openai-proxy + cache headers da preview-image + OG tags completas no share |
 
-- Trocar fallback `'Funil Monitorado — Origem Viva'` por `'Typebot Inteligente Origem Viva'`
-
-**Asset:** Copiar `user-uploads://logo-ov.png` para `public/logo-ov.png`
