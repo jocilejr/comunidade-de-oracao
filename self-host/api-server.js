@@ -549,7 +549,7 @@ const server = http.createServer(async (req, res) => {
 
     if (path === "/openai-proxy" && req.method === "POST") return await handleOpenaiProxy(req, res);
     if (path === "/typebot-proxy" && req.method === "POST") return await handleTypebotProxy(req, res);
-    if (path === "/rotate-preview-images" && req.method === "POST") return await handleRotateImages(req, res);
+    if (path === "/rotate-preview-images" && (req.method === "POST" || req.method === "GET")) return await handleRotateImages(req, res);
     if ((path === "/user-settings" || path === "/user-settings/") && (req.method === "GET" || req.method === "POST")) return await handleUserSettings(req, res);
     if (path === "/health") return json(res, { status: "ok", timestamp: new Date().toISOString() });
 
