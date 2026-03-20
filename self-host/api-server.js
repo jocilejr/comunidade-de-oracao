@@ -93,11 +93,30 @@ async function handleShare(req, res, slug, format) {
   const title = escapeHtml(funnel.page_title || funnel.name || "Funil");
   const description = escapeHtml(funnel.page_description || "Aperte aqui e Receba");
 
+  // Fallback: se preview_image está vazio, buscar da galeria
+  let previewUrl = funnel.preview_image;
+  if (!previewUrl) {
+    const { rows: fallbackImgs } = await pool.query(
+      `SELECT data_url FROM funnel_preview_images WHERE funnel_id = $1 ORDER BY position ASC LIMIT 1`,
+      [funnel.id || funnel.slug]
+    );
+    if (fallbackImgs.length) previewUrl = fallbackImgs[0].data_url;
+  }
+
   const v = Date.now().toString();
   // Imagem servida pelo domínio público para crawlers
-  const imageUrl = funnel.preview_image
+  const imageUrl = previewUrl
     ? `${PUBLIC_ORIGIN}/preview-image?slug=${encodeURIComponent(slug)}&v=${v}`
     : "";
+
+  // Detectar MIME real para og:image:type
+  let ogImageType = "image/png";
+  if (previewUrl) {
+    const mimeMatch = previewUrl.match(/^data:([^;]+);/);
+    if (mimeMatch) ogImageType = mimeMatch[1];
+    else if (previewUrl.match(/\.jpe?g/i)) ogImageType = "image/jpeg";
+    else if (previewUrl.match(/\.webp/i)) ogImageType = "image/webp";
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
