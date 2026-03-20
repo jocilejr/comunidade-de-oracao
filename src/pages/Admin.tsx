@@ -677,7 +677,7 @@ const Admin = () => {
                             <div className="flex items-center gap-2 mt-0.5">
                               {editingSlug === funnel.slug ? (
                                 <div className="flex items-center gap-1">
-                                  <span className="text-[11px] text-muted-foreground">/f/</span>
+                                  <span className="text-[11px] text-muted-foreground">/</span>
                                   <Input
                                     value={newSlug}
                                     onChange={e => setNewSlug(e.target.value)}
