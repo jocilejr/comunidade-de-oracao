@@ -723,14 +723,16 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // ── Public domain catch-all: /{slug} with bot detection ──
+    // ── Public domain catch-all: /{slug} or /f/{slug} with bot detection ──
     const BOT_UA = /whatsapp|facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|googlebot|bingbot|yandex|pinterest|snapchat/i;
-    const slugMatch = path.match(/^\/([a-zA-Z0-9_-]+)\/?$/);
-    if (slugMatch && req.method === "GET") {
+    const RESERVED = /^(login|admin|assets|api|rest|auth|functions|health|__funnel_diag|share|preview-image|rotate-preview-images|openai-proxy|typebot-proxy|user-settings)$/i;
+    const slugMatch = path.match(/^\/(?:f\/)?([a-zA-Z0-9_-]+)\/?$/);
+    if (slugMatch && !RESERVED.test(slugMatch[1]) && req.method === "GET") {
       const slug = slugMatch[1];
       const ua = req.headers["user-agent"] || "";
 
       if (BOT_UA.test(ua)) {
+        console.log(`[BOT] Crawler detected: slug="${slug}", UA="${ua.substring(0, 80)}", path="${path}"`);
         return await handleShare(req, res, slug, null);
       }
     }
