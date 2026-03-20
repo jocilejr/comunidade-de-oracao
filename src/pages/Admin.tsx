@@ -7,7 +7,7 @@ function getShareUrl(slug: string): string {
   }
   return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${slug}&v=${Date.now()}`;
 }
-import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
+import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, compressPreviewImage, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
 import { supabase } from '@/integrations/supabase/client';
 import FunnelInspector from '@/components/admin/FunnelInspector';
 import SessionLogs from '@/components/admin/SessionLogs';
@@ -52,8 +52,9 @@ const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUr
     return () => clearInterval(interval);
   }, []);
 
-  const currentHour = new Date().getUTCHours();
-  const nextIdx = previewImages.length > 1 ? (currentHour + 1) % previewImages.length : -1;
+  // For round-robin, "next" is simply current+1
+  const activeIdx = previewImages.findIndex(img => img.dataUrl === activeDataUrl);
+  const nextIdx = previewImages.length > 1 && activeIdx >= 0 ? (activeIdx + 1) % previewImages.length : -1;
 
   return (
     <div className="space-y-4 pt-2">
@@ -357,7 +358,8 @@ const Admin = () => {
     }
     const reader = new FileReader();
     reader.onload = async () => {
-      const dataUrl = reader.result as string;
+      const rawDataUrl = reader.result as string;
+      const dataUrl = await compressPreviewImage(rawDataUrl);
       const success = await updateFunnelPreviewImage(uploadingPreviewSlug, dataUrl);
       if (success) {
         await refresh();
@@ -419,9 +421,13 @@ const Admin = () => {
     }
     const reader = new FileReader();
     reader.onload = async () => {
-      const dataUrl = reader.result as string;
+      const rawDataUrl = reader.result as string;
+      // Compress to JPEG for faster WhatsApp preview delivery
+      const dataUrl = await compressPreviewImage(rawDataUrl);
       const updated = await addFunnelPreviewImage(previewGalleryDialog.id, dataUrl);
       setPreviewImages(updated);
+      // Update active preview URL if this is the first image
+      if (updated.length === 1) setActivePreviewUrl(dataUrl);
       await refresh();
       toast({ title: 'Preview adicionado!' });
     };

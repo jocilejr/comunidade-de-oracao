@@ -37,7 +37,7 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
 
   const { data, error } = await supabase
     .from('funnels')
-    .select('id, slug, name, created_at, bot_name, bot_avatar, preview_image, page_title, page_description')
+    .select('id, slug, name, created_at, bot_name, bot_avatar, page_title, page_description')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
@@ -51,7 +51,7 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
     flow: { id: '', name: '', groups: [], edges: [] } as unknown as TypebotFlow,
     botName: row.bot_name || '',
     botAvatar: row.bot_avatar || '',
-    previewImage: row.preview_image || '',
+    previewImage: '',
     pageTitle: row.page_title || '',
     pageDescription: row.page_description || '',
   }));
@@ -345,6 +345,31 @@ export async function removeFromAvatarGallery(imageId: string): Promise<AvatarGa
 }
 
 // ---- Utilities ----
+
+/** Compress an image dataUrl to JPEG, max 1200px wide, quality 0.85 */
+export function compressPreviewImage(dataUrl: string, maxWidth = 1200, quality = 0.85): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width;
+      let h = img.height;
+      if (w > maxWidth) {
+        h = Math.round(h * (maxWidth / w));
+        w = maxWidth;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(dataUrl); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL('image/jpeg', quality);
+      resolve(compressed);
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = dataUrl;
+  });
+}
 
 export function slugify(text: string): string {
   return text
