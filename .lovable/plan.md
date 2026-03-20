@@ -1,53 +1,39 @@
 
 
-## Correções: OpenAI nos funis + Preview image largura máxima
+## Correções: Link Preview + Card Admin + Bubble do Usuário
 
-### Problema 1: OpenAI não funciona nos funis (VPS)
+### 1. Link preview sumiu — remover meta-refresh para crawlers
 
-**Causa raiz:** `typebot-engine.ts` (linha 799) chama `${VITE_SUPABASE_URL}/functions/v1/openai-proxy`. Na VPS, esse URL aponta para o Supabase Cloud (ou para o dash), não para o api-server local. Além disso, o `handleOpenaiProxy` no api-server exige JWT válido (`jwt.verify`), mas o frontend envia o anon key, cujo `sub` não é um userId real.
+**Problema**: No `handleShare` (api-server.js, linha 122), o HTML servido aos crawlers contém `<meta http-equiv="refresh" content="0;url=...">`. O WhatsApp segue este redirect imediatamente antes de processar as OG tags, resultando em preview vazio.
 
-**Correção em `src/lib/typebot-engine.ts` (linha ~799):**
-- Detectar se está no domínio público VPS (`VITE_PUBLIC_DOMAIN`) ou no dash VPS (`VITE_DASHBOARD_ORIGIN`)
-- Se `window.location.origin` bater com algum deles, usar `${window.location.origin}/openai-proxy` (api-server local)
-- Senão, manter o URL atual do Supabase (para preview no Lovable)
+**Correção em `self-host/api-server.js`**:
+- Remover a linha `<meta http-equiv="refresh" content="0;url=${escapeHtml(spaUrl)}" />` do HTML servido aos crawlers
+- O HTML já contém um link `<a>` no body para humanos que eventualmente acessem essa URL — isso é suficiente
 
-**Correção em `self-host/api-server.js` — `handleOpenaiProxy` (linhas 168-228):**
-- Tornar JWT opcional: tentar `jwt.verify` primeiro; se falhar, aceitar `body.userId` como fallback
-- Isso permite funis públicos (sem JWT de usuário) funcionarem usando o `ownerUserId` passado no body — exatamente como a edge function faz
+### 2. Card do funil — mostrar preview ativa (já funciona)
 
-```text
-Fluxo corrigido (VPS - domínio público):
-  Browser → comunidade.dominio.com/openai-proxy → api-server:4000 → busca key com body.userId → OpenAI
+O card já exibe `funnel.previewImage` (que é `funnels.preview_image` do DB) — linha 515-516 do Admin.tsx. Como a rotação do cron atualiza essa coluna, o card já mostra a imagem ativa. Se a primeira imagem está aparecendo sempre, é porque só há 1 imagem na galeria (confirmado: `funnel_preview_images` tem só 1 registro para esse funil) ou o cron não está alternando (com 1 imagem, não alterna).
 
-Fluxo corrigido (VPS - dashboard):
-  Browser → dash.dominio.com/openai-proxy → api-server:4000 → mesma lógica
+### 3. Countdown no modal de previews
 
-Fluxo Lovable preview (inalterado):
-  Browser → supabase.co/functions/v1/openai-proxy → edge function → OpenAI
-```
+**Correção em `src/pages/Admin.tsx`** — no dialog de Preview Gallery:
+- Calcular: `nextRotation = próxima hora UTC cheia`
+- Mostrar countdown "Próxima rotação em XX min" abaixo do texto explicativo
+- Usar `setInterval` de 60s para atualizar o countdown
+- Indicar claramente qual imagem está ativa (já tem a estrela) e qual será a próxima (calculada com `(currentHour + 1) % total`)
 
----
+### 4. Remover cauda da bubble do usuário
 
-### Problema 2: Preview image sem largura máxima (VPS)
-
-**Causa raiz:** No `api-server.js`, o `handlePreviewImage` (linha 162) ainda tem `Cache-Control: public, max-age=300` — diferente da edge function que já foi corrigida. Além disso, faltam os headers `og:image:secure_url` e `og:image:type` no HTML do `handleShare`.
-
-**Correção em `self-host/api-server.js`:**
-
-1. **`handlePreviewImage` (linha 162):** Mudar para `Cache-Control: no-cache, no-store, must-revalidate` e adicionar `Content-Length`
-
-2. **`handleShare` (linhas 112-119):** Adicionar as meta tags que faltam:
-   - `og:image:secure_url`
-   - `og:image:type` = `image/png`
-   
-   (As tags `og:image:width=1200`, `og:image:height=630` e `twitter:card=summary_large_image` já estão presentes)
-
----
+**Correção em `src/components/chat/UserBubble.tsx`**:
+- Remover completamente o SVG da cauda (linhas 12-23)
+- Remover `rounded-tr-none` do div da bubble (linha 10) — fica com cantos uniformes
+- Resultado: bubble verde retangular arredondada sem qualquer fragmento
 
 ### Arquivos alterados
 
 | Arquivo | Mudança |
 |---|---|
-| `src/lib/typebot-engine.ts` | URL dinâmico do proxy OpenAI (VPS vs Cloud) |
-| `self-host/api-server.js` | JWT opcional no openai-proxy + cache headers da preview-image + OG tags completas no share |
+| `self-host/api-server.js` | Remover meta-refresh do HTML de crawlers |
+| `src/components/chat/UserBubble.tsx` | Remover SVG da cauda completamente |
+| `src/pages/Admin.tsx` | Adicionar countdown de rotação no modal de previews + indicar próxima imagem |
 
