@@ -188,29 +188,9 @@ export class TypebotEngine {
   }
 
   async* start(): AsyncGenerator<EngineEvent> {
-    // Create session in database
+    // Fire-and-forget session creation — don't block first message rendering
     if (this.funnelId) {
-      try {
-        if (this.useApiLog) {
-          const resp = await fetch('/functions/v1/session-log', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'create_session', funnel_id: this.funnelId }),
-          });
-          const data = await resp.json();
-          if (data?.id) this.sessionId = data.id;
-        } else {
-          const { supabase } = await import('@/integrations/supabase/client');
-          const { data } = await supabase
-            .from('funnel_sessions')
-            .insert({ funnel_id: this.funnelId })
-            .select('id')
-            .single();
-          if (data) this.sessionId = data.id;
-        }
-      } catch (e) {
-        console.warn('Failed to create session:', e);
-      }
+      this.createSessionAsync();
     }
 
     const group = this.getStartGroup();
@@ -219,6 +199,30 @@ export class TypebotEngine {
       return;
     }
     yield* this.processGroup(group, 0);
+  }
+
+  private async createSessionAsync(): Promise<void> {
+    try {
+      if (this.useApiLog) {
+        const resp = await fetch('/functions/v1/session-log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create_session', funnel_id: this.funnelId }),
+        });
+        const data = await resp.json();
+        if (data?.id) this.sessionId = data.id;
+      } else {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data } = await supabase
+          .from('funnel_sessions')
+          .insert({ funnel_id: this.funnelId! })
+          .select('id')
+          .single();
+        if (data) this.sessionId = data.id;
+      }
+    } catch (e) {
+      console.warn('Failed to create session:', e);
+    }
   }
 
   private async logEvent(
