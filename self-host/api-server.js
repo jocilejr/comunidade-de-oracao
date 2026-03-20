@@ -118,7 +118,8 @@ async function handleShare(req, res, slug, format) {
     else if (previewUrl.match(/\.webp/i)) ogImageType = "image/webp";
   }
 
-const html = `<!DOCTYPE html>
+// Forçamos o card gigante removendo a lógica dinâmica e usando tags explícitas
+  const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
