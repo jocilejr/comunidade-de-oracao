@@ -4,48 +4,10 @@
 version: "3.8"
 
 services:
-  # ── SPA: serve arquivos estáticos com fallback SPA ──────
-  funnel-spa:
-    image: joseluisq/static-web-server:2-alpine
-    container_name: funnel-spa
-    restart: unless-stopped
-    environment:
-      - SERVER_PORT=8080
-      - SERVER_ROOT=/public
-      - SERVER_FALLBACK_PAGE=/public/index.html
-      - SERVER_LOG_LEVEL=warn
-    volumes:
-      - /opt/funnel-app/dist:/public:ro
-    networks:
-      - traefik-net
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik-net"
-
-      # ── Middleware: redirect HTTP → HTTPS ──────────────
-      - "traefik.http.middlewares.__ROUTER_PREFIX__-https.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.__ROUTER_PREFIX__-https.redirectscheme.permanent=true"
-
-      # ══ DASHBOARD — __DASHBOARD_DOMAIN__ ══════════════
-      # SPA HTTPS (catch-all, prioridade baixa)
-      - "traefik.http.routers.__ROUTER_PREFIX__-spa.rule=Host(`__DASHBOARD_DOMAIN__`)"
-      - "traefik.http.routers.__ROUTER_PREFIX__-spa.entrypoints=websecure"
-      - "traefik.http.routers.__ROUTER_PREFIX__-spa.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.__ROUTER_PREFIX__-spa.priority=1"
-      - "traefik.http.routers.__ROUTER_PREFIX__-spa.service=__ROUTER_PREFIX__-spa-svc"
-
-      # SPA HTTP → redirect HTTPS
-      - "traefik.http.routers.__ROUTER_PREFIX__-spa-http.rule=Host(`__DASHBOARD_DOMAIN__`)"
-      - "traefik.http.routers.__ROUTER_PREFIX__-spa-http.entrypoints=web"
-      - "traefik.http.routers.__ROUTER_PREFIX__-spa-http.middlewares=__ROUTER_PREFIX__-https"
-      - "traefik.http.routers.__ROUTER_PREFIX__-spa-http.priority=1"
-
-      # ══ PUBLIC — __PUBLIC_DOMAIN__ ════════════════════
-      # REMOVIDO: público agora é roteado inteiramente pelo api-server (funnel-api-proxy)
-      # para suportar bot detection (OG tags) e SPA fallback
-
-      # Service SPA (porta 8080) — usado apenas pelo dashboard
-      - "traefik.http.services.__ROUTER_PREFIX__-spa-svc.loadbalancer.server.port=8080"
+  # ── SPA removido — dashboard agora é servido pelo api-server ──
+  # O api-server serve assets estáticos com MIME correto e faz SPA fallback
+  # apenas para rotas de navegação (nunca para .js/.css)
+  # Veja: funnel-api-proxy abaixo
 
   # ── API Proxy: TCP forward para host:4000 ───────────────
   funnel-api-proxy:

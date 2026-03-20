@@ -615,11 +615,12 @@ const server = http.createServer(async (req, res) => {
     if ((path === "/user-settings" || path === "/user-settings/") && (req.method === "GET" || req.method === "POST")) return await handleUserSettings(req, res);
     if (path === "/health") return json(res, { status: "ok", timestamp: new Date().toISOString() });
 
-    // ── Static file serving (for public domain SPA) ──────────
+    // ── Static file serving (dashboard + public domain) ──────
     const DIST_DIR = process.env.DIST_DIR || "/opt/funnel-app/dist";
     const MIME_TYPES = {
       ".html": "text/html; charset=utf-8",
       ".js": "application/javascript",
+      ".mjs": "application/javascript",
       ".css": "text/css",
       ".json": "application/json",
       ".png": "image/png",
@@ -633,10 +634,12 @@ const server = http.createServer(async (req, res) => {
       ".ttf": "font/ttf",
       ".mp3": "audio/mpeg",
       ".webp": "image/webp",
+      ".map": "application/json",
     };
 
-    // Serve static assets (/assets/*, /favicon.ico, etc.)
-    if (path.startsWith("/assets/") || path === "/favicon.ico" || path === "/robots.txt" || path.startsWith("/images/") || path.startsWith("/sounds/")) {
+    // Known static asset paths — serve file or hard 404 (NEVER index.html)
+    const isStaticAsset = path.startsWith("/assets/") || path === "/favicon.ico" || path === "/robots.txt" || path.startsWith("/images/") || path.startsWith("/sounds/");
+    if (isStaticAsset) {
       const filePath = nodePath.join(DIST_DIR, path);
       const safePath = nodePath.resolve(filePath);
       if (!safePath.startsWith(nodePath.resolve(DIST_DIR))) return json(res, { error: "Forbidden" }, 403);
@@ -647,7 +650,26 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, { "Content-Type": mime, "Cache-Control": "public, max-age=31536000, immutable" });
         return res.end(data);
       } catch {
-        return json(res, { error: "Not found" }, 404);
+        // CRITICAL: return 404, never fallback to index.html for assets
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        return res.end("Not found");
+      }
+    }
+
+    // ── File with known extension → try serve or 404 (never SPA fallback) ──
+    const ext = nodePath.extname(path).toLowerCase();
+    if (ext && MIME_TYPES[ext] && ext !== ".html") {
+      const filePath = nodePath.join(DIST_DIR, path);
+      const safePath = nodePath.resolve(filePath);
+      if (!safePath.startsWith(nodePath.resolve(DIST_DIR))) return json(res, { error: "Forbidden" }, 403);
+      try {
+        const data = fs.readFileSync(safePath);
+        const mime = MIME_TYPES[ext] || "application/octet-stream";
+        res.writeHead(200, { "Content-Type": mime, "Cache-Control": "public, max-age=31536000, immutable" });
+        return res.end(data);
+      } catch {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        return res.end("Not found");
       }
     }
 
@@ -659,23 +681,23 @@ const server = http.createServer(async (req, res) => {
       const ua = req.headers["user-agent"] || "";
 
       if (BOT_UA.test(ua)) {
-        // Crawler: retornar HTML com OG tags
         return await handleShare(req, res, slug, null);
-      }
-
-      // Humano: servir index.html (SPA client-side routing)
-      try {
-        const indexHtml = fs.readFileSync(nodePath.join(DIST_DIR, "index.html"), "utf-8");
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        return res.end(indexHtml);
-      } catch {
-        // fallback: redirect para dashboard
-        res.writeHead(302, { Location: `${DASHBOARD_ORIGIN}/f/${slug}` });
-        return res.end();
       }
     }
 
-    json(res, { error: "Not found" }, 404);
+    // ── SPA fallback: serve index.html for navigation routes ──
+    // This covers: /, /login, /admin, /f/:slug, /:slug (humans)
+    try {
+      const indexHtml = fs.readFileSync(nodePath.join(DIST_DIR, "index.html"), "utf-8");
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      return res.end(indexHtml);
+    } catch {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      return res.end("index.html not found — check DIST_DIR");
+    }
   } catch (err) {
     console.error("API Error:", err);
     json(res, { error: err.message || "Internal server error" }, 500);
