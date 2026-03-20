@@ -70,6 +70,9 @@ export default {
           send: "hsl(var(--wa-send))",
           time: "hsl(var(--wa-time))",
           progress: "hsl(var(--wa-progress))",
+          cta: "hsl(var(--wa-cta))",
+          "cta-hover": "hsl(var(--wa-cta-hover))",
+          "cta-foreground": "hsl(var(--wa-cta-foreground))",
         },
       },
       borderRadius: {

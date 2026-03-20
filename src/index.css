@@ -97,6 +97,9 @@
     --wa-send: 142 48% 35%;
     --wa-time: 0 0% 60%;
     --wa-progress: 142 48% 45%;
+    --wa-cta: 150 53% 26%;
+    --wa-cta-hover: 150 53% 21%;
+    --wa-cta-foreground: 0 0% 100%;
 
     --sidebar-background: 220 30% 6%;
     --sidebar-foreground: 220 10% 80%;
