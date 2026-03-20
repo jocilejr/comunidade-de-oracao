@@ -104,10 +104,41 @@ async function handleShare(req, res, slug, format) {
   }
 
 const v = Date.now().toString();
-  // Imagem servida pelo domínio público para crawlers (Com .jpg falso no final para o WhatsApp)
+  // Adicionamos o .jpg falso no final para o WhatsApp reconhecer como imagem
   const imageUrl = previewUrl
     ? `${PUBLIC_ORIGIN}/preview-image?slug=${encodeURIComponent(slug)}&v=${v}&file=banner.jpg`
     : "";
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+  <meta name="description" content="${description}" />
+  
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="${description}" />
+  <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
+  ${imageUrl ? `
+  <meta property="og:image" content="${escapeHtml(imageUrl)}" />
+  <meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  ` : ""}
+  
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${title}" />
+  <meta name="twitter:description" content="${description}" />
+  ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}
+</head>
+<body>
+  <p>Redirecionando para o funil...</p>
+  <script>window.location.href="${escapeHtml(spaUrl)}";</script>
+</body>
+</html>`;
 
   // Detectar MIME real para og:image:type
   let ogImageType = "image/png";
