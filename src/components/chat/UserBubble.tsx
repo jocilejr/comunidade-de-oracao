@@ -13,12 +13,12 @@ const UserBubble = ({ content }: UserBubbleProps) => {
           viewBox="0 0 8 13"
           height="13"
           width="8"
-          className="absolute -right-[8px] top-0"
-          style={{ color: 'hsl(var(--wa-user-bubble))' }}
+          className="absolute -right-[8px] top-0 block"
+          preserveAspectRatio="none"
         >
           <path
-            d="M1 0v13l2-2c.6-.6 1.3-1 2-1h3V0z"
-            fill="currentColor"
+            d="M0 0v1c0 3.3 1.8 6.4 4.7 8L8 11V0z"
+            fill="hsl(var(--wa-user-bubble))"
           />
         </svg>
         <p className="text-[14.2px] leading-[19px]" style={{ color: 'hsl(var(--wa-user-foreground))' }}>{content}</p>
