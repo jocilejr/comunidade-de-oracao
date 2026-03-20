@@ -26,6 +26,7 @@ type DisplayItem =
 
 const MIN_TYPING = 400;
 const MAX_TYPING = 2000;
+const FIRST_MSG_TYPING = 150; // Ultra-fast first message
 const MESSAGE_DELAY = 300;
 
 /** Typing delay proportional to text length, like real WhatsApp */

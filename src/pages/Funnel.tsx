@@ -4,6 +4,33 @@ import { getFunnelBySlug } from '@/lib/funnel-storage';
 import { StoredFunnel } from '@/lib/typebot-types';
 import ChatRenderer from '@/components/chat/ChatRenderer';
 import { Link } from 'react-router-dom';
+import { ArrowLeft, MoreVertical, Phone, Video } from 'lucide-react';
+
+/** WhatsApp-style skeleton shown instantly while funnel data loads */
+const ChatSkeleton = () => (
+  <div className="h-[100dvh] max-h-[100dvh] flex flex-col overflow-hidden">
+    {/* Progress bar placeholder */}
+    <div className="shrink-0 h-0.5" style={{ backgroundColor: 'hsl(var(--wa-progress) / 0.3)' }} />
+
+    {/* Header */}
+    <header className="shrink-0 flex items-center gap-3 px-4 py-2 shadow-sm" style={{ backgroundColor: 'hsl(var(--wa-header))' }}>
+      <ArrowLeft className="w-5 h-5" style={{ color: 'hsl(var(--wa-header-foreground))' }} />
+      <div className="w-9 h-9 rounded-full animate-pulse" style={{ backgroundColor: 'hsl(var(--wa-header-foreground) / 0.2)' }} />
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="h-3.5 w-24 rounded animate-pulse" style={{ backgroundColor: 'hsl(var(--wa-header-foreground) / 0.25)' }} />
+        <div className="h-2.5 w-12 rounded animate-pulse" style={{ backgroundColor: 'hsl(var(--wa-header-foreground) / 0.15)' }} />
+      </div>
+      <div className="flex items-center gap-4" style={{ color: 'hsl(var(--wa-header-foreground))' }}>
+        <Video className="w-5 h-5" />
+        <Phone className="w-5 h-5" />
+        <MoreVertical className="w-5 h-5" />
+      </div>
+    </header>
+
+    {/* Wallpaper area */}
+    <div className="flex-1 wa-wallpaper" />
+  </div>
+);
 
 const Funnel = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -42,12 +69,9 @@ const Funnel = () => {
     return () => { document.title = 'Typebot Inteligente Origem Viva'; };
   }, [funnel]);
 
+  // Loading state — show WhatsApp skeleton instantly
   if (funnel === undefined) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-muted-foreground text-sm">Carregando...</p>
-      </div>
-    );
+    return <ChatSkeleton />;
   }
 
   if (!funnel) {
