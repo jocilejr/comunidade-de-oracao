@@ -156,9 +156,28 @@ npm ci --prefer-offline 2>/dev/null || npm install 2>/dev/null
 npm run build
 log "Frontend buildado"
 
-rm -rf "$APP_DIR/dist"
-cp -r "$REPO_DIR/dist" "$APP_DIR/dist"
+# Estratégia de sync: preservar assets antigos por 1 ciclo para evitar tela branca
+# Navegadores com index.html cacheado ainda conseguem carregar bundles antigos
+if [ -d "$APP_DIR/dist/assets" ]; then
+  log "Preservando assets anteriores temporariamente..."
+  mkdir -p "$APP_DIR/dist/_old_assets"
+  cp -r "$APP_DIR/dist/assets/"* "$APP_DIR/dist/_old_assets/" 2>/dev/null || true
+fi
+
+# Remover assets antigos de ciclos anteriores (_old_assets)
+rm -rf "$APP_DIR/dist/_old_assets_prev" 2>/dev/null || true
+
+# Copiar novo build por cima (preserva arquivos existentes)
+rsync -a --delete --exclude='_old_assets' "$REPO_DIR/dist/" "$APP_DIR/dist/"
 log "Frontend copiado para $APP_DIR/dist"
+
+# Mesclar assets antigos no novo diretório (hashes diferentes coexistem)
+if [ -d "$APP_DIR/dist/_old_assets" ]; then
+  cp -n "$APP_DIR/dist/_old_assets/"* "$APP_DIR/dist/assets/" 2>/dev/null || true
+  # Renomear para limpeza no próximo ciclo
+  mv "$APP_DIR/dist/_old_assets" "$APP_DIR/dist/_old_assets_prev" 2>/dev/null || true
+  log "Assets antigos preservados para transição suave"
+fi
 
 # ── 7b. Garantir cron de rotação de imagens ─────────────
 log "Verificando cron de rotação de imagens..."
