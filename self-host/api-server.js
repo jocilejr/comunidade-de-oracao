@@ -159,7 +159,9 @@ async function handlePreviewImage(req, res, slug) {
   res.writeHead(200, {
     ...corsHeaders,
     "Content-Type": mimeType,
-    "Cache-Control": "public, max-age=300, s-maxage=60",
+    "Content-Length": buffer.length,
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
   });
   res.end(buffer);
 }
