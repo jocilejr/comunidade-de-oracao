@@ -407,7 +407,7 @@ async function handleUserSettings(req, res) {
   return json(res, { status: "ok" });
 }
 
-// ── Route: /rotate-preview-images ─────────────────────────
+// ── Route: /rotate-preview-images (round-robin) ──────────
 async function handleRotateImages(req, res) {
   const { rows: images } = await pool.query(
     `SELECT id, funnel_id, data_url, position FROM funnel_preview_images ORDER BY funnel_id, position ASC`
@@ -421,35 +421,61 @@ async function handleRotateImages(req, res) {
     byFunnel[img.funnel_id].push(img);
   }
 
-  const currentHour = new Date().getUTCHours();
+  // Get current active preview_image for each funnel
+  const funnelIds = Object.keys(byFunnel);
+  const { rows: funnelRows } = await pool.query(
+    `SELECT id, preview_image FROM funnels WHERE id = ANY($1)`,
+    [funnelIds]
+  );
+  const activeMap = {};
+  for (const f of funnelRows) activeMap[f.id] = f.preview_image;
+
   let updated = 0;
   const details = [];
 
   for (const [funnelId, funnelImages] of Object.entries(byFunnel)) {
-    const idx = currentHour % funnelImages.length;
-    const activeImage = funnelImages[idx];
+    if (funnelImages.length <= 1) {
+      // Single image: just ensure it's set
+      const url = funnelImages[0].data_url;
+      if (url && activeMap[funnelId] !== url) {
+        await pool.query(`UPDATE funnels SET preview_image = $1 WHERE id = $2`, [url, funnelId]);
+        previewCache.delete(funnelId); // invalidate cache
+      }
+      details.push({ funnelId, status: "single_image", totalImages: 1 });
+      continue;
+    }
 
-    // Validate data_url
-    const url = activeImage.data_url;
+    // Find current active index by comparing data_url
+    const currentActive = activeMap[funnelId];
+    let currentIdx = funnelImages.findIndex(img => img.data_url === currentActive);
+    if (currentIdx < 0) currentIdx = 0; // fallback to first
+
+    // Advance to next (round-robin)
+    const nextIdx = (currentIdx + 1) % funnelImages.length;
+    const nextImage = funnelImages[nextIdx];
+
+    const url = nextImage.data_url;
     if (!url || (!url.startsWith("data:") && !url.startsWith("http"))) {
-      details.push({ funnelId, status: "skipped", reason: "invalid data_url", imageId: activeImage.id });
+      details.push({ funnelId, status: "skipped", reason: "invalid data_url", imageId: nextImage.id });
       continue;
     }
 
     await pool.query(`UPDATE funnels SET preview_image = $1 WHERE id = $2`, [url, funnelId]);
+    // Invalidate preview cache for all slugs of this funnel
+    for (const [k] of previewCache) previewCache.delete(k);
     updated++;
     details.push({
       funnelId,
-      status: "updated",
+      status: "rotated",
       totalImages: funnelImages.length,
-      activeIndex: idx,
-      activeImageId: activeImage.id,
-      activePosition: activeImage.position,
+      fromIndex: currentIdx,
+      toIndex: nextIdx,
+      activeImageId: nextImage.id,
     });
   }
 
-  console.log(`[rotate] hour=${currentHour} updated=${updated}/${Object.keys(byFunnel).length} funnels`);
-  json(res, { message: `Rotated ${updated} funnels`, hour: currentHour, details });
+  console.log(`[rotate] updated=${updated}/${funnelIds.length} funnels`);
+  json(res, { message: `Rotated ${updated} funnels`, details });
 }
 
 // ── Auth: signup ──────────────────────────────────────────

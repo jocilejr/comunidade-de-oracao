@@ -37,22 +37,49 @@ Deno.serve(async (req) => {
       byFunnel[img.funnel_id].push(img);
     }
 
-    const currentHour = new Date().getUTCHours();
+    // Get current active preview_image for each funnel
+    const funnelIds = Object.keys(byFunnel);
+    const { data: funnelRows } = await supabase
+      .from("funnels")
+      .select("id, preview_image")
+      .in("id", funnelIds);
+
+    const activeMap: Record<string, string | null> = {};
+    for (const f of funnelRows || []) {
+      activeMap[f.id] = f.preview_image;
+    }
+
     let updated = 0;
+    const details: any[] = [];
 
     for (const [funnelId, funnelImages] of Object.entries(byFunnel)) {
-      if (funnelImages.length <= 1) continue;
-      const idx = currentHour % funnelImages.length;
-      const activeImage = funnelImages[idx];
-
-      // Validate data_url before updating
-      const url = activeImage.data_url;
-      if (!url || (!url.startsWith("data:") && !url.startsWith("http"))) {
-        console.warn(`Skipping invalid data_url for funnel ${funnelId}, image ${activeImage.id}`);
+      if (funnelImages.length <= 1) {
+        // Single image: ensure it's set
+        const url = funnelImages[0].data_url;
+        if (url && activeMap[funnelId] !== url) {
+          await supabase.from("funnels").update({ preview_image: url }).eq("id", funnelId);
+        }
+        details.push({ funnelId, status: "single_image", totalImages: 1 });
         continue;
       }
 
-      console.log(`Rotating funnel ${funnelId} to image ${activeImage.id} (position ${activeImage.position})`);
+      // Find current active index by comparing data_url
+      const currentActive = activeMap[funnelId];
+      let currentIdx = funnelImages.findIndex(img => img.data_url === currentActive);
+      if (currentIdx < 0) currentIdx = 0;
+
+      // Advance to next (round-robin)
+      const nextIdx = (currentIdx + 1) % funnelImages.length;
+      const nextImage = funnelImages[nextIdx];
+
+      const url = nextImage.data_url;
+      if (!url || (!url.startsWith("data:") && !url.startsWith("http"))) {
+        console.warn(`Skipping invalid data_url for funnel ${funnelId}, image ${nextImage.id}`);
+        details.push({ funnelId, status: "skipped", reason: "invalid data_url" });
+        continue;
+      }
+
+      console.log(`Rotating funnel ${funnelId}: index ${currentIdx} → ${nextIdx}`);
 
       const { error: updateErr } = await supabase
         .from("funnels")
@@ -60,10 +87,18 @@ Deno.serve(async (req) => {
         .eq("id", funnelId);
 
       if (!updateErr) updated++;
+      details.push({
+        funnelId,
+        status: "rotated",
+        totalImages: funnelImages.length,
+        fromIndex: currentIdx,
+        toIndex: nextIdx,
+        activeImageId: nextImage.id,
+      });
     }
 
     return new Response(
-      JSON.stringify({ message: `Rotated ${updated} funnels`, hour: currentHour }),
+      JSON.stringify({ message: `Rotated ${updated} funnels`, details }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
