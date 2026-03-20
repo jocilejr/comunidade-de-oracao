@@ -335,6 +335,28 @@ if [ "$PROXY_MODE" = "traefik" ]; then
     echo ""
   fi
 
+  # ── Diagnostic endpoint test ──────────────────────────
+  info "Testando endpoint de diagnóstico..."
+  DIAG_RESP=$(curl -sf "https://${DASHBOARD_DOMAIN}/__funnel_diag" 2>/dev/null || echo "FAIL")
+  if echo "$DIAG_RESP" | grep -q '"servedBy":"api-server"'; then
+    echo -e "  ${GREEN}✅${NC} /__funnel_diag → api-server confirmado"
+  else
+    echo -e "  ${RED}❌${NC} /__funnel_diag NÃO retornou api-server!"
+    echo -e "      Resposta: $(echo "$DIAG_RESP" | head -c 300)"
+    echo -e "  ${RED}   ⚠ Outro serviço está respondendo pelo domínio ${DASHBOARD_DOMAIN}!${NC}"
+    SMOKE_OK=false
+  fi
+
+  # ── Also test diag via localhost ──
+  DIAG_LOCAL=$(curl -sf "http://127.0.0.1:4000/__funnel_diag" 2>/dev/null || echo "FAIL")
+  if echo "$DIAG_LOCAL" | grep -q '"servedBy":"api-server"'; then
+    echo -e "  ${GREEN}✅${NC} localhost:4000/__funnel_diag → OK"
+  else
+    echo -e "  ${RED}❌${NC} localhost:4000/__funnel_diag falhou!"
+    echo -e "  ${RED}   O api-server pode não estar rodando. Verifique: pm2 logs funnel-api${NC}"
+    SMOKE_OK=false
+  fi
+
   echo ""
 
   if [ "$SMOKE_OK" = true ]; then
@@ -353,14 +375,20 @@ if [ "$PROXY_MODE" = "traefik" ]; then
       fi
     done
 
-    if docker ps --format '{{.Names}}' | grep -q "^funnel-nginx-proxy$"; then
-      warn "  Container ANTIGO funnel-nginx-proxy ainda existe! Remova-o."
-    fi
+    # Check for OLD containers that might conflict
+    for old_c in funnel-nginx-proxy funnel-spa; do
+      if docker ps --format '{{.Names}}' | grep -q "^${old_c}$"; then
+        warn "  Container ANTIGO ${old_c} ainda existe! Removendo..."
+        docker stop "$old_c" 2>/dev/null || true
+        docker rm "$old_c" 2>/dev/null || true
+      fi
+    done
 
     echo ""
     info "Rede dos containers:"
-    if [ -n "$TRAEFIK_CONTAINER" ]; then
-      TRAEFIK_NETS=$(docker inspect "$TRAEFIK_CONTAINER" \
+    TRAEFIK_CONTAINER_DIAG=$(docker ps --format '{{.Names}}' | grep -i traefik | head -1 || true)
+    if [ -n "$TRAEFIK_CONTAINER_DIAG" ]; then
+      TRAEFIK_NETS=$(docker inspect "$TRAEFIK_CONTAINER_DIAG" \
         --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)
       echo -e "  Traefik: ${TRAEFIK_NETS}"
       for c in funnel-api-proxy funnel-rest-proxy; do
@@ -385,6 +413,16 @@ if [ "$PROXY_MODE" = "traefik" ]; then
       fi
     done
     [ "$CONFLICTS" -eq 0 ] && log "  Nenhum conflito ✅"
+
+    echo ""
+    warn "═══════════════════════════════════════════════════"
+    warn "DEPLOY COM PROBLEMAS — verifique os erros acima!"
+    warn "Comandos úteis:"
+    echo -e "  curl -sf https://${DASHBOARD_DOMAIN}/__funnel_diag | python3 -m json.tool"
+    echo -e "  curl -sf -D- https://${DASHBOARD_DOMAIN}/assets/ 2>&1 | head -20"
+    echo -e "  docker ps --format '{{.Names}} {{.Status}}'"
+    echo -e "  pm2 logs funnel-api --lines 30"
+    warn "═══════════════════════════════════════════════════"
     echo ""
   fi
 

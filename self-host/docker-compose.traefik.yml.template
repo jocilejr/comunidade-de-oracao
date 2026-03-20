@@ -54,6 +54,27 @@ services:
       - "traefik.http.routers.__ROUTER_PREFIX__-api-raw.middlewares=__ROUTER_PREFIX__-strip-api"
       - "traefik.http.routers.__ROUTER_PREFIX__-api-raw.service=__ROUTER_PREFIX__-api-svc"
 
+      # ══ DASHBOARD — /assets/* HTTPS → api-server (high priority, never SPA fallback elsewhere) ══
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-assets.rule=Host(`__DASHBOARD_DOMAIN__`) && PathPrefix(`/assets`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-assets.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-assets.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-assets.priority=200"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-assets.service=__ROUTER_PREFIX__-api-svc"
+
+      # ══ PUBLIC — /assets/* HTTPS → api-server (high priority) ══
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-assets.rule=Host(`__PUBLIC_DOMAIN__`) && PathPrefix(`/assets`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-assets.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-assets.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-assets.priority=200"
+      - "traefik.http.routers.__ROUTER_PREFIX__-pub-assets.service=__ROUTER_PREFIX__-api-svc"
+
+      # ══ DASHBOARD — /__funnel_diag HTTPS → api-server (diagnostic) ══
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-diag.rule=Host(`__DASHBOARD_DOMAIN__`) && Path(`/__funnel_diag`)"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-diag.entrypoints=websecure"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-diag.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-diag.priority=200"
+      - "traefik.http.routers.__ROUTER_PREFIX__-dash-diag.service=__ROUTER_PREFIX__-api-svc"
+
       # ══ DASHBOARD — catch-all HTTPS → api-server (SPA + assets) ══
       - "traefik.http.routers.__ROUTER_PREFIX__-dash.rule=Host(`__DASHBOARD_DOMAIN__`)"
       - "traefik.http.routers.__ROUTER_PREFIX__-dash.entrypoints=websecure"

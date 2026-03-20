@@ -615,6 +615,32 @@ const server = http.createServer(async (req, res) => {
     if ((path === "/user-settings" || path === "/user-settings/") && (req.method === "GET" || req.method === "POST")) return await handleUserSettings(req, res);
     if (path === "/health") return json(res, { status: "ok", timestamp: new Date().toISOString() });
 
+    // ── Diagnostic endpoint: prove which stack is responding ──
+    if (path === "/__funnel_diag") {
+      const DIST_DIR_DIAG = process.env.DIST_DIR || "/opt/funnel-app/dist";
+      const distExists = fs.existsSync(DIST_DIR_DIAG);
+      const indexExists = distExists && fs.existsSync(nodePath.join(DIST_DIR_DIAG, "index.html"));
+      let assetFiles = [];
+      try { assetFiles = fs.readdirSync(nodePath.join(DIST_DIR_DIAG, "assets")).filter(f => f.endsWith(".js")); } catch {}
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "X-Funnel-Served-By": "api-server",
+        "X-Funnel-Route": "diag",
+      });
+      return res.end(JSON.stringify({
+        servedBy: "api-server",
+        timestamp: new Date().toISOString(),
+        publicDomain: PUBLIC_DOMAIN,
+        dashboardDomain: DASHBOARD_DOMAIN,
+        distDir: DIST_DIR_DIAG,
+        distExists,
+        indexExists,
+        jsAssets: assetFiles,
+        pid: process.pid,
+        uptime: process.uptime(),
+      }, null, 2));
+    }
+
     // ── Static file serving (dashboard + public domain) ──────
     const DIST_DIR = process.env.DIST_DIR || "/opt/funnel-app/dist";
     const MIME_TYPES = {
