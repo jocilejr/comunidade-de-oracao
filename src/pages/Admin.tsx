@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Upload, Trash2, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera, Plus, Star, Download, Loader2, Copy, Clock } from 'lucide-react';
+import { Upload, Trash2, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera, Plus, Star, Download, Loader2, Copy, Clock, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
@@ -32,11 +32,13 @@ const NAV_ITEMS = [
   { id: 'settings', label: 'Configurações', icon: Settings },
 ] as const;
 
-const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUrl, onRemove }: {
+const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUrl, onRemove, onRotateNow, rotating }: {
   previewImages: FunnelPreviewImage[];
   loadingPreviews: boolean;
   activeDataUrl?: string | null;
   onRemove: (id: string) => void;
+  onRotateNow: () => void;
+  rotating: boolean;
 }) => {
   const [minutesLeft, setMinutesLeft] = useState(0);
 
@@ -59,10 +61,23 @@ const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUr
         Adicione múltiplas imagens de preview. A cada hora o sistema alterna automaticamente qual imagem será exibida.
       </p>
 
+      {previewImages.length === 1 && (
+        <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-1.5">
+          <AlertTriangle className="w-3 h-3 shrink-0" />
+          <span>Adicione pelo menos <strong>2 imagens</strong> para a rotação automática funcionar.</span>
+        </div>
+      )}
+
       {previewImages.length > 1 && (
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/50 rounded-lg px-2.5 py-1.5">
-          <Clock className="w-3 h-3" />
-          <span>Próxima rotação em <strong className="text-foreground">{minutesLeft} min</strong></span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/50 rounded-lg px-2.5 py-1.5">
+            <Clock className="w-3 h-3" />
+            <span>Próxima rotação em <strong className="text-foreground">{minutesLeft} min</strong></span>
+          </div>
+          <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1" onClick={onRotateNow} disabled={rotating}>
+            <RefreshCw className={`w-3 h-3 ${rotating ? 'animate-spin' : ''}`} />
+            Rotacionar agora
+          </Button>
         </div>
       )}
 
@@ -164,6 +179,8 @@ const Admin = () => {
   const [previewGalleryDialog, setPreviewGalleryDialog] = useState<StoredFunnel | null>(null);
   const [previewImages, setPreviewImages] = useState<FunnelPreviewImage[]>([]);
   const [loadingPreviews, setLoadingPreviews] = useState(false);
+  const [rotating, setRotating] = useState(false);
+  const [activePreviewUrl, setActivePreviewUrl] = useState<string | null>(null);
   const { toast } = useToast();
   const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -356,10 +373,37 @@ const Admin = () => {
 
   const openPreviewGallery = async (funnel: StoredFunnel) => {
     setPreviewGalleryDialog(funnel);
+    setActivePreviewUrl(funnel.previewImage || null);
     setLoadingPreviews(true);
     const imgs = await getFunnelPreviewImages(funnel.id);
     setPreviewImages(imgs);
     setLoadingPreviews(false);
+  };
+
+  const handleRotateNow = async () => {
+    if (!previewGalleryDialog || rotating) return;
+    setRotating(true);
+    try {
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      const resp = await fetch(`${baseUrl}/functions/v1/rotate-preview-images`, { method: 'POST' });
+      if (resp.ok) {
+        // Refresh funnel data to get new active image
+        await refresh();
+        const updatedFunnels = await getAllFunnelsMeta();
+        const updated = updatedFunnels.find(f => f.id === previewGalleryDialog.id);
+        if (updated) {
+          setActivePreviewUrl(updated.previewImage || null);
+          setPreviewGalleryDialog(updated);
+        }
+        toast({ title: 'Rotação executada!', description: 'A imagem ativa foi atualizada.' });
+      } else {
+        toast({ title: 'Erro', description: 'Falha ao executar rotação.', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Erro', description: 'Não foi possível conectar ao servidor.', variant: 'destructive' });
+    } finally {
+      setRotating(false);
+    }
   };
 
   const handlePreviewGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1206,8 +1250,10 @@ const Admin = () => {
             <RotationCountdownGallery
               previewImages={previewImages}
               loadingPreviews={loadingPreviews}
-              activeDataUrl={previewGalleryDialog?.previewImage}
+              activeDataUrl={activePreviewUrl}
               onRemove={handleRemovePreviewImage}
+              onRotateNow={handleRotateNow}
+              rotating={rotating}
             />
 
             <Button variant="outline" size="sm" className="w-full" onClick={() => previewGalleryRef.current?.click()}>

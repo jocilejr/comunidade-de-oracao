@@ -74,7 +74,7 @@ async function handleShare(req, res, slug, format) {
   }
 
   const { rows } = await pool.query(
-    `SELECT name, slug, page_title, page_description, preview_image, bot_name, bot_avatar
+    `SELECT id, name, slug, page_title, page_description, preview_image, bot_name, bot_avatar
      FROM funnels WHERE slug = $1 LIMIT 1`,
     [slug]
   );
@@ -93,11 +93,30 @@ async function handleShare(req, res, slug, format) {
   const title = escapeHtml(funnel.page_title || funnel.name || "Funil");
   const description = escapeHtml(funnel.page_description || "Aperte aqui e Receba");
 
+  // Fallback: se preview_image está vazio, buscar da galeria
+  let previewUrl = funnel.preview_image;
+  if (!previewUrl) {
+    const { rows: fallbackImgs } = await pool.query(
+      `SELECT data_url FROM funnel_preview_images WHERE funnel_id = $1 ORDER BY position ASC LIMIT 1`,
+      [funnel.id || funnel.slug]
+    );
+    if (fallbackImgs.length) previewUrl = fallbackImgs[0].data_url;
+  }
+
   const v = Date.now().toString();
   // Imagem servida pelo domínio público para crawlers
-  const imageUrl = funnel.preview_image
+  const imageUrl = previewUrl
     ? `${PUBLIC_ORIGIN}/preview-image?slug=${encodeURIComponent(slug)}&v=${v}`
     : "";
+
+  // Detectar MIME real para og:image:type
+  let ogImageType = "image/png";
+  if (previewUrl) {
+    const mimeMatch = previewUrl.match(/^data:([^;]+);/);
+    if (mimeMatch) ogImageType = mimeMatch[1];
+    else if (previewUrl.match(/\.jpe?g/i)) ogImageType = "image/jpeg";
+    else if (previewUrl.match(/\.webp/i)) ogImageType = "image/webp";
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -111,7 +130,7 @@ async function handleShare(req, res, slug, format) {
   <meta property="og:description" content="${description}" />
   ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />` : ""}
   ${imageUrl ? `<meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />` : ""}
-  ${imageUrl ? `<meta property="og:image:type" content="image/png" />` : ""}
+  ${imageUrl ? `<meta property="og:image:type" content="${ogImageType}" />` : ""}
   ${imageUrl ? `<meta property="og:image:width" content="1200" />` : ""}
   ${imageUrl ? `<meta property="og:image:height" content="630" />` : ""}
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
@@ -354,7 +373,7 @@ async function handleUserSettings(req, res) {
 // ── Route: /rotate-preview-images ─────────────────────────
 async function handleRotateImages(req, res) {
   const { rows: images } = await pool.query(
-    `SELECT id, funnel_id, data_url, position FROM funnel_preview_images ORDER BY position ASC`
+    `SELECT id, funnel_id, data_url, position FROM funnel_preview_images ORDER BY funnel_id, position ASC`
   );
 
   if (!images.length) return json(res, { message: "No preview images to rotate" });
@@ -367,15 +386,33 @@ async function handleRotateImages(req, res) {
 
   const currentHour = new Date().getUTCHours();
   let updated = 0;
+  const details = [];
 
   for (const [funnelId, funnelImages] of Object.entries(byFunnel)) {
-    if (funnelImages.length <= 1) continue;
     const idx = currentHour % funnelImages.length;
-    await pool.query(`UPDATE funnels SET preview_image = $1 WHERE id = $2`, [funnelImages[idx].data_url, funnelId]);
+    const activeImage = funnelImages[idx];
+
+    // Validate data_url
+    const url = activeImage.data_url;
+    if (!url || (!url.startsWith("data:") && !url.startsWith("http"))) {
+      details.push({ funnelId, status: "skipped", reason: "invalid data_url", imageId: activeImage.id });
+      continue;
+    }
+
+    await pool.query(`UPDATE funnels SET preview_image = $1 WHERE id = $2`, [url, funnelId]);
     updated++;
+    details.push({
+      funnelId,
+      status: "updated",
+      totalImages: funnelImages.length,
+      activeIndex: idx,
+      activeImageId: activeImage.id,
+      activePosition: activeImage.position,
+    });
   }
 
-  json(res, { message: `Rotated ${updated} funnels`, hour: currentHour });
+  console.log(`[rotate] hour=${currentHour} updated=${updated}/${Object.keys(byFunnel).length} funnels`);
+  json(res, { message: `Rotated ${updated} funnels`, hour: currentHour, details });
 }
 
 // ── Auth: signup ──────────────────────────────────────────
@@ -512,7 +549,7 @@ const server = http.createServer(async (req, res) => {
 
     if (path === "/openai-proxy" && req.method === "POST") return await handleOpenaiProxy(req, res);
     if (path === "/typebot-proxy" && req.method === "POST") return await handleTypebotProxy(req, res);
-    if (path === "/rotate-preview-images" && req.method === "POST") return await handleRotateImages(req, res);
+    if (path === "/rotate-preview-images" && (req.method === "POST" || req.method === "GET")) return await handleRotateImages(req, res);
     if ((path === "/user-settings" || path === "/user-settings/") && (req.method === "GET" || req.method === "POST")) return await handleUserSettings(req, res);
     if (path === "/health") return json(res, { status: "ok", timestamp: new Date().toISOString() });
 

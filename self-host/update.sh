@@ -160,6 +160,14 @@ rm -rf "$APP_DIR/dist"
 cp -r "$REPO_DIR/dist" "$APP_DIR/dist"
 log "Frontend copiado para $APP_DIR/dist"
 
+# ── 7b. Garantir cron de rotação de imagens ─────────────
+log "Verificando cron de rotação de imagens..."
+CRON_CMD='0 * * * * curl -sf -X POST http://127.0.0.1:4000/rotate-preview-images >> /var/log/funnel-rotate.log 2>&1'
+(crontab -l 2>/dev/null | grep -v "rotate-preview-images"; echo "$CRON_CMD") | crontab -
+systemctl enable cron 2>/dev/null || true
+systemctl start cron 2>/dev/null || true
+log "Cron de rotação configurado (a cada hora, log em /var/log/funnel-rotate.log)"
+
 # ── 8. Reiniciar serviços PM2 ───────────────────────────
 log "Reiniciando serviços..."
 cd "$APP_DIR"
