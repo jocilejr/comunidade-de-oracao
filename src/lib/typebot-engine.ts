@@ -47,12 +47,19 @@ export class TypebotEngine {
   private sessionId: string | null = null;
   private funnelId: string | null = null;
   private lastGroupTitle: string = '';
+  private useApiLog: boolean = false;
 
   constructor(flow: TypebotFlow, options?: { ownerUserId?: string; funnelId?: string }) {
     this.flow = flow;
     this.variables = new Map();
     this.ownerUserId = options?.ownerUserId || null;
     this.funnelId = options?.funnelId || null;
+
+    // On public domain, use the api-server endpoint for logging instead of Supabase client
+    const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+    if (publicDomain && window.location.hostname === publicDomain) {
+      this.useApiLog = true;
+    }
 
     // Initialize variables
     for (const v of flow.variables || []) {
