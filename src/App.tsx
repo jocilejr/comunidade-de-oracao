@@ -45,14 +45,13 @@ const App = () => {
             <Toaster />
             <Sonner />
             <BrowserRouter>
+              <Suspense fallback={null}>
               {publicOnly ? (
-                /* Domínio público: apenas funis */
                 <Routes>
                   <Route path="/:slug" element={<Funnel />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               ) : (
-                /* Domínio do app: dashboard + funis */
                 <Routes>
                   <Route path="/" element={<Index />} />
                   <Route path="/login" element={<Login />} />
@@ -61,6 +60,7 @@ const App = () => {
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               )}
+              </Suspense>
             </BrowserRouter>
           </TooltipProvider>
         </AuthProvider>
