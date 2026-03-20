@@ -207,6 +207,25 @@ else
   warn "API não respondeu ao health check (HTTP ${HEALTH}). Verifique: pm2 logs funnel-api"
 fi
 
+# ── 9b. Smoke test: verificar hash match entre index.html e assets ──
+log "Verificando integridade de assets (hash match)..."
+INDEX_HTML="$APP_DIR/dist/index.html"
+if [ -f "$INDEX_HTML" ]; then
+  JS_BUNDLE=$(grep -oP '/assets/index-[^"]+\.js' "$INDEX_HTML" | head -1)
+  if [ -n "$JS_BUNDLE" ]; then
+    BUNDLE_PATH="$APP_DIR/dist${JS_BUNDLE}"
+    if [ -f "$BUNDLE_PATH" ]; then
+      log "Asset OK: $JS_BUNDLE existe no disco ✅"
+    else
+      warn "⚠ HASH MISMATCH: index.html referencia $JS_BUNDLE mas o arquivo NÃO existe!"
+      warn "  Caminho esperado: $BUNDLE_PATH"
+      warn "  Isso causará tela branca! Verifique o build."
+    fi
+  else
+    warn "Não foi possível extrair referência JS de index.html"
+  fi
+fi
+
 # ── 10. Detectar proxy e atualizar ──────────────────────
 TRAEFIK_OWNS_443=$(ss -ltnp 2>/dev/null | grep ':443' | grep -c 'docker-proxy' || true)
 

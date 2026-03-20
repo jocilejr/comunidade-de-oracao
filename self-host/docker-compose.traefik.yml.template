@@ -14,6 +14,7 @@ services:
       - SERVER_ROOT=/public
       - SERVER_FALLBACK_PAGE=/public/index.html
       - SERVER_LOG_LEVEL=warn
+      - SERVER_CACHE_CONTROL_HEADERS=false
     volumes:
       - /opt/funnel-app/dist:/public:ro
     networks:

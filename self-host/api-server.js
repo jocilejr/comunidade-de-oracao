@@ -666,7 +666,7 @@ const server = http.createServer(async (req, res) => {
       // Humano: servir index.html (SPA client-side routing)
       try {
         const indexHtml = fs.readFileSync(nodePath.join(DIST_DIR, "index.html"), "utf-8");
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" });
         return res.end(indexHtml);
       } catch {
         // fallback: redirect para dashboard
