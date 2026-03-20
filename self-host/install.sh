@@ -364,7 +364,7 @@ if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
   # Subir containers
   cd "$APP_DIR"
   docker compose up -d --force-recreate 2>/dev/null || docker-compose up -d --force-recreate 2>/dev/null
-  log "Containers Traefik iniciados (funnel-spa, funnel-api-proxy, funnel-rest-proxy)"
+  log "Containers Traefik iniciados (funnel-api-proxy, funnel-rest-proxy)"
 
   # Desativar Nginx para evitar conflito
   warn "Traefik gerencia SSL/rotas — Nginx não será usado para este app."
