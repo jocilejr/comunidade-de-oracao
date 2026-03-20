@@ -723,18 +723,15 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // ── Public domain catch-all: /{slug} or /f/{slug} with bot detection ──
-    const BOT_UA = /whatsapp|facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|googlebot|bingbot|yandex|pinterest|snapchat/i;
+    // ── Public domain catch-all: /{slug} or /f/{slug} — ROBUST MODE ──
+    // Always serve OG HTML for slug routes (no User-Agent dependency).
+    // Crawlers read OG tags; browsers redirect via meta refresh + JS.
     const RESERVED = /^(login|admin|assets|api|rest|auth|functions|health|__funnel_diag|share|preview-image|rotate-preview-images|openai-proxy|typebot-proxy|user-settings)$/i;
     const slugMatch = path.match(/^\/(?:f\/)?([a-zA-Z0-9_-]+)\/?$/);
     if (slugMatch && !RESERVED.test(slugMatch[1]) && req.method === "GET") {
       const slug = slugMatch[1];
-      const ua = req.headers["user-agent"] || "";
-
-      if (BOT_UA.test(ua)) {
-        console.log(`[BOT] Crawler detected: slug="${slug}", UA="${ua.substring(0, 80)}", path="${path}"`);
-        return await handleShare(req, res, slug, null);
-      }
+      console.log(`[SHARE] Serving OG HTML for slug="${slug}", path="${path}"`);
+      return await handleShareRobust(req, res, slug);
     }
 
     // ── SPA fallback: serve index.html for navigation routes ──
