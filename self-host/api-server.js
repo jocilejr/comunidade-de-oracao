@@ -81,8 +81,7 @@ async function handleShare(req, res, slug, format) {
 
   // URL canônica: domínio público com slug limpo
   const canonicalUrl = `${PUBLIC_ORIGIN}/${slug}`;
-  // Redirect humanos para o SPA no dashboard
-  const spaUrl = `${DASHBOARD_ORIGIN}/f/${slug}`;
+  const spaUrl = `${DASHBOARD_ORIGIN}/${slug}`;
 
   if (!rows.length) {
     res.writeHead(302, { Location: spaUrl });
