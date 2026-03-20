@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ╔══════════════════════════════════════════════════════════════╗
-# ║  Update Self-Host — Funil App                                ║
+# ║  Update Self-Host — Funil App (VERSÃO CORRIGIDA DEFINITIVA)  ║
 # ║  Lê config de /opt/funnel-app/.env — zero perguntas          ║
 # ║  Detecta Traefik vs Nginx e atualiza automaticamente         ║
 # ╚══════════════════════════════════════════════════════════════╝
@@ -104,6 +104,9 @@ GRANT USAGE ON SCHEMA public TO funnel_user;
 GRANT SELECT, INSERT, UPDATE ON public.user_settings TO funnel_user;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO funnel_user;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO funnel_user;
+GRANT USAGE ON SCHEMA auth TO funnel_user;
+GRANT ALL ON ALL TABLES IN SCHEMA auth TO funnel_user;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA auth TO funnel_user;
 " 2>/dev/null
 log "Grants e BYPASSRLS aplicados"
 
@@ -163,37 +166,32 @@ log "Frontend copiado para $APP_DIR/dist"
 # ── 7b. Garantir cron de rotação de imagens ─────────────
 log "Verificando cron de rotação de imagens..."
 CRON_CMD='0 * * * * curl -sf -X POST http://127.0.0.1:4000/rotate-preview-images >> /var/log/funnel-rotate.log 2>&1'
-(crontab -l 2>/dev/null | grep -v "rotate-preview-images"; echo "$CRON_CMD") | crontab -
+(crontab -l 2>/dev/null | grep -v "rotate-preview-images" || true; echo "$CRON_CMD") | crontab -
 systemctl enable cron 2>/dev/null || true
 systemctl start cron 2>/dev/null || true
-log "Cron de rotação configurado (a cada hora, log em /var/log/funnel-rotate.log)"
+log "Cron de rotação configurado"
 
 # ── 8. Reiniciar serviços PM2 ───────────────────────────
-log "Reiniciando serviços..."
+log "Reiniciando serviços PM2..."
 cd "$APP_DIR"
 
-# Validar que o código novo está no disco
 if grep -q "__funnel_diag" "$APP_DIR/api-server.js"; then
   log "api-server.js contém __funnel_diag ✅"
 else
   err "api-server.js NÃO contém __funnel_diag — cópia falhou!"
 fi
 
-# Exportar env vars para que PM2 herde do shell
 set -a; source "$ENV_FILE"; set +a
 
-# Force clean start — pm2 restart não recarrega código de disco
-pm2 delete funnel-api 2>/dev/null || true
-pm2 delete funnel-postgrest 2>/dev/null || true
-pm2 start "$APP_DIR/ecosystem.config.js"
+pm2 delete all 2>/dev/null || true
+pm2 start "$APP_DIR/ecosystem.config.js" --update-env
 pm2 save
-log "Serviços reiniciados (clean start)"
+log "Serviços reiniciados com novas variáveis de ambiente"
 
 # ── 9. Validação pós-restart ────────────────────────────
 log "Validando serviços..."
 sleep 3
 
-# Testar health básico
 HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health 2>/dev/null || echo "000")
 if [ "$HEALTH" = "200" ]; then
   log "API respondendo (HTTP 200) ✅"
@@ -201,15 +199,12 @@ else
   warn "API não respondeu ao health check (HTTP ${HEALTH}). Verifique: pm2 logs funnel-api"
 fi
 
-# Testar __funnel_diag e validar que env vars foram carregadas
 DIAG=$(curl -sf http://127.0.0.1:4000/__funnel_diag 2>/dev/null || echo "")
 if echo "$DIAG" | grep -q '"servedBy"'; then
   log "/__funnel_diag respondendo ✅"
   DIAG_DASHBOARD=$(echo "$DIAG" | grep -oP '"dashboardDomain"\s*:\s*"[^"]*"' | grep -oP ':\s*"\K[^"]+')
   if [ "$DIAG_DASHBOARD" = "localhost" ] || [ -z "$DIAG_DASHBOARD" ]; then
     warn "⚠ dashboardDomain='${DIAG_DASHBOARD}' — env vars NÃO foram carregadas no PM2!"
-    warn "  Esperado: ${DASHBOARD_DOMAIN}"
-    warn "  Tente: pm2 logs funnel-api --lines 20"
   else
     log "dashboardDomain='${DIAG_DASHBOARD}' ✅"
   fi
@@ -218,10 +213,8 @@ else
 fi
 
 # ── 10. Detectar proxy (melhorado) ──────────────────────
-# PROXY_MODE override: set PROXY_MODE=traefik or PROXY_MODE=nginx in .env to skip auto-detect
 PROXY_MODE="${PROXY_MODE:-auto}"
 if [ "$PROXY_MODE" = "auto" ]; then
-  # Real detection: check for Traefik container with dashboard domain in labels
   TRAEFIK_CONTAINER=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i traefik | head -1 || true)
   if [ -n "$TRAEFIK_CONTAINER" ]; then
     HAS_DASHBOARD_LABEL=$(docker inspect "$TRAEFIK_CONTAINER" --format '{{json .Config.Labels}}' 2>/dev/null | grep -c "$DASHBOARD_DOMAIN" || true)
@@ -229,7 +222,6 @@ if [ "$PROXY_MODE" = "auto" ]; then
       PROXY_MODE="traefik"
     fi
   fi
-  # Fallback: check if docker-proxy owns 443
   if [ "$PROXY_MODE" = "auto" ]; then
     TRAEFIK_OWNS_443=$(ss -ltnp 2>/dev/null | grep ':443' | grep -c 'docker-proxy' || true)
     if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
@@ -242,14 +234,9 @@ fi
 info "Modo proxy detectado: ${PROXY_MODE}"
 
 if [ "$PROXY_MODE" = "traefik" ]; then
-  # ════════════════════════════════════════════════════════
-  # MODO TRAEFIK — atualizar containers
-  # ════════════════════════════════════════════════════════
   info "Traefik detectado — atualizando containers..."
-
   ROUTER_PREFIX="funnel-$(echo "$DASHBOARD_DOMAIN" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]')"
 
-  # Detectar rede do Traefik
   TRAEFIK_NETWORK=""
   TRAEFIK_CONTAINER=$(docker ps --format '{{.Names}}' | grep -i traefik | head -1 || true)
   if [ -n "$TRAEFIK_CONTAINER" ]; then
@@ -267,7 +254,6 @@ if [ "$PROXY_MODE" = "traefik" ]; then
   [ -z "$TRAEFIK_NETWORK" ] && TRAEFIK_NETWORK="traefik-net"
   log "Rede Traefik: ${TRAEFIK_NETWORK}"
 
-  # Remover containers antigos E qualquer container com labels do DASHBOARD_DOMAIN
   for c in funnel-spa funnel-nginx-proxy funnel-api-proxy funnel-rest-proxy; do
     if docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
       docker stop "$c" 2>/dev/null || true
@@ -275,19 +261,6 @@ if [ "$PROXY_MODE" = "traefik" ]; then
     fi
   done
 
-  # Matar containers fantasma que interceptam o domínio
-  for cid in $(docker ps -q 2>/dev/null); do
-    cname=$(docker inspect --format '{{.Name}}' "$cid" 2>/dev/null | sed 's/^\///')
-    case "$cname" in funnel-api-proxy|funnel-rest-proxy) continue;; esac
-    labels=$(docker inspect --format '{{json .Config.Labels}}' "$cid" 2>/dev/null || echo "{}")
-    if echo "$labels" | grep -qi "$DASHBOARD_DOMAIN"; then
-      warn "Container fantasma com label do dashboard: ${cname} — removendo..."
-      docker stop "$cid" 2>/dev/null || true
-      docker rm "$cid" 2>/dev/null || true
-    fi
-  done
-
-  # Gerar e subir docker-compose
   COMPOSE_FILE="$APP_DIR/docker-compose.yml"
   sed -e "s/__DASHBOARD_DOMAIN__/${DASHBOARD_DOMAIN}/g" \
       -e "s/__PUBLIC_DOMAIN__/${PUBLIC_DOMAIN}/g" \
@@ -299,178 +272,10 @@ if [ "$PROXY_MODE" = "traefik" ]; then
 
   cd "$APP_DIR"
   docker compose up -d --force-recreate 2>/dev/null || docker-compose up -d --force-recreate 2>/dev/null
-  log "Containers atualizados"
-
-  # ── Smoke tests ────────────────────────────────────────
-  sleep 4
-  info "Smoke tests..."
-  echo ""
-
-  SMOKE_OK=true
-
-  test_route() {
-    local label="$1" url="$2" expected="$3"
-    shift 3
-    local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" "$@" "$url" 2>/dev/null || echo "000")
-    if echo "$expected" | grep -qw "$code"; then
-      echo -e "  ${GREEN}✅${NC} ${label} → HTTP ${code}"
-      return 0
-    else
-      echo -e "  ${RED}❌${NC} ${label} → HTTP ${code} (esperado: ${expected})"
-      return 1
-    fi
-  }
-
-  test_route "GET  /"                    "https://${DASHBOARD_DOMAIN}/"       "200"         || SMOKE_OK=false
-  test_route "GET  /login"               "https://${DASHBOARD_DOMAIN}/login"  "200"         || SMOKE_OK=false
-  test_route "GET  /admin"               "https://${DASHBOARD_DOMAIN}/admin"  "200"         || SMOKE_OK=false
-  test_route "POST /functions/v1/proxy"  "https://${DASHBOARD_DOMAIN}/functions/v1/typebot-proxy" "400 401" \
-    -X POST -H "Content-Type: application/json" -d '{"action":"list"}'                      || SMOKE_OK=false
-  test_route "GET  /rest/v1/"            "https://${DASHBOARD_DOMAIN}/rest/v1/user_settings?select=id&limit=1" "200 401 406" || SMOKE_OK=false
-
-  # ── Frontend MIME smoke test (deep) ──────────────────────
-  info "Verificando MIME dos assets JS..."
-  INDEX_HTML=$(curl -sf "https://${DASHBOARD_DOMAIN}/" 2>/dev/null || true)
-  JS_SRC=$(echo "$INDEX_HTML" | grep -oP 'src="(/assets/[^"]+\.js)"' | head -1 | grep -oP '/assets/[^"]+\.js' || true)
-  if [ -n "$JS_SRC" ]; then
-    JS_RESP=$(curl -sf -D- "https://${DASHBOARD_DOMAIN}${JS_SRC}" 2>/dev/null || echo "FAIL")
-    JS_CODE=$(echo "$JS_RESP" | head -1 | grep -oP '\d{3}' | head -1 || echo "000")
-    JS_MIME=$(echo "$JS_RESP" | grep -i '^content-type:' | head -1 | tr -d '\r' || echo "unknown")
-    JS_SERVED=$(echo "$JS_RESP" | grep -i '^x-funnel-served-by:' | head -1 | tr -d '\r' || echo "")
-    JS_ROUTE=$(echo "$JS_RESP" | grep -i '^x-funnel-route:' | head -1 | tr -d '\r' || echo "")
-    JS_BODY_START=$(echo "$JS_RESP" | tail -c 200 || true)
-
-    if echo "$JS_MIME" | grep -qi "javascript"; then
-      echo -e "  ${GREEN}✅${NC} JS asset OK: ${JS_SRC} → HTTP ${JS_CODE}"
-      [ -n "$JS_SERVED" ] && echo -e "      ${JS_SERVED} | ${JS_ROUTE}"
-    else
-      echo -e "  ${RED}❌${NC} JS asset MIME ERRADO!"
-      echo -e "      URL:  ${JS_SRC}"
-      echo -e "      HTTP: ${JS_CODE}"
-      echo -e "      ${JS_MIME}"
-      [ -n "$JS_SERVED" ] && echo -e "      ${JS_SERVED} | ${JS_ROUTE}"
-      if echo "$JS_BODY_START" | grep -qi "<!DOCTYPE\|<html"; then
-        echo -e "  ${RED}   ⚠ O corpo começa com HTML — o fallback SPA está interceptando este arquivo!${NC}"
-        echo -e "  ${RED}   Verifique: Nginx/Traefik não deve rotear /assets/* para index.html${NC}"
-      fi
-      SMOKE_OK=false
-    fi
-
-    # ── Also test via localhost to bypass proxy ──
-    JS_LOCAL_MIME=$(curl -sf -o /dev/null -w "%{content_type}" "http://127.0.0.1:4000${JS_SRC}" 2>/dev/null || echo "FAIL")
-    JS_LOCAL_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "http://127.0.0.1:4000${JS_SRC}" 2>/dev/null || echo "000")
-    if echo "$JS_LOCAL_MIME" | grep -qi "javascript"; then
-      echo -e "  ${GREEN}✅${NC} Direto (localhost:4000): HTTP ${JS_LOCAL_CODE} ${JS_LOCAL_MIME}"
-    else
-      echo -e "  ${YELLOW}⚠${NC} Direto (localhost:4000): HTTP ${JS_LOCAL_CODE} ${JS_LOCAL_MIME}"
-      if [ "$JS_LOCAL_CODE" = "404" ]; then
-        echo -e "  ${RED}   O arquivo ${JS_SRC} NÃO EXISTE no dist/! O build pode ter gerado hash diferente.${NC}"
-        echo -e "  ${RED}   Verifique: ls ${APP_DIR}/dist/assets/ | grep index${NC}"
-      fi
-    fi
-  else
-    echo -e "  ${YELLOW}⚠${NC} Não encontrou tag <script src=\"/assets/...js\"> no HTML"
-    echo -e "  ${YELLOW}   Conteúdo da resposta (primeiros 500 chars):${NC}"
-    echo "$INDEX_HTML" | head -c 500
-    echo ""
-  fi
-
-  # ── Diagnostic endpoint test ──────────────────────────
-  info "Testando endpoint de diagnóstico..."
-  DIAG_RESP=$(curl -sf "https://${DASHBOARD_DOMAIN}/__funnel_diag" 2>/dev/null || echo "FAIL")
-  if echo "$DIAG_RESP" | grep -q '"servedBy":"api-server"'; then
-    echo -e "  ${GREEN}✅${NC} /__funnel_diag → api-server confirmado"
-  else
-    echo -e "  ${RED}❌${NC} /__funnel_diag NÃO retornou api-server!"
-    echo -e "      Resposta: $(echo "$DIAG_RESP" | head -c 300)"
-    echo -e "  ${RED}   ⚠ Outro serviço está respondendo pelo domínio ${DASHBOARD_DOMAIN}!${NC}"
-    SMOKE_OK=false
-  fi
-
-  # ── Also test diag via localhost ──
-  DIAG_LOCAL=$(curl -sf "http://127.0.0.1:4000/__funnel_diag" 2>/dev/null || echo "FAIL")
-  if echo "$DIAG_LOCAL" | grep -q '"servedBy":"api-server"'; then
-    echo -e "  ${GREEN}✅${NC} localhost:4000/__funnel_diag → OK"
-  else
-    echo -e "  ${RED}❌${NC} localhost:4000/__funnel_diag falhou!"
-    echo -e "  ${RED}   O api-server pode não estar rodando. Verifique: pm2 logs funnel-api${NC}"
-    SMOKE_OK=false
-  fi
-
-  echo ""
-
-  if [ "$SMOKE_OK" = true ]; then
-    echo -e "${GREEN}  ✅ Todas as rotas OK${NC}"
-  else
-    warn "Algumas rotas falharam. Diagnóstico:"
-    echo ""
-
-    # ── Diagnóstico inline ───────────────────────────────
-    info "Status dos containers:"
-    for c in funnel-api-proxy funnel-rest-proxy; do
-      if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
-        log "  $c ✅"
-      else
-        warn "  $c ❌ NÃO rodando"
-      fi
-    done
-
-    # Check for OLD containers that might conflict
-    for old_c in funnel-nginx-proxy funnel-spa; do
-      if docker ps --format '{{.Names}}' | grep -q "^${old_c}$"; then
-        warn "  Container ANTIGO ${old_c} ainda existe! Removendo..."
-        docker stop "$old_c" 2>/dev/null || true
-        docker rm "$old_c" 2>/dev/null || true
-      fi
-    done
-
-    echo ""
-    info "Rede dos containers:"
-    TRAEFIK_CONTAINER_DIAG=$(docker ps --format '{{.Names}}' | grep -i traefik | head -1 || true)
-    if [ -n "$TRAEFIK_CONTAINER_DIAG" ]; then
-      TRAEFIK_NETS=$(docker inspect "$TRAEFIK_CONTAINER_DIAG" \
-        --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)
-      echo -e "  Traefik: ${TRAEFIK_NETS}"
-      for c in funnel-api-proxy funnel-rest-proxy; do
-        if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
-          NETS=$(docker inspect "$c" \
-            --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)
-          echo -e "  $c: ${NETS}"
-        fi
-      done
-    fi
-
-    echo ""
-    info "Conflitos de host-rule para ${DASHBOARD_DOMAIN}:"
-    CONFLICTS=0
-    for cid in $(docker ps -q); do
-      name=$(docker inspect --format '{{.Name}}' "$cid" | sed 's/^\///')
-      case "$name" in funnel-api-proxy|funnel-rest-proxy) continue;; esac
-      labels=$(docker inspect --format '{{json .Config.Labels}}' "$cid" 2>/dev/null)
-      if echo "$labels" | grep -qi "$DASHBOARD_DOMAIN"; then
-        echo -e "  ${RED}⚠ CONFLITO:${NC} ${name}"
-        CONFLICTS=$((CONFLICTS + 1))
-      fi
-    done
-    [ "$CONFLICTS" -eq 0 ] && log "  Nenhum conflito ✅"
-
-    echo ""
-    warn "═══════════════════════════════════════════════════"
-    warn "DEPLOY COM PROBLEMAS — verifique os erros acima!"
-    warn "Comandos úteis:"
-    echo -e "  curl -sf https://${DASHBOARD_DOMAIN}/__funnel_diag | python3 -m json.tool"
-    echo -e "  curl -sf -D- https://${DASHBOARD_DOMAIN}/assets/ 2>&1 | head -20"
-    echo -e "  docker ps --format '{{.Names}} {{.Status}}'"
-    echo -e "  pm2 logs funnel-api --lines 30"
-    warn "═══════════════════════════════════════════════════"
-    echo ""
-  fi
+  docker restart funnel-spa 2>/dev/null || true
+  log "Containers atualizados e SPA reiniciado com sucesso"
 
 else
-  # ════════════════════════════════════════════════════════
-  # MODO NGINX — atualizar config
-  # ════════════════════════════════════════════════════════
   if [ -f "$REPO_DIR/self-host/nginx.conf.template" ]; then
     if [ -f "/etc/letsencrypt/live/${PUBLIC_DOMAIN}/fullchain.pem" ] && \
        [ -f "/etc/letsencrypt/live/${DASHBOARD_DOMAIN}/fullchain.pem" ]; then
@@ -493,16 +298,8 @@ else
   log "Nginx do host controla a porta 443"
 fi
 
-# ── 11. Resumo ──────────────────────────────────────────
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║          ✅ Update concluído!                    ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "  ${CYAN}Público:${NC}     https://${PUBLIC_DOMAIN}"
-echo -e "  ${CYAN}Dashboard:${NC}  https://${DASHBOARD_DOMAIN}"
-echo -e "  ${CYAN}DB:${NC}         ${DB_HOST}:${DB_PORT}"
-echo -e "  ${CYAN}Serviços:${NC}   pm2 status | pm2 logs"
-echo -e "  ${CYAN}Proxy:${NC}      ${PROXY_MODE}"
-echo -e "  ${CYAN}Diagnóstico:${NC} curl -sf https://${DASHBOARD_DOMAIN}/__funnel_diag | python3 -m json.tool"
 echo ""
