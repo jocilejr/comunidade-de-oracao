@@ -37,7 +37,7 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
 
   const { data, error } = await supabase
     .from('funnels')
-    .select('id, slug, name, created_at, bot_name, bot_avatar, page_title, page_description')
+    .select('id, slug, name, created_at, bot_name, bot_avatar, preview_image, page_title, page_description')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
@@ -51,7 +51,7 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
     flow: { id: '', name: '', groups: [], edges: [] } as unknown as TypebotFlow,
     botName: row.bot_name || '',
     botAvatar: row.bot_avatar || '',
-    previewImage: '',
+    previewImage: row.preview_image || '',
     pageTitle: row.page_title || '',
     pageDescription: row.page_description || '',
   }));
