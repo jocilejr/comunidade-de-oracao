@@ -218,7 +218,7 @@ if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
   log "Rede Traefik: ${TRAEFIK_NETWORK}"
 
   # Remover containers antigos
-  for c in funnel-nginx-proxy funnel-spa funnel-api-proxy funnel-rest-proxy; do
+  for c in funnel-spa funnel-nginx-proxy funnel-api-proxy funnel-rest-proxy; do
     if docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
       docker stop "$c" 2>/dev/null || true
       docker rm "$c" 2>/dev/null || true
@@ -267,6 +267,24 @@ if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
     -X POST -H "Content-Type: application/json" -d '{"action":"list"}'                      || SMOKE_OK=false
   test_route "GET  /rest/v1/"            "https://${DASHBOARD_DOMAIN}/rest/v1/user_settings?select=id&limit=1" "200 401 406" || SMOKE_OK=false
 
+  # ── Frontend MIME smoke test ───────────────────────────
+  info "Verificando MIME dos assets JS..."
+  INDEX_HTML=$(curl -sf "https://${DASHBOARD_DOMAIN}/" 2>/dev/null || true)
+  JS_SRC=$(echo "$INDEX_HTML" | grep -oP 'src="(/assets/[^"]+\.js)"' | head -1 | grep -oP '/assets/[^"]+\.js' || true)
+  if [ -n "$JS_SRC" ]; then
+    JS_MIME=$(curl -sf -o /dev/null -w "%{content_type}" "https://${DASHBOARD_DOMAIN}${JS_SRC}" 2>/dev/null || echo "FAIL")
+    JS_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "https://${DASHBOARD_DOMAIN}${JS_SRC}" 2>/dev/null || echo "000")
+    if echo "$JS_MIME" | grep -q "javascript"; then
+      echo -e "  ${GREEN}✅${NC} JS asset (${JS_SRC}) → ${JS_CODE} ${JS_MIME}"
+    else
+      echo -e "  ${RED}❌${NC} JS asset MIME ERRADO: ${JS_MIME} (HTTP ${JS_CODE})"
+      echo -e "  ${RED}   Isso causa tela branca! Verifique se api-server serve /assets/* corretamente.${NC}"
+      SMOKE_OK=false
+    fi
+  else
+    echo -e "  ${YELLOW}⚠${NC} Não encontrou tag <script src=\"/assets/...js\"> no HTML"
+  fi
+
   echo ""
 
   if [ "$SMOKE_OK" = true ]; then
@@ -277,7 +295,7 @@ if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
 
     # ── Diagnóstico inline ───────────────────────────────
     info "Status dos containers:"
-    for c in funnel-spa funnel-api-proxy funnel-rest-proxy; do
+    for c in funnel-api-proxy funnel-rest-proxy; do
       if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
         log "  $c ✅"
       else
@@ -295,7 +313,7 @@ if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
       TRAEFIK_NETS=$(docker inspect "$TRAEFIK_CONTAINER" \
         --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)
       echo -e "  Traefik: ${TRAEFIK_NETS}"
-      for c in funnel-spa funnel-api-proxy funnel-rest-proxy; do
+      for c in funnel-api-proxy funnel-rest-proxy; do
         if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
           NETS=$(docker inspect "$c" \
             --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)
@@ -309,7 +327,7 @@ if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
     CONFLICTS=0
     for cid in $(docker ps -q); do
       name=$(docker inspect --format '{{.Name}}' "$cid" | sed 's/^\///')
-      case "$name" in funnel-spa|funnel-api-proxy|funnel-rest-proxy) continue;; esac
+      case "$name" in funnel-api-proxy|funnel-rest-proxy) continue;; esac
       labels=$(docker inspect --format '{{json .Config.Labels}}' "$cid" 2>/dev/null)
       if echo "$labels" | grep -qi "$DASHBOARD_DOMAIN"; then
         echo -e "  ${RED}⚠ CONFLITO:${NC} ${name}"
