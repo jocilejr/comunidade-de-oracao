@@ -267,11 +267,23 @@ if [ "$PROXY_MODE" = "traefik" ]; then
   [ -z "$TRAEFIK_NETWORK" ] && TRAEFIK_NETWORK="traefik-net"
   log "Rede Traefik: ${TRAEFIK_NETWORK}"
 
-  # Remover containers antigos
+  # Remover containers antigos E qualquer container com labels do DASHBOARD_DOMAIN
   for c in funnel-spa funnel-nginx-proxy funnel-api-proxy funnel-rest-proxy; do
     if docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
       docker stop "$c" 2>/dev/null || true
       docker rm "$c" 2>/dev/null || true
+    fi
+  done
+
+  # Matar containers fantasma que interceptam o domínio
+  for cid in $(docker ps -q 2>/dev/null); do
+    cname=$(docker inspect --format '{{.Name}}' "$cid" 2>/dev/null | sed 's/^\///')
+    case "$cname" in funnel-api-proxy|funnel-rest-proxy) continue;; esac
+    labels=$(docker inspect --format '{{json .Config.Labels}}' "$cid" 2>/dev/null || echo "{}")
+    if echo "$labels" | grep -qi "$DASHBOARD_DOMAIN"; then
+      warn "Container fantasma com label do dashboard: ${cname} — removendo..."
+      docker stop "$cid" 2>/dev/null || true
+      docker rm "$cid" 2>/dev/null || true
     fi
   done
 
