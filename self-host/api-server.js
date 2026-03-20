@@ -153,18 +153,47 @@ async function handleShare(req, res, slug, format) {
   res.end(html);
 }
 
-// ── Route: /preview-image ─────────────────────────────────
+// ── Route: /preview-image (with in-memory cache) ─────────
+const previewCache = new Map(); // slug -> { buffer, mime, ts }
+const PREVIEW_CACHE_TTL = 5 * 60 * 1000; // 5 min
+
 async function handlePreviewImage(req, res, slug) {
+  const now = Date.now();
+  const cached = previewCache.get(slug);
+  if (cached && (now - cached.ts) < PREVIEW_CACHE_TTL) {
+    res.writeHead(200, {
+      ...corsHeaders,
+      "Content-Type": cached.mime,
+      "Content-Length": cached.buffer.length,
+      "Cache-Control": "public, max-age=300",
+    });
+    return res.end(cached.buffer);
+  }
+
   const { rows } = await pool.query(
     `SELECT preview_image FROM funnels WHERE slug = $1 LIMIT 1`,
     [slug]
   );
 
-  if (!rows.length || !rows[0].preview_image) {
+  // Fallback: if preview_image is empty, try gallery
+  let dataUrl = rows[0]?.preview_image;
+  if (!dataUrl && rows.length) {
+    const { rows: fbRows } = await pool.query(
+      `SELECT f.id FROM funnels f WHERE f.slug = $1 LIMIT 1`, [slug]
+    );
+    if (fbRows.length) {
+      const { rows: imgRows } = await pool.query(
+        `SELECT data_url FROM funnel_preview_images WHERE funnel_id = $1 ORDER BY position ASC LIMIT 1`,
+        [fbRows[0].id]
+      );
+      if (imgRows.length) dataUrl = imgRows[0].data_url;
+    }
+  }
+
+  if (!dataUrl) {
     return json(res, { error: "No image found" }, 404);
   }
 
-  const dataUrl = rows[0].preview_image;
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) {
     if (dataUrl.startsWith("http")) {
@@ -177,12 +206,20 @@ async function handlePreviewImage(req, res, slug) {
   const mimeType = match[1];
   const buffer = Buffer.from(match[2], "base64");
 
+  // Cache it
+  previewCache.set(slug, { buffer, mime: mimeType, ts: now });
+  // Evict old entries
+  if (previewCache.size > 200) {
+    for (const [k, v] of previewCache) {
+      if (now - v.ts > PREVIEW_CACHE_TTL) previewCache.delete(k);
+    }
+  }
+
   res.writeHead(200, {
     ...corsHeaders,
     "Content-Type": mimeType,
     "Content-Length": buffer.length,
-    "Cache-Control": "no-cache, no-store, must-revalidate",
-    "Pragma": "no-cache",
+    "Cache-Control": "public, max-age=300",
   });
   res.end(buffer);
 }
