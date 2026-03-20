@@ -124,6 +124,7 @@ server {
 
     # ── CRITICAL: Static assets — serve file or 404, NEVER index.html ──
     location ^~ /assets/ {
+        root /opt/funnel-app/dist;
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable";
         add_header X-Funnel-Served-By "nginx";
@@ -132,6 +133,7 @@ server {
 
     # Catch-all for known static file extensions — 404 if missing (never SPA fallback)
     location ~* \.(js|mjs|css|map|json|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|webp|mp3)$ {
+        root /opt/funnel-app/dist;
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable";
         add_header X-Funnel-Served-By "nginx";
