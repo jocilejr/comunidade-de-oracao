@@ -167,19 +167,20 @@ async function handlePreviewImage(req, res, slug) {
 // ── Route: /openai-proxy ──────────────────────────────────
 async function handleOpenaiProxy(req, res) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer "))
-    return json(res, { error: "Missing authorization" }, 401);
-
-  let userId;
-  try {
-    const decoded = jwt.verify(authHeader.replace("Bearer ", ""), JWT_SECRET, { algorithms: ["HS256"] });
-    userId = decoded.sub;
-  } catch (e) {
-    return json(res, { error: "Invalid token" }, 401);
-  }
 
   const body = JSON.parse(await readBody(req));
   const { messages, model, tools } = body;
+
+  // Try JWT first; fall back to body.userId (public funnels use anon key)
+  let userId;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const decoded = jwt.verify(authHeader.replace("Bearer ", ""), JWT_SECRET, { algorithms: ["HS256"] });
+      if (decoded.sub) userId = decoded.sub;
+    } catch (_) { /* JWT invalid — try body fallback */ }
+  }
+  if (!userId && body.userId) userId = body.userId;
+  if (!userId) return json(res, { error: "Missing user identification" }, 401);
 
   const { rows } = await pool.query(
     `SELECT openai_api_key FROM user_settings WHERE user_id = $1 LIMIT 1`,
