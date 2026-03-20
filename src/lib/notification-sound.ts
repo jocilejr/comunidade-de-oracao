@@ -6,10 +6,8 @@ export function playNotificationSound() {
       audio = new Audio('/sounds/whatsapp-notification.mp3');
       audio.volume = 0.5;
     }
-    // Reset and play — clone trick for overlapping plays
-    const clone = audio.cloneNode() as HTMLAudioElement;
-    clone.volume = audio.volume;
-    clone.play().catch(() => {});
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
   } catch {
     // Silent fail if audio not available
   }

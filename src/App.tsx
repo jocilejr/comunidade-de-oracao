@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -5,11 +6,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
-import Index from "./pages/Index.tsx";
-import Admin from "./pages/Admin.tsx";
-import Login from "./pages/Login.tsx";
-import Funnel from "./pages/Funnel.tsx";
-import NotFound from "./pages/NotFound.tsx";
+
+const Index = lazy(() => import("./pages/Index.tsx"));
+const Admin = lazy(() => import("./pages/Admin.tsx"));
+const Login = lazy(() => import("./pages/Login.tsx"));
+const Funnel = lazy(() => import("./pages/Funnel.tsx"));
+const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 const queryClient = new QueryClient();
 
