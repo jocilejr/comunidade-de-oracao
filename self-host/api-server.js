@@ -118,21 +118,26 @@ async function handleShare(req, res, slug, format) {
     else if (previewUrl.match(/\.webp/i)) ogImageType = "image/webp";
   }
 
-  const html = `<!DOCTYPE html>
+const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${title}</title>
   <meta name="description" content="${description}" />
+  
   <meta property="og:type" content="website" />
   <meta property="og:title" content="${title}" />
   <meta property="og:description" content="${description}" />
-  ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />` : ""}
-  ${imageUrl ? `<meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />` : ""}
-  ${imageUrl ? `<meta property="og:image:type" content="${ogImageType}" />` : ""}
-  
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
+  ${imageUrl ? `
+  <meta property="og:image" content="${escapeHtml(imageUrl)}" />
+  <meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />
+  <meta property="og:image:type" content="${ogImageType}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  ` : ""}
+  
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${description}" />
