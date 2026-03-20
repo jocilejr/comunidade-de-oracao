@@ -52,8 +52,9 @@ const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUr
     return () => clearInterval(interval);
   }, []);
 
-  const currentHour = new Date().getUTCHours();
-  const nextIdx = previewImages.length > 1 ? (currentHour + 1) % previewImages.length : -1;
+  // For round-robin, "next" is simply current+1
+  const activeIdx = previewImages.findIndex(img => img.dataUrl === activeDataUrl);
+  const nextIdx = previewImages.length > 1 && activeIdx >= 0 ? (activeIdx + 1) % previewImages.length : -1;
 
   return (
     <div className="space-y-4 pt-2">
