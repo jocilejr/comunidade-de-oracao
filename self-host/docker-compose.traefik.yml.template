@@ -27,12 +27,16 @@ services:
       - "traefik.http.middlewares.__ROUTER_PREFIX__-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.__ROUTER_PREFIX__-https.redirectscheme.permanent=true"
 
+      # ── Middleware: no-cache para HTML do dashboard ────
+      - "traefik.http.middlewares.__ROUTER_PREFIX__-nocache.headers.customResponseHeaders.Cache-Control=no-cache, no-store, must-revalidate"
+
       # ══ DASHBOARD — __DASHBOARD_DOMAIN__ ══════════════
       # SPA HTTPS (catch-all, prioridade baixa)
       - "traefik.http.routers.__ROUTER_PREFIX__-spa.rule=Host(`__DASHBOARD_DOMAIN__`)"
       - "traefik.http.routers.__ROUTER_PREFIX__-spa.entrypoints=websecure"
       - "traefik.http.routers.__ROUTER_PREFIX__-spa.tls.certresolver=letsencrypt"
       - "traefik.http.routers.__ROUTER_PREFIX__-spa.priority=1"
+      - "traefik.http.routers.__ROUTER_PREFIX__-spa.middlewares=__ROUTER_PREFIX__-nocache"
       - "traefik.http.routers.__ROUTER_PREFIX__-spa.service=__ROUTER_PREFIX__-spa-svc"
 
       # SPA HTTP → redirect HTTPS
