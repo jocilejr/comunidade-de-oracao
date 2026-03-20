@@ -236,7 +236,7 @@ const Admin = () => {
       const slug = slugify(name) || 'funil-' + Date.now();
       await saveFunnel(name, slug, result.flow);
       await refresh();
-      toast({ title: 'Funil adicionado!', description: `"${name}" disponível em /f/${slug}` });
+      toast({ title: 'Funil adicionado!', description: `"${name}" disponível em /${slug}` });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Arquivo JSON inválido.';
       toast({ title: 'Erro', description: message, variant: 'destructive' });
