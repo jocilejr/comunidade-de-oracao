@@ -313,7 +313,7 @@ if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
       TRAEFIK_NETS=$(docker inspect "$TRAEFIK_CONTAINER" \
         --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)
       echo -e "  Traefik: ${TRAEFIK_NETS}"
-      for c in funnel-spa funnel-api-proxy funnel-rest-proxy; do
+      for c in funnel-api-proxy funnel-rest-proxy; do
         if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
           NETS=$(docker inspect "$c" \
             --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true)
