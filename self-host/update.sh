@@ -295,7 +295,7 @@ if [ "$TRAEFIK_OWNS_443" -gt 0 ]; then
 
     # ── Diagnóstico inline ───────────────────────────────
     info "Status dos containers:"
-    for c in funnel-spa funnel-api-proxy funnel-rest-proxy; do
+    for c in funnel-api-proxy funnel-rest-proxy; do
       if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
         log "  $c ✅"
       else
