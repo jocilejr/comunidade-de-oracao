@@ -230,8 +230,9 @@ async function handleShareRobust(req, res, slug) {
   <meta name="twitter:description" content="${description}" />
   ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}`;
 
-  // Inject OG tags into <head> and replace <title>
+  // Strip existing OG and Twitter meta tags, then inject dynamic ones
   let html = indexHtml
+    .replace(/<meta\s+(property="og:|name="twitter:)[^>]*>/gi, '')
     .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
     .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${description}">`)
     .replace("</head>", `${ogTags}\n</head>`);
