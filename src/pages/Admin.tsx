@@ -690,7 +690,7 @@ const Admin = () => {
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-1">
-                                  <span className="text-[11px] text-muted-foreground font-mono">/f/{funnel.slug}</span>
+                                  <span className="text-[11px] text-muted-foreground font-mono">/{funnel.slug}</span>
                                   <button
                                     onClick={() => { setEditingSlug(funnel.slug); setNewSlug(funnel.slug); }}
                                     className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
