@@ -37,7 +37,7 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
 
   const { data, error } = await supabase
     .from('funnels')
-    .select('id, slug, name, created_at, bot_name, bot_avatar, preview_image, page_title, page_description')
+    .select('id, slug, name, created_at, bot_name, bot_avatar, page_title, page_description')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
