@@ -808,11 +808,11 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // ── Public domain catch-all: /{slug} or /f/{slug} — ROBUST MODE ──
-    // Always serve OG HTML for slug routes (no User-Agent dependency).
-    // Crawlers read OG tags; browsers redirect via meta refresh + JS.
-    const RESERVED = /^(login|admin|assets|api|rest|auth|functions|health|__funnel_diag|share|preview-image|rotate-preview-images|openai-proxy|typebot-proxy|user-settings)$/i;
-    const slugMatch = path.match(/^\/(?:f\/)?([a-zA-Z0-9_-]+)\/?$/);
+    // ── Public domain catch-all: /{slug} ONLY — ROBUST MODE ──
+    // Only intercept /:slug (NOT /f/:slug which must hit SPA fallback).
+    // Crawlers read OG tags; browsers redirect via meta refresh + JS to /f/:slug.
+    const RESERVED = /^(login|admin|assets|api|rest|auth|functions|health|__funnel_diag|share|preview-image|rotate-preview-images|openai-proxy|typebot-proxy|user-settings|f)$/i;
+    const slugMatch = path.match(/^\/([a-zA-Z0-9_-]+)\/?$/);
     if (slugMatch && !RESERVED.test(slugMatch[1]) && req.method === "GET") {
       const slug = slugMatch[1];
       console.log(`[SHARE] Serving OG HTML for slug="${slug}", path="${path}"`);
