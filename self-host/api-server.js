@@ -131,8 +131,7 @@ async function handleShare(req, res, slug, format) {
   ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />` : ""}
   ${imageUrl ? `<meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />` : ""}
   ${imageUrl ? `<meta property="og:image:type" content="${ogImageType}" />` : ""}
-  ${imageUrl ? `<meta property="og:image:width" content="1200" />` : ""}
-  ${imageUrl ? `<meta property="og:image:height" content="630" />` : ""}
+  
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
