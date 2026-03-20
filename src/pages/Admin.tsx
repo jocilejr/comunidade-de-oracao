@@ -7,7 +7,7 @@ function getShareUrl(slug: string): string {
   }
   return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${slug}&v=${Date.now()}`;
 }
-import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, compressPreviewImage, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
+import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, compressPreviewImage, getActiveFunnelPreview, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
 import { supabase } from '@/integrations/supabase/client';
 import FunnelInspector from '@/components/admin/FunnelInspector';
 import SessionLogs from '@/components/admin/SessionLogs';
