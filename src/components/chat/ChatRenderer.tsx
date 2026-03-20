@@ -47,6 +47,7 @@ const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId, forceNewTab, funn
   const scrollRef = useRef<HTMLDivElement>(null);
   const eventQueueRef = useRef<EngineEvent[]>([]);
   const processingRef = useRef(false);
+  const isFirstMessageRef = useRef(true);
   
 
   const flowSessionKey = `${flow.id || flow.name || 'flow'}-${flow.groups.length}-${flow.edges.length}`;
