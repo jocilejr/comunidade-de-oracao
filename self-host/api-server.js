@@ -665,6 +665,59 @@ function generateToken(user) {
   );
 }
 
+// ── Session log: receive session/event data from public domain ──
+async function handleSessionLog(req, res) {
+  const body = await readBody(req);
+  const { action } = body;
+
+  try {
+    if (action === "create_session") {
+      const { funnel_id } = body;
+      if (!funnel_id) return json(res, { error: "funnel_id required" }, 400);
+      const { rows } = await pool.query(
+        `INSERT INTO funnel_sessions (funnel_id) VALUES ($1) RETURNING id`,
+        [funnel_id]
+      );
+      return json(res, { id: rows[0].id });
+    }
+
+    if (action === "log_event") {
+      const { session_id, event_type, block_id, group_title, content, metadata } = body;
+      if (!session_id || !event_type) return json(res, { error: "session_id and event_type required" }, 400);
+      await pool.query(
+        `INSERT INTO funnel_session_events (session_id, event_type, block_id, group_title, content, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [session_id, event_type, block_id || null, group_title || null, content || null, JSON.stringify(metadata || {})]
+      );
+      return json(res, { ok: true });
+    }
+
+    if (action === "update_session") {
+      const { session_id, variables, last_group_title, ended_at, completed, last_block_id } = body;
+      if (!session_id) return json(res, { error: "session_id required" }, 400);
+      const sets = [];
+      const params = [];
+      let idx = 1;
+
+      if (variables !== undefined) { sets.push(`variables = $${idx}::jsonb`); params.push(JSON.stringify(variables)); idx++; }
+      if (last_group_title !== undefined) { sets.push(`last_group_title = $${idx}`); params.push(last_group_title); idx++; }
+      if (last_block_id !== undefined) { sets.push(`last_block_id = $${idx}`); params.push(last_block_id); idx++; }
+      if (ended_at !== undefined) { sets.push(`ended_at = $${idx}`); params.push(ended_at); idx++; }
+      if (completed !== undefined) { sets.push(`completed = $${idx}`); params.push(completed); idx++; }
+
+      if (sets.length === 0) return json(res, { ok: true });
+      params.push(session_id);
+      await pool.query(`UPDATE funnel_sessions SET ${sets.join(", ")} WHERE id = $${idx}`, params);
+      return json(res, { ok: true });
+    }
+
+    return json(res, { error: "Unknown action" }, 400);
+  } catch (err) {
+    console.error("[session-log] Error:", err.message);
+    return json(res, { error: err.message }, 500);
+  }
+}
+
 // ── Router ────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") {
@@ -704,6 +757,7 @@ const server = http.createServer(async (req, res) => {
     if (path === "/typebot-proxy" && req.method === "POST") return await handleTypebotProxy(req, res);
     if (path === "/rotate-preview-images" && (req.method === "POST" || req.method === "GET")) return await handleRotateImages(req, res);
     if ((path === "/user-settings" || path === "/user-settings/") && (req.method === "GET" || req.method === "POST")) return await handleUserSettings(req, res);
+    if ((path === "/session-log" || path === "/session-log/") && req.method === "POST") return await handleSessionLog(req, res);
     if (path === "/health") return json(res, { status: "ok", timestamp: new Date().toISOString() });
 
     // ── Diagnostic endpoint: prove which stack is responding ──
@@ -808,11 +862,11 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // ── Public domain catch-all: /{slug} or /f/{slug} — ROBUST MODE ──
-    // Always serve OG HTML for slug routes (no User-Agent dependency).
-    // Crawlers read OG tags; browsers redirect via meta refresh + JS.
-    const RESERVED = /^(login|admin|assets|api|rest|auth|functions|health|__funnel_diag|share|preview-image|rotate-preview-images|openai-proxy|typebot-proxy|user-settings)$/i;
-    const slugMatch = path.match(/^\/(?:f\/)?([a-zA-Z0-9_-]+)\/?$/);
+    // ── Public domain catch-all: /{slug} ONLY — ROBUST MODE ──
+    // Only intercept /:slug (NOT /f/:slug which must hit SPA fallback).
+    // Crawlers read OG tags; browsers redirect via meta refresh + JS to /f/:slug.
+    const RESERVED = /^(login|admin|assets|api|rest|auth|functions|health|__funnel_diag|share|preview-image|rotate-preview-images|openai-proxy|typebot-proxy|user-settings|f)$/i;
+    const slugMatch = path.match(/^\/([a-zA-Z0-9_-]+)\/?$/);
     if (slugMatch && !RESERVED.test(slugMatch[1]) && req.method === "GET") {
       const slug = slugMatch[1];
       console.log(`[SHARE] Serving OG HTML for slug="${slug}", path="${path}"`);

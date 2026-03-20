@@ -47,12 +47,19 @@ export class TypebotEngine {
   private sessionId: string | null = null;
   private funnelId: string | null = null;
   private lastGroupTitle: string = '';
+  private useApiLog: boolean = false;
 
   constructor(flow: TypebotFlow, options?: { ownerUserId?: string; funnelId?: string }) {
     this.flow = flow;
     this.variables = new Map();
     this.ownerUserId = options?.ownerUserId || null;
     this.funnelId = options?.funnelId || null;
+
+    // On public domain, use the api-server endpoint for logging instead of Supabase client
+    const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+    if (publicDomain && window.location.hostname === publicDomain) {
+      this.useApiLog = true;
+    }
 
     // Initialize variables
     for (const v of flow.variables || []) {
@@ -179,13 +186,23 @@ export class TypebotEngine {
     // Create session in database
     if (this.funnelId) {
       try {
-        const { supabase } = await import('@/integrations/supabase/client');
-        const { data } = await supabase
-          .from('funnel_sessions')
-          .insert({ funnel_id: this.funnelId })
-          .select('id')
-          .single();
-        if (data) this.sessionId = data.id;
+        if (this.useApiLog) {
+          const resp = await fetch('/functions/v1/session-log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'create_session', funnel_id: this.funnelId }),
+          });
+          const data = await resp.json();
+          if (data?.id) this.sessionId = data.id;
+        } else {
+          const { supabase } = await import('@/integrations/supabase/client');
+          const { data } = await supabase
+            .from('funnel_sessions')
+            .insert({ funnel_id: this.funnelId })
+            .select('id')
+            .single();
+          if (data) this.sessionId = data.id;
+        }
       } catch (e) {
         console.warn('Failed to create session:', e);
       }
@@ -207,15 +224,31 @@ export class TypebotEngine {
   ): Promise<void> {
     if (!this.sessionId) return;
     try {
-      const { supabase } = await import('@/integrations/supabase/client');
-      await supabase.from('funnel_session_events').insert({
-        session_id: this.sessionId,
-        event_type: eventType,
-        block_id: blockId || null,
-        group_title: this.lastGroupTitle || null,
-        content: content || null,
-        metadata: metadata || {},
-      });
+      if (this.useApiLog) {
+        await fetch('/functions/v1/session-log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'log_event',
+            session_id: this.sessionId,
+            event_type: eventType,
+            block_id: blockId || null,
+            group_title: this.lastGroupTitle || null,
+            content: content || null,
+            metadata: metadata || {},
+          }),
+        });
+      } else {
+        const { supabase } = await import('@/integrations/supabase/client');
+        await supabase.from('funnel_session_events').insert({
+          session_id: this.sessionId,
+          event_type: eventType,
+          block_id: blockId || null,
+          group_title: this.lastGroupTitle || null,
+          content: content || null,
+          metadata: metadata || {},
+        });
+      }
     } catch (e) {
       console.warn('Failed to log event:', e);
     }
@@ -224,18 +257,32 @@ export class TypebotEngine {
   private async updateSession(updates: Record<string, any>): Promise<void> {
     if (!this.sessionId) return;
     try {
-      const { supabase } = await import('@/integrations/supabase/client');
-      // Build variables snapshot
       const vars: Record<string, string> = {};
       for (const v of this.flow.variables || []) {
         const val = this.variables.get(v.id);
         if (val) vars[v.name] = val;
       }
-      await supabase.from('funnel_sessions').update({
-        ...updates,
-        variables: vars,
-        last_group_title: this.lastGroupTitle,
-      }).eq('id', this.sessionId);
+
+      if (this.useApiLog) {
+        await fetch('/functions/v1/session-log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'update_session',
+            session_id: this.sessionId,
+            variables: vars,
+            last_group_title: this.lastGroupTitle,
+            ...updates,
+          }),
+        });
+      } else {
+        const { supabase } = await import('@/integrations/supabase/client');
+        await supabase.from('funnel_sessions').update({
+          ...updates,
+          variables: vars,
+          last_group_title: this.lastGroupTitle,
+        }).eq('id', this.sessionId);
+      }
     } catch (e) {
       console.warn('Failed to update session:', e);
     }
