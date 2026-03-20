@@ -131,8 +131,7 @@ async function handleShare(req, res, slug, format) {
   ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />` : ""}
   ${imageUrl ? `<meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />` : ""}
   ${imageUrl ? `<meta property="og:image:type" content="${ogImageType}" />` : ""}
-  ${imageUrl ? `<meta property="og:image:width" content="1200" />` : ""}
-  ${imageUrl ? `<meta property="og:image:height" content="630" />` : ""}
+  
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
@@ -165,7 +164,7 @@ async function handlePreviewImage(req, res, slug) {
       ...corsHeaders,
       "Content-Type": cached.mime,
       "Content-Length": cached.buffer.length,
-      "Cache-Control": "public, max-age=300",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
     });
     return res.end(cached.buffer);
   }
@@ -219,7 +218,7 @@ async function handlePreviewImage(req, res, slug) {
     ...corsHeaders,
     "Content-Type": mimeType,
     "Content-Length": buffer.length,
-    "Cache-Control": "public, max-age=300",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
   });
   res.end(buffer);
 }

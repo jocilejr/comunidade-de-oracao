@@ -7,7 +7,7 @@ function getShareUrl(slug: string): string {
   }
   return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${slug}&v=${Date.now()}`;
 }
-import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, compressPreviewImage, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
+import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, compressPreviewImage, getActiveFunnelPreview, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
 import { supabase } from '@/integrations/supabase/client';
 import FunnelInspector from '@/components/admin/FunnelInspector';
 import SessionLogs from '@/components/admin/SessionLogs';
@@ -389,14 +389,10 @@ const Admin = () => {
       const baseUrl = import.meta.env.VITE_SUPABASE_URL || '';
       const resp = await fetch(`${baseUrl}/functions/v1/rotate-preview-images`, { method: 'POST' });
       if (resp.ok) {
-        // Refresh funnel data to get new active image
-        await refresh();
-        const updatedFunnels = await getAllFunnelsMeta();
-        const updated = updatedFunnels.find(f => f.id === previewGalleryDialog.id);
-        if (updated) {
-          setActivePreviewUrl(updated.previewImage || null);
-          setPreviewGalleryDialog(updated);
-        }
+        // Fetch only the active preview image (lightweight query)
+        const newActiveUrl = await getActiveFunnelPreview(previewGalleryDialog.id);
+        setActivePreviewUrl(newActiveUrl || null);
+        setActivePreviewUrl(newActiveUrl || null);
         toast({ title: 'Rotação executada!', description: 'A imagem ativa foi atualizada.' });
       } else {
         toast({ title: 'Erro', description: 'Falha ao executar rotação.', variant: 'destructive' });
