@@ -74,7 +74,7 @@ async function handleShare(req, res, slug, format) {
   }
 
   const { rows } = await pool.query(
-    `SELECT name, slug, page_title, page_description, preview_image, bot_name, bot_avatar
+    `SELECT id, name, slug, page_title, page_description, preview_image, bot_name, bot_avatar
      FROM funnels WHERE slug = $1 LIMIT 1`,
     [slug]
   );
