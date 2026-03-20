@@ -159,6 +159,7 @@ const ChatRenderer = ({ flow, botName, botAvatar, ownerUserId, forceNewTab, funn
     // Hard reset only when changing to a new flow session
     eventQueueRef.current = [];
     processingRef.current = false;
+    isFirstMessageRef.current = true;
     setDisplayItems([]);
     setInputBlock(null);
     setChoiceBlock(null);
