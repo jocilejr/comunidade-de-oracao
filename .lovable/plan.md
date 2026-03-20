@@ -1,49 +1,29 @@
 
 
-## Correção definitiva: Rotação + Preview WhatsApp
+## Correções: Modal não mostra imagem ativa + Preview WhatsApp não full-screen
 
-### Problema 1: Rotação não funciona ("Rotacionar Agora" não muda nada)
+### Problema 1: Modal não reflete a imagem ativa após rotação
 
-A lógica usa `currentHour % totalImages`. Cada chamada na mesma hora UTC retorna o mesmo índice. O botão "Rotacionar Agora" chama o mesmo endpoint, mas como a hora não mudou, seleciona a mesma imagem.
+**Causa raiz**: `getAllFunnelsMeta()` foi otimizado para NÃO carregar `preview_image` (retorna `previewImage: ''`). Porém `handleRotateNow` usa essa função para obter a imagem ativa após rotação — recebe sempre vazio.
 
-**Correção em `self-host/api-server.js`**:
-- Adicionar lógica de rotação incremental: em vez de calcular pelo relógio, o endpoint lê qual imagem está ativa (`funnels.preview_image`), encontra o índice dela na galeria e avança para a próxima (round-robin)
-- O cron continua chamando a cada hora, mas agora cada chamada avança a imagem
-- O botão "Rotacionar Agora" funciona imediatamente
+**Correção**:
+- Em `handleRotateNow` (Admin.tsx): após rotação, buscar a imagem ativa diretamente do banco via query individual (`getFunnelById`) em vez de `getAllFunnelsMeta`
+- Alternativa mais leve: criar função `getActiveFunnelPreview(funnelId)` em `funnel-storage.ts` que faz `SELECT preview_image FROM funnels WHERE id = $1` — retorna apenas o campo necessário sem carregar o flow inteiro
 
-### Problema 2: Preview WhatsApp pequeno (não full-screen)
+### Problema 2: WhatsApp mostra preview pequeno (não full-screen)
 
-As imagens são armazenadas como `data:image/...;base64,...` e servidas via `/preview-image?slug=`. O WhatsApp exige resposta rápida e imagem com dimensões adequadas. Dois problemas:
-- Base64 de ~500KB vira ~700KB no banco → decodificação lenta
-- Sem conversão para JPEG otimizado, a imagem pode ser PNG pesado
+**Causa raiz**: As OG tags declaram `og:image:width=1200` e `og:image:height=630` fixos, mas a imagem real tem proporções diferentes. O WhatsApp detecta a inconsistência e renderiza como thumbnail pequeno em vez de card grande.
 
-**Correção em `self-host/api-server.js`**:
-- No `handlePreviewImage`, adicionar cache em memória (Map com TTL de 5 min) para evitar query + decode a cada requisição do crawler
-- Servir com `Content-Type` correto já existente
-
-**Correção no upload (frontend)**:
-- Em `src/pages/Admin.tsx` e `src/lib/funnel-storage.ts`: ao fazer upload de preview, converter para JPEG otimizado (quality 0.85) usando Canvas, mantendo proporção original mas limitando a 1200px de largura
-- Isso reduz o tamanho do base64 armazenado e acelera a entrega
-
-### Problema 3: `getAllFunnelsMeta` carrega base64 de todas as imagens
-
-A query seleciona `preview_image` (que contém megabytes de base64) para todos os funis. Isso torna a listagem lenta.
-
-**Correção em `src/lib/funnel-storage.ts`**:
-- Remover `preview_image` da query de `getAllFunnelsMeta` — o card do admin não precisa exibir a imagem inline
-- Ou adicionar um campo `has_preview` boolean derivado
+**Correções em `self-host/api-server.js`**:
+1. **Remover `og:image:width` e `og:image:height` fixos** — quando ausentes, o WhatsApp usa as dimensões reais da imagem e renderiza como card grande automaticamente (desde que a imagem seja ≥ 300x200)
+2. **Remover `Cache-Control: public, max-age=300`** do endpoint `/preview-image` — usar `no-cache` para que o WhatsApp sempre busque a versão atualizada (importante para rotação)
+3. **Adicionar meta `<meta http-equiv="refresh" content="0; url=...">`** no HTML do share para garantir redirect mais rápido para crawlers lentos
 
 ### Arquivos alterados
 
 | Arquivo | Mudança |
 |---|---|
-| `self-host/api-server.js` | Rotação round-robin (não baseada em hora); cache de imagem em memória |
-| `src/pages/Admin.tsx` | Upload converte para JPEG otimizado via Canvas; ajustar "Rotacionar Agora" para funcionar sem depender da hora UTC |
-| `src/lib/funnel-storage.ts` | Função `compressPreviewImage()` para otimizar antes de salvar; remover `preview_image` de `getAllFunnelsMeta` |
-
-### Validação pós-deploy
-1. `sudo bash self-host/update.sh`
-2. Testar: `curl -I https://PUBLIC_DOMAIN/preview-image?slug=SEU_SLUG` → deve retornar `Content-Type: image/jpeg`
-3. Botão "Rotacionar Agora" → imagem muda imediatamente no modal
-4. Compartilhar link no WhatsApp → preview com imagem grande
+| `src/lib/funnel-storage.ts` | Nova função `getActiveFunnelPreview(funnelId)` — query leve só do `preview_image` |
+| `src/pages/Admin.tsx` | `handleRotateNow` usa nova função para atualizar `activePreviewUrl` corretamente |
+| `self-host/api-server.js` | Remover `og:image:width/height` fixos; mudar cache do `/preview-image` para `no-cache` |
 

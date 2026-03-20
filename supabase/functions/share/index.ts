@@ -73,8 +73,6 @@ Deno.serve(async (req) => {
   ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />` : ""}
   ${imageUrl ? `<meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />` : ""}
   ${imageUrl ? `<meta property="og:image:type" content="image/png" />` : ""}
-  ${imageUrl ? `<meta property="og:image:width" content="1200" />` : ""}
-  ${imageUrl ? `<meta property="og:image:height" content="630" />` : ""}
   <meta property="og:url" content="${escapeHtml(redirectUrl)}" />
 
   <meta name="twitter:card" content="summary_large_image" />
