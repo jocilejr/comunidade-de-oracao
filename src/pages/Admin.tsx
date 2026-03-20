@@ -1124,45 +1124,12 @@ const Admin = () => {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 pt-2">
-            <p className="text-[11px] text-muted-foreground">
-              Adicione múltiplas imagens de preview. A cada hora o sistema alterna automaticamente qual imagem será exibida.
-            </p>
-
-            {loadingPreviews ? (
-              <div className="grid grid-cols-3 gap-2">
-                <Skeleton className="aspect-video rounded-lg" />
-                <Skeleton className="aspect-video rounded-lg" />
-                <Skeleton className="aspect-video rounded-lg" />
-              </div>
-            ) : previewImages.length === 0 ? (
-              <div className="text-center py-8 border-2 border-dashed border-border rounded-xl">
-                <Image className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-xs text-muted-foreground">Nenhuma imagem de preview</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-2">
-                {previewImages.map((img) => {
-                  const isActive = previewGalleryDialog?.previewImage === img.dataUrl;
-                  return (
-                    <div key={img.id} className="relative group aspect-video rounded-lg overflow-hidden border border-border hover:border-primary/30 transition-colors">
-                      <img src={img.dataUrl} alt={`Preview ${img.position + 1}`} className="w-full h-full object-cover" />
-                      {isActive && (
-                        <div className="absolute top-1 left-1 bg-primary text-primary-foreground rounded-full p-0.5">
-                          <Star className="w-2.5 h-2.5 fill-current" />
-                        </div>
-                      )}
-                      <button
-                        onClick={() => handleRemovePreviewImage(img.id)}
-                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+          <RotationCountdownGallery
+            previewImages={previewImages}
+            loadingPreviews={loadingPreviews}
+            activeDataUrl={previewGalleryDialog?.previewImage}
+            onRemove={handleRemovePreviewImage}
+          />
 
             <Button variant="outline" size="sm" className="w-full" onClick={() => previewGalleryRef.current?.click()}>
               <Plus className="w-3.5 h-3.5 mr-1.5" /> Adicionar imagem

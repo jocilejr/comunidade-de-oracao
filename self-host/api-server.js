@@ -119,7 +119,7 @@ async function handleShare(req, res, slug, format) {
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${description}" />
   ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}
-  <meta http-equiv="refresh" content="0;url=${escapeHtml(spaUrl)}" />
+  
 </head>
 <body>
   <p>Redirecionando para <a href="${escapeHtml(spaUrl)}">${title}</a>...</p>
