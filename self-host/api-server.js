@@ -354,7 +354,7 @@ async function handleUserSettings(req, res) {
 // ── Route: /rotate-preview-images ─────────────────────────
 async function handleRotateImages(req, res) {
   const { rows: images } = await pool.query(
-    `SELECT id, funnel_id, data_url, position FROM funnel_preview_images ORDER BY position ASC`
+    `SELECT id, funnel_id, data_url, position FROM funnel_preview_images ORDER BY funnel_id, position ASC`
   );
 
   if (!images.length) return json(res, { message: "No preview images to rotate" });
@@ -367,15 +367,33 @@ async function handleRotateImages(req, res) {
 
   const currentHour = new Date().getUTCHours();
   let updated = 0;
+  const details = [];
 
   for (const [funnelId, funnelImages] of Object.entries(byFunnel)) {
-    if (funnelImages.length <= 1) continue;
     const idx = currentHour % funnelImages.length;
-    await pool.query(`UPDATE funnels SET preview_image = $1 WHERE id = $2`, [funnelImages[idx].data_url, funnelId]);
+    const activeImage = funnelImages[idx];
+
+    // Validate data_url
+    const url = activeImage.data_url;
+    if (!url || (!url.startsWith("data:") && !url.startsWith("http"))) {
+      details.push({ funnelId, status: "skipped", reason: "invalid data_url", imageId: activeImage.id });
+      continue;
+    }
+
+    await pool.query(`UPDATE funnels SET preview_image = $1 WHERE id = $2`, [url, funnelId]);
     updated++;
+    details.push({
+      funnelId,
+      status: "updated",
+      totalImages: funnelImages.length,
+      activeIndex: idx,
+      activeImageId: activeImage.id,
+      activePosition: activeImage.position,
+    });
   }
 
-  json(res, { message: `Rotated ${updated} funnels`, hour: currentHour });
+  console.log(`[rotate] hour=${currentHour} updated=${updated}/${Object.keys(byFunnel).length} funnels`);
+  json(res, { message: `Rotated ${updated} funnels`, hour: currentHour, details });
 }
 
 // ── Auth: signup ──────────────────────────────────────────
