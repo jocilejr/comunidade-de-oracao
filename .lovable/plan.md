@@ -1,68 +1,47 @@
 
 
-## Correção definitiva: modo robusto para link preview
+## Duas correções
 
-### Problema real
+### 1. Por que o `/f/` existe — e o bug de loop infinito
 
-O disparador de links não envia User-Agent de crawler (WhatsApp, facebookexternalhit, etc.). A detecção por UA falha, e o servidor entrega o `index.html` do SPA com metadados genéricos ("Comunidade", "Aperte aqui e Receba", imagem Typebot Runtime). Isso explica por que a ferramenta manual mostra correto (ela lê as OG tags do HTML dinâmico via endpoint /share) mas o WhatsApp real mostra errado.
+O prefixo `/f/` serve para separar a **URL de compartilhamento** (`/:slug`) da **URL do SPA** (`/f/:slug`). No modo robusto, quando alguém acessa `/:slug`, o servidor retorna HTML com OG tags e um meta-refresh que redireciona o navegador para `/f/:slug` (onde o SPA carrega o funil).
 
-### Solução: servir OG tags dinâmicas para TODOS os visitantes em rotas de slug
+**Problema atual**: a regex `^\/(?:f\/)?([a-zA-Z0-9_-]+)\/?$` intercepta TAMBÉM `/f/:slug`, criando um loop infinito (OG HTML → redirect para `/f/slug` → OG HTML → redirect...). O navegador fica preso.
 
-Em vez de depender de User-Agent, o `api-server.js` vai **sempre** retornar HTML com OG tags dinâmicas para rotas `/:slug` e `/f/:slug`. Humanos serão redirecionados via `<meta http-equiv="refresh">` e JavaScript no body, que crawlers ignoram mas navegadores executam.
-
-Isso elimina completamente a dependência de detecção de bot.
-
-### Mudanças
-
-**Arquivo: `self-host/api-server.js`** (linhas 726-738)
-
-Substituir o bloco de bot detection por lógica que sempre serve HTML com OG tags + redirect client-side:
+**Correção**: Alterar a regex para interceptar APENAS `/:slug` (sem `/f/`):
 
 ```javascript
-// ── Public domain catch-all: /{slug} or /f/{slug} — always serve OG HTML ──
-const RESERVED = /^(login|admin|assets|api|rest|auth|functions|health|__funnel_diag|share|preview-image|rotate-preview-images|openai-proxy|typebot-proxy|user-settings)$/i;
-const slugMatch = path.match(/^\/(?:f\/)?([a-zA-Z0-9_-]+)\/?$/);
-if (slugMatch && !RESERVED.test(slugMatch[1]) && req.method === "GET") {
-  const slug = slugMatch[1];
-  console.log(`[SHARE] Serving OG HTML for slug="${slug}", path="${path}"`);
-  return await handleShareRobust(req, res, slug);
-}
+// Só intercepta /:slug, NÃO /f/:slug
+const slugMatch = path.match(/^\/([a-zA-Z0-9_-]+)\/?$/);
 ```
 
-**Nova função `handleShareRobust`** — semelhante a `handleShare` mas o HTML inclui:
-- Todas as OG tags dinâmicas (título, descrição, imagem do funil)
-- `<meta http-equiv="refresh" content="0;url=...">` para redirect instantâneo
-- `<script>window.location.replace("...")</script>` como fallback
-- Crawlers (WhatsApp, Google etc.) ignoram meta refresh e JS, leem apenas as OG tags
-- Navegadores humanos são redirecionados imediatamente para o SPA (`/f/slug`)
+Assim `/f/:slug` cai direto no SPA fallback (index.html) como esperado.
 
-O redirect para humanos apontará para o próprio domínio público `/f/slug` (que cairá no SPA fallback normalmente), mantendo a experiência atual.
+### 2. Logs não aparecem no dashboard
 
-**Importante**: No domínio público com Traefik, toda requisição já vai ao `api-server`. O Nginx template também já roteia tudo para o api-server. Então essa mudança funciona em ambas as configurações.
+A causa mais provável é que no domínio público (VPS), os visitantes abrem o funil e o `typebot-engine` tenta criar sessões via `supabase.from('funnel_sessions').insert(...)`. Porém, no domínio público, o `VITE_PUBLIC_DOMAIN` está setado, e o `getFunnelBySlug` usa o endpoint `/functions/v1/share?format=json` em vez do Supabase client. **Mas o engine ainda usa o Supabase client diretamente** para criar sessões — e no VPS, esse client aponta para o PostgREST local que pode não estar configurado corretamente para aceitar inserções anônimas.
 
-### Fluxo resultante
+**Correção**: No `typebot-engine.ts`, quando `VITE_PUBLIC_DOMAIN` está ativo, usar o endpoint do api-server (via fetch) para criar sessões e logar eventos, em vez do Supabase client direto. Alternativamente, garantir que o PostgREST local aceita as inserções.
 
-```text
-Visitante → GET /meu-slug
-  api-server:
-    1. Match regex → slug = "meu-slug"
-    2. Query DB → título, descrição, imagem
-    3. Retorna HTML com:
-       - <meta og:title="Oração Poderosa">
-       - <meta og:image="https://comunidade.../preview-image?slug=...">
-       - <meta http-equiv="refresh" content="0;url=/f/meu-slug">
-       - <script>window.location.replace("/f/meu-slug")</script>
-    4. Crawler lê OG tags ✓
-    5. Navegador redireciona instantaneamente para SPA ✓
-```
+**Abordagem mais simples**: Criar um endpoint no `api-server.js` para receber sessões e eventos (`POST /functions/v1/session-log`), e adaptar o engine para usá-lo no domínio público.
 
 ### Arquivos modificados
-- `self-host/api-server.js` — nova função + substituição do bloco de bot detection
 
-### Após deploy
+1. **`self-host/api-server.js`**:
+   - Corrigir regex de `^\/(?:f\/)?` para `^\/` (sem capturar `/f/`)
+   - Adicionar endpoint `POST /functions/v1/session-log` para receber dados de sessão
+
+2. **`src/lib/typebot-engine.ts`**:
+   - No domínio público, enviar logs de sessão via fetch ao api-server em vez do Supabase client
+
+### Validação
+
+Após deploy na VPS:
 ```bash
-cd /root/comunidade-de-oracao && git pull && sudo bash self-host/update.sh
-curl -s http://127.0.0.1:4000/a-verdadeira-oracao-de-1-minuto | head -20
+# Deve retornar OG HTML com meta-refresh
+curl -s http://127.0.0.1:4000/meu-slug | head -15
+
+# Deve retornar o SPA (index.html normal)
+curl -s http://127.0.0.1:4000/f/meu-slug | head -5
 ```
-O HTML deve conter `og:title` com o título do funil e `meta http-equiv="refresh"`.
 
