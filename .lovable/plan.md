@@ -1,44 +1,64 @@
 
-Objetivo: resolver o loop de “MIME text/html em index-*.js” com diagnóstico determinístico (sem chute).
 
-Diagnóstico consolidado:
-- Erro persiste após vários deploys.
-- Você confirmou: **sem CDN** e no Network **não aparece `X-Funnel-Served-By`**.
-- Do I know what the issue is? **Sim**: o tráfego real do domínio não está passando pelo caminho que foi corrigido (api-server/nginx template esperado), ou está passando por um roteador/vhost concorrente que continua devolvendo HTML para JS.
+## Diagnóstico confirmado
 
-Plano de implementação
+O output do `__funnel_diag` local revelou **duas causas-raiz**:
 
-1) Tornar a origem da resposta inequívoca (fingerprint obrigatório)
-- Arquivos: `self-host/api-server.js`, `self-host/nginx.conf.template`
-- Garantir headers de debug em **todas** as respostas relevantes (`200/404`) com `always` no Nginx.
-- Adicionar endpoint técnico `GET /__funnel_diag` no `api-server` (versão, domínio, dist path, timestamp) para provar qual stack está atendendo.
+### Causa 1: PM2 não carrega variáveis de ambiente
+O `ecosystem.config.js` usa `env_file: "/opt/funnel-app/.env"` — mas **PM2 não suporta `env_file`**. Por isso `publicDomain` e `dashboardDomain` aparecem como `"localhost"`. O api-server roda sem saber qual domínio ele serve.
 
-2) Corrigir detecção de modo proxy (auto-detecção atual é frágil)
-- Arquivos: `self-host/update.sh`, `self-host/install.sh`
-- Substituir heurística “porta 443 com docker-proxy” por validação real:
-  - Traefik: container Traefik + routers com `Host(DASHBOARD_DOMAIN)`
-  - Nginx: `nginx -T` contendo `server_name` do dashboard
-- Adicionar override explícito (`PROXY_MODE=traefik|nginx|auto`) para evitar falso positivo.
+### Causa 2: HTTPS não chega ao api-server
+O `curl -sf https://dash.origemdavida.online/__funnel_diag` retorna vazio, mas `http://127.0.0.1:4000/__funnel_diag` funciona. Algo (container antigo ou outro serviço) está interceptando o tráfego HTTPS antes de chegar ao api-server via Traefik. Provavelmente um container `funnel-spa` ou `funnel-nginx-proxy` antigo ainda com labels Traefik ativas.
 
-3) Transformar smoke test em bloqueio real de deploy
-- Arquivo: `self-host/update.sh`
-- Validar `/` e `/admin` (não só `/`):
-  - extrair `src` do módulo;
-  - checar `HTTP 200`, `Content-Type` JavaScript, corpo não iniciando com HTML;
-  - checar presença de `X-Funnel-Served-By` ou assinatura equivalente.
-- Se falhar: encerrar update com erro claro e comandos de diagnóstico (conflito de router/vhost).
+---
 
-4) Detectar e bloquear conflitos de roteamento por domínio
-- Arquivo: `self-host/update.sh`
-- Traefik: listar containers com labels contendo o mesmo host e falhar se houver concorrência.
-- Nginx: validar qual arquivo efetivamente responde pelo `server_name` do dashboard e alertar conflito.
+## Plano de implementação
 
-5) Proteção extra contra cache/stale entrypoint
-- Arquivo: `self-host/update.sh`
-- Pós-build: validar que o `index.html` gerado usa `src="/assets/..."` (absoluto).
-- Se necessário, aplicar cache-buster de deploy no entry module para evitar reutilização de resposta HTML antiga em intermediários.
+### 1. Corrigir `ecosystem.config.js` — carregar env vars corretamente
 
-Detalhes técnicos (resumo)
-- Causa provável não é o React/Vite em si; é **rota efetiva em produção divergente da rota planejada**.
-- O próximo fix vai priorizar “provar quem respondeu” e “falhar o deploy quando JS vier errado”, para impedir nova tela branca silenciosa.
-- Arquivos alvo: `self-host/api-server.js`, `self-host/nginx.conf.template`, `self-host/update.sh`, `self-host/install.sh`.
+Remover `env_file` (não suportado pelo PM2). Em vez disso, o `update.sh` vai exportar todas as variáveis do `.env` antes de chamar `pm2 start`, e o `ecosystem.config.js` vai usar `cwd` para garantir o diretório correto.
+
+```javascript
+// ecosystem.config.js
+module.exports = {
+  apps: [
+    {
+      name: "funnel-api",
+      script: "/opt/funnel-app/api-server.js",
+      cwd: "/opt/funnel-app",
+      watch: false,
+      instances: 1,
+      autorestart: true,
+      max_restarts: 10,
+      // env vars are inherited from shell (set -a; source .env; set +a)
+    },
+    ...
+  ]
+};
+```
+
+### 2. Corrigir `update.sh` — garantir env vars no PM2
+
+No bloco de restart do PM2:
+- Fazer `set -a; source /opt/funnel-app/.env; set +a` antes do `pm2 start`
+- Usar `pm2 delete all` + `pm2 start ecosystem.config.js` (não `pm2 restart`)
+- Validar que `__funnel_diag` responde com `servedBy` e com os domínios corretos (não `localhost`)
+
+### 3. Corrigir `update.sh` — limpar containers antigos agressivamente
+
+Antes de subir o docker-compose novo:
+- Parar e remover QUALQUER container com labels Traefik que referenciem o `DASHBOARD_DOMAIN` (exceto os novos `funnel-api-proxy` e `funnel-rest-proxy`)
+- Isso mata containers fantasma (`funnel-spa`, `funnel-nginx-proxy`, etc.) que interceptam o tráfego
+
+### 4. Validação pós-restart
+
+Após restart, o update.sh vai:
+- Testar `http://127.0.0.1:4000/__funnel_diag` e verificar que `dashboardDomain` NÃO é `localhost`
+- Se for `localhost`, falhar com erro claro: "env vars não carregadas"
+
+---
+
+### Arquivos modificados
+- `self-host/ecosystem.config.js` — remover `env_file`
+- `self-host/update.sh` — exportar env antes do PM2, limpar containers antigos, validar domínios no diag
+
