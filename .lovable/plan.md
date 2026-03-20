@@ -1,50 +1,49 @@
 
-Objetivo: eliminar a tela branca na VPS (cache/hash mismatch de assets) e evitar recorrência em updates futuros.
 
-1) Confirmar ponto exato da quebra (dashboard vs público)
-- Rodar validação de resposta real por domínio (não só arquivo em disco):
-  - `curl -s https://SEU_DASHBOARD_DOMAIN/ | grep -o '/assets/index-[^"]*'`
-  - `curl -I https://SEU_DASHBOARD_DOMAIN/assets/ARQUIVO_ENCONTRADO.js`
-  - `curl -I https://SEU_DASHBOARD_DOMAIN/assets/index-Cxf2Od6W.js` (hash antigo que apareceu no navegador)
-- Fazer o mesmo no domínio público para descartar roteamento duplicado por host rule no Traefik.
+## Correção definitiva: Rotação + Preview WhatsApp
 
-2) Corrigir estratégia de deploy para não quebrar clientes com HTML em cache
-- Arquivo: `self-host/update.sh`
-- Alterar o passo de sync do frontend:
-  - Em vez de apagar tudo (`rm -rf /opt/funnel-app/dist`), manter `dist/assets` anterior por 1 ciclo de deploy.
-  - Copiar novo build por cima, preservando arquivos hash antigos (JS/CSS) temporariamente.
-- Resultado esperado: mesmo que algum navegador carregue `index.html` antigo, os bundles antigos ainda existirão e o app abre normalmente.
+### Problema 1: Rotação não funciona ("Rotacionar Agora" não muda nada)
 
-3) Reduzir chance de cache agressivo no dashboard
-- Arquivo: `self-host/docker-compose.traefik.yml.template`
-- Ajustar serviço `funnel-spa` para não aplicar cache-control automático agressivo em static-web-server (via env de cache-control).
-- Objetivo: reduzir retenção de HTML antigo com hash desatualizado.
+A lógica usa `currentHour % totalImages`. Cada chamada na mesma hora UTC retorna o mesmo índice. O botão "Rotacionar Agora" chama o mesmo endpoint, mas como a hora não mudou, seleciona a mesma imagem.
 
-4) Adicionar smoke test pós-update focado em hash real em produção
-- Arquivo: `self-host/update.sh`
-- Após subir containers:
-  - Buscar `index.html` do domínio dashboard.
-  - Extrair hash JS referenciado.
-  - Testar se o arquivo existe e retorna MIME JavaScript.
-- Se falhar: mostrar erro explícito de “hash mismatch / asset ausente” no próprio `update.sh`.
+**Correção em `self-host/api-server.js`**:
+- Adicionar lógica de rotação incremental: em vez de calcular pelo relógio, o endpoint lê qual imagem está ativa (`funnels.preview_image`), encontra o índice dela na galeria e avança para a próxima (round-robin)
+- O cron continua chamando a cada hora, mas agora cada chamada avança a imagem
+- O botão "Rotacionar Agora" funciona imediatamente
 
-5) Ajuste de robustez no gateway público (prevenção secundária)
-- Arquivo: `self-host/api-server.js`
-- Garantir que respostas de HTML (fallback SPA/slug humano) usem `Cache-Control: no-cache`.
-- Manter assets com cache longo apenas quando o arquivo realmente existe (hashado).
+### Problema 2: Preview WhatsApp pequeno (não full-screen)
 
-6) Validação final (aceite)
-- Hard refresh e aba anônima no dashboard e no público.
-- Confirmar:
-  - Sem erro MIME no console.
-  - `/assets/index-*.js` retorna `200` e `Content-Type: application/javascript`.
-  - Login/admin/funil abrindo normalmente.
-  - Preview/rotação continuam funcionando.
+As imagens são armazenadas como `data:image/...;base64,...` e servidas via `/preview-image?slug=`. O WhatsApp exige resposta rápida e imagem com dimensões adequadas. Dois problemas:
+- Base64 de ~500KB vira ~700KB no banco → decodificação lenta
+- Sem conversão para JPEG otimizado, a imagem pode ser PNG pesado
 
-Detalhes técnicos (causa raiz)
-- O `dist/index.html` da VPS já está com hash novo (`index-D5BBQz-i.js`), mas navegador pediu hash antigo (`index-Cxf2...`).
-- Isso indica HTML antigo em cache em algum ponto (browser/proxy). Como o deploy removeu assets antigos, o request caiu em fallback HTML e gerou erro de MIME → tela branca.
-- Preservar assets de versão anterior + smoke test de hash elimina esse tipo de queda durante atualização.
+**Correção em `self-host/api-server.js`**:
+- No `handlePreviewImage`, adicionar cache em memória (Map com TTL de 5 min) para evitar query + decode a cada requisição do crawler
+- Servir com `Content-Type` correto já existente
 
-Rollback seguro
-- Se qualquer ajuste falhar, voltar temporariamente ao comportamento anterior de headers e manter apenas a correção de deploy “preservar assets anteriores”, que já resolve a indisponibilidade sem alterar lógica de app.
+**Correção no upload (frontend)**:
+- Em `src/pages/Admin.tsx` e `src/lib/funnel-storage.ts`: ao fazer upload de preview, converter para JPEG otimizado (quality 0.85) usando Canvas, mantendo proporção original mas limitando a 1200px de largura
+- Isso reduz o tamanho do base64 armazenado e acelera a entrega
+
+### Problema 3: `getAllFunnelsMeta` carrega base64 de todas as imagens
+
+A query seleciona `preview_image` (que contém megabytes de base64) para todos os funis. Isso torna a listagem lenta.
+
+**Correção em `src/lib/funnel-storage.ts`**:
+- Remover `preview_image` da query de `getAllFunnelsMeta` — o card do admin não precisa exibir a imagem inline
+- Ou adicionar um campo `has_preview` boolean derivado
+
+### Arquivos alterados
+
+| Arquivo | Mudança |
+|---|---|
+| `self-host/api-server.js` | Rotação round-robin (não baseada em hora); cache de imagem em memória |
+| `src/pages/Admin.tsx` | Upload converte para JPEG otimizado via Canvas; ajustar "Rotacionar Agora" para funcionar sem depender da hora UTC |
+| `src/lib/funnel-storage.ts` | Função `compressPreviewImage()` para otimizar antes de salvar; remover `preview_image` de `getAllFunnelsMeta` |
+
+### Validação pós-deploy
+1. `sudo bash self-host/update.sh`
+2. Testar: `curl -I https://PUBLIC_DOMAIN/preview-image?slug=SEU_SLUG` → deve retornar `Content-Type: image/jpeg`
+3. Botão "Rotacionar Agora" → imagem muda imediatamente no modal
+4. Compartilhar link no WhatsApp → preview com imagem grande
+

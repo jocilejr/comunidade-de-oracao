@@ -131,7 +131,8 @@ async function handleShare(req, res, slug, format) {
   ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />` : ""}
   ${imageUrl ? `<meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />` : ""}
   ${imageUrl ? `<meta property="og:image:type" content="${ogImageType}" />` : ""}
-  
+  ${imageUrl ? `<meta property="og:image:width" content="1200" />` : ""}
+  ${imageUrl ? `<meta property="og:image:height" content="630" />` : ""}
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
@@ -164,7 +165,7 @@ async function handlePreviewImage(req, res, slug) {
       ...corsHeaders,
       "Content-Type": cached.mime,
       "Content-Length": cached.buffer.length,
-      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Cache-Control": "public, max-age=300",
     });
     return res.end(cached.buffer);
   }
@@ -218,7 +219,7 @@ async function handlePreviewImage(req, res, slug) {
     ...corsHeaders,
     "Content-Type": mimeType,
     "Content-Length": buffer.length,
-    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Cache-Control": "public, max-age=300",
   });
   res.end(buffer);
 }
@@ -666,7 +667,7 @@ const server = http.createServer(async (req, res) => {
       // Humano: servir index.html (SPA client-side routing)
       try {
         const indexHtml = fs.readFileSync(nodePath.join(DIST_DIR, "index.html"), "utf-8");
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" });
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         return res.end(indexHtml);
       } catch {
         // fallback: redirect para dashboard
