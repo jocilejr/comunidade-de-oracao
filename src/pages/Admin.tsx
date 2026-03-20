@@ -853,7 +853,7 @@ const Admin = () => {
                                 {f.name}
                               </div>
                             </td>
-                            <td className="px-4 py-2.5 font-mono text-[11px] text-muted-foreground">/f/{f.slug}</td>
+                            <td className="px-4 py-2.5 font-mono text-[11px] text-muted-foreground">/{f.slug}</td>
                             <td className="px-4 py-2.5 text-[13px] text-muted-foreground">{f.flow.groups.length}</td>
                             <td className="px-4 py-2.5 text-[13px] text-muted-foreground">{f.flow.groups.reduce((s, g) => s + g.blocks.length, 0)}</td>
                             <td className="px-4 py-2.5 text-[13px] text-muted-foreground">{new Date(f.uploadedAt).toLocaleDateString('pt-BR')}</td>
