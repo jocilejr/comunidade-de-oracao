@@ -48,6 +48,8 @@ export class TypebotEngine {
   private funnelId: string | null = null;
   private lastGroupTitle: string = '';
   private useApiLog: boolean = false;
+  private sessionReady: Promise<void>;
+  private resolveSessionReady!: () => void;
 
   constructor(flow: TypebotFlow, options?: { ownerUserId?: string; funnelId?: string }) {
     this.flow = flow;
