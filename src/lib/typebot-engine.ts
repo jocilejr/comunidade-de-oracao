@@ -196,6 +196,8 @@ export class TypebotEngine {
     // Fire-and-forget session creation — don't block first message rendering
     if (this.funnelId) {
       this.createSessionAsync();
+    } else {
+      this.resolveSessionReady();
     }
 
     const group = this.getStartGroup();
