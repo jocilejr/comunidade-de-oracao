@@ -48,12 +48,17 @@ export class TypebotEngine {
   private funnelId: string | null = null;
   private lastGroupTitle: string = '';
   private useApiLog: boolean = false;
+  private sessionReady: Promise<void>;
+  private resolveSessionReady!: () => void;
 
   constructor(flow: TypebotFlow, options?: { ownerUserId?: string; funnelId?: string }) {
     this.flow = flow;
     this.variables = new Map();
     this.ownerUserId = options?.ownerUserId || null;
     this.funnelId = options?.funnelId || null;
+    this.sessionReady = new Promise<void>(resolve => {
+      this.resolveSessionReady = resolve;
+    });
 
     // On public domain, use the api-server endpoint for logging instead of Supabase client
     const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
@@ -191,6 +196,8 @@ export class TypebotEngine {
     // Fire-and-forget session creation — don't block first message rendering
     if (this.funnelId) {
       this.createSessionAsync();
+    } else {
+      this.resolveSessionReady();
     }
 
     const group = this.getStartGroup();
@@ -222,6 +229,8 @@ export class TypebotEngine {
       }
     } catch (e) {
       console.warn('Failed to create session:', e);
+    } finally {
+      this.resolveSessionReady();
     }
   }
 
@@ -231,6 +240,7 @@ export class TypebotEngine {
     content?: string,
     metadata?: Record<string, any>,
   ): Promise<void> {
+    await this.sessionReady;
     if (!this.sessionId) return;
     try {
       if (this.useApiLog) {
@@ -264,6 +274,7 @@ export class TypebotEngine {
   }
 
   private async updateSession(updates: Record<string, any>): Promise<void> {
+    await this.sessionReady;
     if (!this.sessionId) return;
     try {
       const vars: Record<string, string> = {};
