@@ -1,27 +1,33 @@
 
 
-## Redesign dos botões de escolha — verde escuro profissional com fundo sólido
+## Corrigir logs de sessão no domínio público
 
-### Problema
-Os botões atuais usam `bg-transparent` com apenas `border` e texto verde — visual fraco, sem destaque, sem confiança.
+### Problema raiz
+
+Na otimização de performance anterior, o `createSessionAsync()` foi tornado "fire-and-forget" (linha 193 do `typebot-engine.ts`). O problema é que `logEvent()` verifica `if (!this.sessionId) return;` na linha 234. Como a criação da sessão é assíncrona e não aguardada, o `sessionId` ainda é `null` quando os primeiros eventos (mensagens do bot, inputs do usuário) tentam ser registrados — todos os logs são silenciosamente descartados.
 
 ### Solução
-Trocar para botões com **fundo sólido verde escuro** (tipo `#1B5E3A` / `#1A6B3C`), texto branco, sombra suave e hover escurecendo. Transmite profissionalismo e confiança.
 
-### Mudanças no `src/components/chat/ChoiceButtons.tsx`
+Manter a renderização instantânea da primeira mensagem, mas garantir que os logs aguardem a sessão estar pronta.
 
-**Botões de texto (não-picture):**
-- Fundo: verde escuro sólido (`#1B5E3A`)
-- Texto: branco
-- Hover: verde ainda mais escuro (`#154D30`)
-- Sombra suave para dar profundidade
-- Remover `border` e `bg-transparent`
+**1. `src/lib/typebot-engine.ts`** — Adicionar uma Promise de "session ready" que os métodos de log aguardam:
 
-**Botões picture:**
-- Manter estrutura com imagem
-- Footer com fundo verde escuro e texto branco (em vez de bubble color)
-- Hover escurecendo levemente
+- Criar uma propriedade `sessionReady: Promise<void>` + seu `resolve`
+- No `start()`, continuar o fire-and-forget mas resolver a promise quando o `sessionId` for obtido
+- No `logEvent()` e `updateSession()`, fazer `await this.sessionReady` antes de verificar `sessionId`
 
-### Visual esperado
-Botões sólidos, verdes escuros, com texto branco — estilo CTA profissional que transmite confiança e autoridade.
+Isso garante que:
+- A primeira mensagem continua aparecendo instantaneamente (nenhum `await` no fluxo de renderização)
+- Os logs enfileiram e aguardam o `sessionId` ficar disponível antes de serem enviados
+- Nenhum evento é perdido
+
+### Arquivos modificados
+
+1. **`src/lib/typebot-engine.ts`** — Adicionar mecanismo de Promise para sincronizar session creation com logging
+
+### Impacto
+
+- Zero impacto na velocidade de renderização
+- Todos os eventos voltam a ser registrados corretamente no domínio público
+- Dashboard volta a exibir sessões e timeline de conversas
 
