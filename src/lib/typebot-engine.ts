@@ -229,6 +229,8 @@ export class TypebotEngine {
       }
     } catch (e) {
       console.warn('Failed to create session:', e);
+    } finally {
+      this.resolveSessionReady();
     }
   }
 
