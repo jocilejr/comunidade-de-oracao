@@ -120,6 +120,7 @@ export type Database = {
           last_block_id: string | null
           last_group_title: string | null
           started_at: string
+          updated_at: string
           variables: Json | null
         }
         Insert: {
@@ -130,6 +131,7 @@ export type Database = {
           last_block_id?: string | null
           last_group_title?: string | null
           started_at?: string
+          updated_at?: string
           variables?: Json | null
         }
         Update: {
@@ -140,6 +142,7 @@ export type Database = {
           last_block_id?: string | null
           last_group_title?: string | null
           started_at?: string
+          updated_at?: string
           variables?: Json | null
         }
         Relationships: [

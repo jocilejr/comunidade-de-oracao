@@ -47,8 +47,10 @@ export class TypebotEngine {
   private sessionId: string | null = null;
   private funnelId: string | null = null;
   private lastGroupTitle: string = '';
+  private lastBlockId: string = '';
   private useApiLog: boolean = false;
   private sessionReady: Promise<void>;
+  private heartbeatInterval: number | null = null;
   private resolveSessionReady!: () => void;
 
   constructor(flow: TypebotFlow, options?: { ownerUserId?: string; funnelId?: string }) {
@@ -195,7 +197,9 @@ export class TypebotEngine {
   async* start(): AsyncGenerator<EngineEvent> {
     // Fire-and-forget session creation — don't block first message rendering
     if (this.funnelId) {
-      this.createSessionAsync();
+      this.createSessionAsync().then(() => {
+        this.startHeartbeat();
+      });
     } else {
       this.resolveSessionReady();
     }
@@ -283,28 +287,49 @@ export class TypebotEngine {
         if (val) vars[v.name] = val;
       }
 
+      const payload = {
+        session_id: this.sessionId,
+        variables: vars,
+        last_group_title: this.lastGroupTitle,
+        last_block_id: this.lastBlockId,
+        ...updates,
+      };
+
       if (this.useApiLog) {
         await fetch('/functions/v1/session-log', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'update_session',
-            session_id: this.sessionId,
-            variables: vars,
-            last_group_title: this.lastGroupTitle,
-            ...updates,
+            ...payload,
           }),
         });
       } else {
         const { supabase } = await import('@/integrations/supabase/client');
         await supabase.from('funnel_sessions').update({
-          ...updates,
-          variables: vars,
-          last_group_title: this.lastGroupTitle,
+          variables: payload.variables,
+          last_group_title: payload.last_group_title,
+          last_block_id: payload.last_block_id,
+          ended_at: payload.ended_at,
+          completed: payload.completed,
         }).eq('id', this.sessionId);
       }
     } catch (e) {
       console.warn('Failed to update session:', e);
+    }
+  }
+
+  private startHeartbeat(): void {
+    if (this.heartbeatInterval) return;
+    this.heartbeatInterval = window.setInterval(() => {
+      this.updateSession({});
+    }, 30000); // Heartbeat every 30s
+  }
+
+  stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      window.clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
     }
   }
 
@@ -422,9 +447,11 @@ export class TypebotEngine {
   private async* processGroup(group: TypebotGroup, startIndex: number): AsyncGenerator<EngineEvent> {
     const messages: ChatMessage[] = [];
     this.lastGroupTitle = group.title || group.id;
+    this.updateSession({}); // Update stage in DB immediately when entering group
 
     for (let i = startIndex; i < group.blocks.length; i++) {
       const block = group.blocks[i];
+      this.lastBlockId = block.id;
       const blockType = this.normalizeBlockType(block.type);
       
 
@@ -499,6 +526,7 @@ export class TypebotEngine {
     }
 
     this.logEvent('end');
+    this.stopHeartbeat();
     this.updateSession({ ended_at: new Date().toISOString(), completed: true });
     yield { type: 'end' };
   }

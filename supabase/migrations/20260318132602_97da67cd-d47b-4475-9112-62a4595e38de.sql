@@ -8,8 +8,24 @@ CREATE TABLE public.funnel_sessions (
   last_block_id text,
   last_group_title text,
   variables jsonb DEFAULT '{}'::jsonb,
-  completed boolean NOT NULL DEFAULT false
+  completed boolean NOT NULL DEFAULT false,
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Function to update updated_at
+CREATE OR REPLACE FUNCTION public.handle_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger for funnel_sessions
+CREATE TRIGGER on_funnel_sessions_updated
+  BEFORE UPDATE ON public.funnel_sessions
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_updated_at();
 
 -- Create funnel_session_events table
 CREATE TABLE public.funnel_session_events (

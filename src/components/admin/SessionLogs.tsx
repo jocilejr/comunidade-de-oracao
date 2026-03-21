@@ -259,10 +259,15 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
     return vals[0] || null;
   };
 
-  const activeSessionsCount = useMemo(
-    () => sessions.filter(session => !session.ended_at && !session.completed).length,
-    [sessions],
-  );
+  const activeSessionsCount = useMemo(() => {
+    const now = new Date().getTime();
+    return sessions.filter(session => {
+      if (session.ended_at || session.completed) return false;
+      // Consider offline if no update in the last 2 minutes
+      const lastUpdate = new Date((session as any).updated_at || session.started_at).getTime();
+      return now - lastUpdate < 120000;
+    }).length;
+  }, [sessions]);
 
   const periodCards: Array<{ key: PeriodPreset; value: number }> = [
     { key: 'today', value: stats.today },
@@ -274,7 +279,9 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
   if (selectedSession) {
     const vars = selectedSession.variables as Record<string, string> | null;
-    const isLive = !selectedSession.ended_at && !selectedSession.completed;
+    const now = new Date().getTime();
+    const lastUpdate = new Date((selectedSession as any).updated_at || selectedSession.started_at).getTime();
+    const isLive = !selectedSession.ended_at && !selectedSession.completed && (now - lastUpdate < 120000);
 
     return (
       <div className="max-w-4xl space-y-4">
