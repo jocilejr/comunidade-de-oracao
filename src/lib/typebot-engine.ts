@@ -240,6 +240,7 @@ export class TypebotEngine {
     content?: string,
     metadata?: Record<string, any>,
   ): Promise<void> {
+    await this.sessionReady;
     if (!this.sessionId) return;
     try {
       if (this.useApiLog) {
