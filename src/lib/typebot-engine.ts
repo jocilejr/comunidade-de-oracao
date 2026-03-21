@@ -274,6 +274,7 @@ export class TypebotEngine {
   }
 
   private async updateSession(updates: Record<string, any>): Promise<void> {
+    await this.sessionReady;
     if (!this.sessionId) return;
     try {
       const vars: Record<string, string> = {};
