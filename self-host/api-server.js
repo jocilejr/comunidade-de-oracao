@@ -671,7 +671,14 @@ function generateToken(user) {
 
 // ── Session log: receive session/event data from public domain ──
 async function handleSessionLog(req, res) {
-  const body = await readBody(req);
+  const rawBody = await readBody(req);
+  let body = {};
+  try {
+    body = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    return json(res, { error: "Invalid JSON body" }, 400);
+  }
+
   const { action } = body;
 
   try {
