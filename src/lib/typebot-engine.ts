@@ -56,6 +56,9 @@ export class TypebotEngine {
     this.variables = new Map();
     this.ownerUserId = options?.ownerUserId || null;
     this.funnelId = options?.funnelId || null;
+    this.sessionReady = new Promise<void>(resolve => {
+      this.resolveSessionReady = resolve;
+    });
 
     // On public domain, use the api-server endpoint for logging instead of Supabase client
     const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
