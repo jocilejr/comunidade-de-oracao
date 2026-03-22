@@ -457,7 +457,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                 <p className="text-sm text-muted-foreground">Nenhum evento registrado nesta sessão.</p>
               </div>
             ) : (
-              <div className="p-4 space-y-6">
+              <div className="p-6 space-y-8 max-w-full overflow-x-hidden">
                 {events.map((event, idx) => {
                   const Icon = EVENT_ICONS[event.event_type] || MessageSquare;
                   const label = EVENT_LABELS[event.event_type] || event.event_type;
@@ -467,22 +467,24 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
                   return (
                     <div key={event.id} className={`flex flex-col w-full ${isUser ? 'items-end' : 'items-start'}`}>
-                      <div className={`flex items-center gap-2 mb-1.5 px-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                        <Icon className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                          {isUser ? 'Usuário' : isBot ? 'Assistente' : isGpt ? 'Inteligência Artificial' : label}
+                      <div className={`flex items-center gap-2 mb-2 px-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isUser ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                          <Icon className="w-3 h-3" />
+                        </div>
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                          {isUser ? 'Usuário' : isBot ? 'Assistente' : isGpt ? 'IA' : label}
                         </span>
-                        <span className="text-[10px] text-muted-foreground/40">
+                        <span className="text-[10px] text-muted-foreground/40 font-mono">
                           {new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                       
-                      <div className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 text-sm shadow-sm border ${
+                      <div className={`relative max-w-[85%] sm:max-w-[70%] rounded-2xl px-4 py-3 text-[13px] shadow-sm border transition-all ${
                         isUser 
-                          ? 'bg-primary text-primary-foreground border-primary rounded-tr-none' 
+                          ? 'bg-primary text-primary-foreground border-primary rounded-tr-none mr-1' 
                           : isGpt 
-                            ? 'bg-secondary/50 text-secondary-foreground border-primary/20 rounded-tl-none' 
-                            : 'bg-muted/50 text-foreground border-border rounded-tl-none'
+                            ? 'bg-secondary/40 text-secondary-foreground border-primary/20 rounded-tl-none ml-1' 
+                            : 'bg-muted/40 text-foreground border-border rounded-tl-none ml-1'
                       }`}>
                         {event.content ? (
                           <div className="whitespace-pre-wrap break-words leading-relaxed">
