@@ -753,7 +753,7 @@ const Admin = () => {
 
             {/* Logs Dialog */}
             <Dialog open={!!logsFunnel} onOpenChange={open => { if (!open) setLogsFunnel(null); }}>
-              <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+              <DialogContent className="max-w-6xl w-[95vw] h-[90vh] flex flex-col p-6 overflow-hidden">
                 <DialogHeader>
                   <DialogTitle>Logs — {logsFunnel?.name}</DialogTitle>
                 </DialogHeader>

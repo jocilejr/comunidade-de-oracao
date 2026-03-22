@@ -3,7 +3,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, MessageSquare, User, Bot, Cpu, CheckCircle, XCircle, ChevronRight, Activity } from 'lucide-react';
+import { 
+  ArrowLeft, MessageSquare, User, Bot, Cpu, CheckCircle, XCircle, 
+  ChevronRight, Activity, Filter, Search, Calendar as CalendarIcon,
+  Clock, RefreshCw
+} from 'lucide-react';
+import { getFunnelById } from '@/lib/funnel-storage';
+import { TypebotFlow } from '@/lib/typebot-types';
 
 interface FunnelMeta {
   id: string;
@@ -19,6 +25,7 @@ interface Session {
   last_group_title: string | null;
   variables: Record<string, string> | null;
   completed: boolean;
+  updated_at?: string;
 }
 
 interface SessionEvent {
@@ -70,7 +77,7 @@ const PERIOD_LABELS: Record<PeriodPreset, string> = {
   custom: 'Personalizado',
 };
 
-const AUTO_REFRESH_MS = 3000;
+const AUTO_REFRESH_MS = 5000;
 
 const toDateInput = (date: Date) => {
   const y = date.getFullYear();
@@ -93,6 +100,8 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   const [events, setEvents] = useState<SessionEvent[]>([]);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [selectedFunnel, setSelectedFunnel] = useState<string>(defaultFunnel || 'all');
+  const [selectedStep, setSelectedStep] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -100,8 +109,33 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   const [customStart, setCustomStart] = useState<string>(() => toDateInput(addDays(new Date(), -6)));
   const [customEnd, setCustomEnd] = useState<string>(() => toDateInput(new Date()));
   const [stats, setStats] = useState<SessionStats>({ today: 0, yesterday: 0, last3: 0, last7: 0, custom: 0 });
+  const [funnelSteps, setFunnelSteps] = useState<string[]>([]);
 
   const selectedSessionId = selectedSession?.id ?? null;
+
+  // Load funnel steps when funnel changes
+  useEffect(() => {
+    const loadSteps = async () => {
+      if (selectedFunnel === 'all') {
+        setFunnelSteps([]);
+        setSelectedStep('all');
+        return;
+      }
+      
+      try {
+        const funnel = await getFunnelById(selectedFunnel);
+        if (funnel?.flow?.groups) {
+          const steps = funnel.flow.groups
+            .map(g => g.title || g.id)
+            .filter((v, i, a) => a.indexOf(v) === i); // unique
+          setFunnelSteps(steps);
+        }
+      } catch (e) {
+        console.error('Error loading funnel steps:', e);
+      }
+    };
+    loadSteps();
+  }, [selectedFunnel]);
 
   const getRange = useCallback((preset: PeriodPreset): DateRange => {
     const now = new Date();
@@ -147,6 +181,10 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
       next = next.eq('funnel_id', selectedFunnel);
     }
 
+    if (selectedStep !== 'all') {
+      next = next.eq('last_group_title', selectedStep);
+    }
+
     if (range.start) {
       next = next.gte('started_at', range.start);
     }
@@ -156,7 +194,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
     }
 
     return next;
-  }, [selectedFunnel]);
+  }, [selectedFunnel, selectedStep]);
 
   const countSessionsInRange = useCallback(async (range: DateRange): Promise<number> => {
     const base = supabase.from('funnel_sessions').select('id', { count: 'exact', head: true });
@@ -251,7 +289,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
   const getMainVariable = (vars: Record<string, string> | null) => {
     if (!vars) return null;
-    const nameKeys = ['nome', 'name', 'Nome', 'Name'];
+    const nameKeys = ['nome', 'name', 'Nome', 'Name', 'whatsapp', 'phone', 'email'];
     for (const k of nameKeys) {
       if (vars[k]) return vars[k];
     }
@@ -263,11 +301,21 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
     const now = new Date().getTime();
     return sessions.filter(session => {
       if (session.ended_at || session.completed) return false;
-      // Consider offline if no update in the last 2 minutes
-      const lastUpdate = new Date((session as any).updated_at || session.started_at).getTime();
+      const lastUpdate = new Date(session.updated_at || session.started_at).getTime();
       return now - lastUpdate < 120000;
     }).length;
   }, [sessions]);
+
+  const filteredSessions = useMemo(() => {
+    if (!searchQuery.trim()) return sessions;
+    const q = searchQuery.toLowerCase();
+    return sessions.filter(s => {
+      const mainVar = getMainVariable(s.variables)?.toLowerCase() || '';
+      const funnelName = getFunnelName(s.funnel_id).toLowerCase();
+      const lastStep = (s.last_group_title || '').toLowerCase();
+      return mainVar.includes(q) || funnelName.includes(q) || lastStep.includes(q);
+    });
+  }, [sessions, searchQuery]);
 
   const periodCards: Array<{ key: PeriodPreset; value: number }> = [
     { key: 'today', value: stats.today },
@@ -280,253 +328,382 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   if (selectedSession) {
     const vars = selectedSession.variables as Record<string, string> | null;
     const now = new Date().getTime();
-    const lastUpdate = new Date((selectedSession as any).updated_at || selectedSession.started_at).getTime();
+    const lastUpdate = new Date(selectedSession.updated_at || selectedSession.started_at).getTime();
     const isLive = !selectedSession.ended_at && !selectedSession.completed && (now - lastUpdate < 120000);
 
     return (
-      <div className="max-w-4xl space-y-4">
-        <Button variant="ghost" size="sm" onClick={() => { setSelectedSession(null); setEvents([]); }}>
-          <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Voltar
-        </Button>
-
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-foreground">{getFunnelName(selectedSession.funnel_id)}</p>
-              <p className="text-[11px] text-muted-foreground">{formatTime(selectedSession.started_at)}</p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">
-                <Activity className={`w-3.5 h-3.5 ${isLive ? 'animate-pulse' : ''}`} />
-                {isLive ? 'Ao vivo' : 'Encerrada'}
-              </span>
-            </div>
-          </div>
-
-          <div className="text-[12px] text-muted-foreground">
-            Etapa atual:{' '}
-            <span className="text-foreground font-medium">
-              {selectedSession.last_group_title || 'Etapa não identificada'}
+      <div className="flex flex-col h-full max-h-[80vh]">
+        <div className="flex items-center justify-between mb-4 shrink-0">
+          <Button variant="ghost" size="sm" onClick={() => { setSelectedSession(null); setEvents([]); }} className="h-8">
+            <ArrowLeft className="w-4 h-4 mr-2" /> Voltar para a lista
+          </Button>
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full font-medium ${
+              isLive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'
+            }`}>
+              <Activity className={`w-3.5 h-3.5 ${isLive ? 'animate-pulse' : ''}`} />
+              {isLive ? 'Sessão Ativa' : 'Sessão Encerrada'}
             </span>
           </div>
-
-          {vars && Object.keys(vars).length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {Object.entries(vars).map(([k, v]) => (
-                <span key={k} className="text-[10px] px-2 py-0.5 rounded-full bg-accent text-accent-foreground">
-                  {k}: <strong>{v}</strong>
-                </span>
-              ))}
-            </div>
-          )}
         </div>
 
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Timeline da conversa</p>
-            <span className="text-[10px] text-muted-foreground">Atualização automática a cada 3s</span>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 shrink-0">
+          <div className="md:col-span-2 rounded-xl border border-border bg-card p-4">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-foreground">{getFunnelName(selectedSession.funnel_id)}</h3>
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
+                  <Clock className="w-3 h-3" /> Iniciada em {formatTime(selectedSession.started_at)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Etapa Atual</p>
+                <p className="text-sm font-medium text-primary">{selectedSession.last_group_title || 'Início'}</p>
+              </div>
+            </div>
+
+            {vars && Object.keys(vars).length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Dados Coletados</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(vars).map(([k, v]) => (
+                    <div key={k} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/50 border border-border/50">
+                      <span className="text-[10px] text-muted-foreground font-medium">{k}:</span>
+                      <span className="text-[11px] text-foreground font-semibold">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {loadingEvents ? (
-            <div className="p-4 space-y-3">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
+          <div className="rounded-xl border border-border bg-card p-4 flex flex-col justify-center items-center text-center">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${
+              isLive ? 'bg-primary/10 text-primary' : selectedSession.completed ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'
+            }`}>
+              {isLive ? <Activity className="w-6 h-6 animate-pulse" /> : selectedSession.completed ? <CheckCircle className="w-6 h-6" /> : <XCircle className="w-6 h-6" />}
             </div>
-          ) : events.length === 0 ? (
-            <div className="p-6 text-center">
-              <p className="text-xs text-muted-foreground">Nenhum evento registrado.</p>
+            <p className="text-sm font-bold text-foreground">
+              {isLive ? 'Navegando agora' : selectedSession.completed ? 'Concluiu o funil' : 'Abandonou o funil'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {isLive ? 'O usuário ainda está interagindo' : 'Interação finalizada'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-0 rounded-xl border border-border bg-card flex flex-col overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-muted/30 shrink-0">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-muted-foreground" />
+              <p className="text-xs font-bold text-foreground uppercase tracking-wider">Timeline da Conversa</p>
             </div>
-          ) : (
-            <ScrollArea className="max-h-[60vh]">
-              <div className="divide-y divide-border">
-                {events.map(event => {
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+              <RefreshCw className="w-3 h-3 animate-spin-slow" />
+              <span>Atualizando em tempo real</span>
+            </div>
+          </div>
+
+          <ScrollArea className="flex-1">
+            {loadingEvents ? (
+              <div className="p-6 space-y-4">
+                <Skeleton className="h-12 w-3/4 rounded-lg" />
+                <Skeleton className="h-12 w-1/2 rounded-lg ml-auto" />
+                <Skeleton className="h-12 w-2/3 rounded-lg" />
+              </div>
+            ) : events.length === 0 ? (
+              <div className="p-12 text-center">
+                <p className="text-sm text-muted-foreground">Nenhum evento registrado nesta sessão.</p>
+              </div>
+            ) : (
+              <div className="p-4 space-y-4">
+                {events.map((event, idx) => {
                   const Icon = EVENT_ICONS[event.event_type] || MessageSquare;
                   const label = EVENT_LABELS[event.event_type] || event.event_type;
                   const isUser = event.event_type === 'user_input' || event.event_type === 'choice';
                   const isGpt = event.event_type === 'gpt_response';
+                  const isBot = event.event_type === 'bot_message';
 
                   return (
-                    <div key={event.id} className="px-4 py-2.5 flex gap-3 items-start">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                        isUser ? 'bg-primary/15 text-primary'
-                          : isGpt ? 'bg-secondary text-secondary-foreground'
-                            : 'bg-accent text-accent-foreground'
-                        }`}>
-                        <Icon className="w-3.5 h-3.5" />
+                    <div key={event.id} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+                      <div className="flex items-center gap-2 mb-1 px-1">
+                        {!isUser && <Icon className="w-3 h-3 text-muted-foreground" />}
+                        <span className="text-[10px] font-medium text-muted-foreground">
+                          {isUser ? 'Usuário' : isBot ? 'Assistente' : label}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/40">
+                          {new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {isUser && <Icon className="w-3 h-3 text-muted-foreground" />}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
-                          {event.group_title && (
-                            <span className="text-[10px] text-muted-foreground/60">• {event.group_title}</span>
-                          )}
-                          <span className="text-[10px] text-muted-foreground/50 ml-auto shrink-0">
-                            {new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </span>
-                        </div>
-                        {event.content && (
-                          <p className={`text-[13px] mt-0.5 break-words ${isUser ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                            {event.content}
-                          </p>
+                      
+                      <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm border ${
+                        isUser 
+                          ? 'bg-primary text-primary-foreground border-primary' 
+                          : isGpt 
+                            ? 'bg-secondary text-secondary-foreground border-border' 
+                            : 'bg-muted/50 text-foreground border-border'
+                      }`}>
+                        {event.content ? (
+                          <div className="whitespace-pre-wrap break-words leading-relaxed">
+                            {event.content.startsWith('http') && (event.content.includes('.png') || event.content.includes('.jpg') || event.content.includes('.webp')) ? (
+                              <img src={event.content} alt="Mídia" className="max-w-full rounded-lg my-1" />
+                            ) : event.content === '[audio]' ? (
+                              <div className="flex items-center gap-2 py-1">
+                                <div className="w-8 h-8 rounded-full bg-background/20 flex items-center justify-center">
+                                  <Activity className="w-4 h-4" />
+                                </div>
+                                <span className="text-xs font-medium">Mensagem de áudio</span>
+                              </div>
+                            ) : (
+                              event.content
+                            )}
+                          </div>
+                        ) : (
+                          <span className="italic opacity-50 text-xs">Sem conteúdo</span>
                         )}
                       </div>
+                      
+                      {event.group_title && (
+                        <span className="text-[9px] text-muted-foreground/60 mt-1 px-2">
+                          Etapa: {event.group_title}
+                        </span>
+                      )}
                     </div>
                   );
                 })}
               </div>
-            </ScrollArea>
-          )}
+            )}
+          </ScrollArea>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl space-y-4">
-      <div className="rounded-xl border border-border bg-card p-3 space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {!defaultFunnel && (
-            <select
-              value={selectedFunnel}
-              onChange={e => setSelectedFunnel(e.target.value)}
-              className="text-xs rounded-lg border border-border bg-card px-3 py-1.5 text-foreground"
-            >
-              <option value="all">Todos os funis</option>
-              {funnels.map(f => (
-                <option key={f.id} value={f.id}>{f.name}</option>
-              ))}
-            </select>
-          )}
+    <div className="flex flex-col h-full max-h-[85vh]">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6 shrink-0">
+        <div className="lg:col-span-3 space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Buscar por nome, funil ou etapa..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full h-10 pl-10 pr-4 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {!defaultFunnel && (
+                <div className="relative">
+                  <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <select
+                    value={selectedFunnel}
+                    onChange={e => setSelectedFunnel(e.target.value)}
+                    className="h-10 pl-9 pr-4 rounded-xl border border-border bg-background text-xs font-medium appearance-none outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="all">Todos os Funis</option>
+                    {funnels.map(f => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
-          <Button variant="outline" size="sm" onClick={() => { loadSessions(); loadStats(); }}>
-            Atualizar
+              <div className="relative">
+                <Activity className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <select
+                  value={selectedStep}
+                  onChange={e => setSelectedStep(e.target.value)}
+                  disabled={selectedFunnel === 'all'}
+                  className="h-10 pl-9 pr-4 rounded-xl border border-border bg-background text-xs font-medium appearance-none outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+                >
+                  <option value="all">Todas as Etapas</option>
+                  {funnelSteps.map(step => (
+                    <option key={step} value={step}>{step}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+            {periodCards.map(card => {
+              const isActive = period === card.key;
+              return (
+                <button
+                  key={card.key}
+                  onClick={() => setPeriod(card.key)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all whitespace-nowrap ${
+                    isActive
+                      ? 'border-primary bg-primary/5 text-primary shadow-sm'
+                      : 'border-border bg-background text-muted-foreground hover:border-primary/30'
+                  }`}
+                >
+                  <span className="text-[11px] font-bold uppercase tracking-wider">{PERIOD_LABELS[card.key]}</span>
+                  <span className={`text-sm font-bold ${isActive ? 'text-primary' : 'text-foreground'}`}>
+                    {loadingStats ? '...' : card.value}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-muted/30 p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Status Agora</p>
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          </div>
+          <div>
+            <p className="text-2xl font-black text-foreground">{activeSessionsCount}</p>
+            <p className="text-[11px] text-muted-foreground font-medium">Usuários ativos nos últimos 2 min</p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => { loadSessions(); loadStats(); }}
+            className="mt-3 h-8 text-[11px] font-bold uppercase tracking-wider"
+          >
+            <RefreshCw className="w-3 h-3 mr-2" /> Atualizar
           </Button>
-
-          <span className="text-[11px] px-2 py-1 rounded-full bg-primary/10 text-primary">
-            {activeSessionsCount} ao vivo agora
-          </span>
-
-          <span className="text-[11px] text-muted-foreground">Atualização automática a cada 3s</span>
         </div>
+      </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-          {periodCards.map(card => {
-            const isActive = period === card.key;
-
-            return (
-              <button
-                key={card.key}
-                type="button"
-                onClick={() => setPeriod(card.key)}
-                className={`rounded-lg border p-2 text-left transition-colors ${
-                  isActive
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border bg-background hover:border-primary/40'
-                }`}
-              >
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{PERIOD_LABELS[card.key]}</p>
-                <p className="text-lg font-semibold text-foreground">
-                  {loadingStats ? '...' : card.value}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1">
-            <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Data inicial</label>
+      {period === 'custom' && (
+        <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-dashed border-border mb-6 bg-muted/10 shrink-0">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <CalendarIcon className="w-3 h-3" /> Data Inicial
+            </label>
             <input
               type="date"
               value={customStart}
               onChange={e => setCustomStart(e.target.value)}
-              className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+              className="h-9 rounded-lg border border-border bg-background px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Data final</label>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <CalendarIcon className="w-3 h-3" /> Data Final
+            </label>
             <input
               type="date"
               value={customEnd}
               onChange={e => setCustomEnd(e.target.value)}
-              className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+              className="h-9 rounded-lg border border-border bg-background px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
-
           <Button
             size="sm"
-            variant="outline"
             onClick={() => {
               setPeriod('custom');
               loadStats();
               loadSessions();
             }}
+            className="h-9 px-6 font-bold text-xs uppercase tracking-wider"
           >
-            Aplicar personalizado
+            Aplicar Filtro
           </Button>
         </div>
-      </div>
-
-      {loading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map(i => (
-            <Skeleton key={i} className="h-16 w-full rounded-xl" />
-          ))}
-        </div>
-      ) : sessions.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3">
-            <MessageSquare className="w-7 h-7 text-muted-foreground" />
-          </div>
-          <p className="text-sm font-medium text-muted-foreground">Nenhuma sessão registrada</p>
-          <p className="text-xs text-muted-foreground mt-1">As sessões aparecerão aqui quando usuários interagirem com seus funis.</p>
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          {sessions.map(session => {
-            const mainVar = getMainVariable(session.variables as Record<string, string> | null);
-            const isLive = !session.ended_at && !session.completed;
-
-            return (
-              <button
-                key={session.id}
-                onClick={() => openSession(session)}
-                className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:border-primary/20 hover:shadow-sm transition-all text-left"
-              >
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                  isLive ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                }`}>
-                  {isLive ? <Activity className="w-4 h-4 animate-pulse" /> : session.completed ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-[13px] font-medium text-foreground truncate">
-                      {mainVar || 'Visitante anônimo'}
-                    </p>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-accent text-accent-foreground shrink-0">
-                      {getFunnelName(session.funnel_id)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[11px] text-muted-foreground">{formatTime(session.started_at)}</span>
-                    <span className="text-[10px] text-muted-foreground">•</span>
-                    <span className="text-[11px] text-muted-foreground truncate">
-                      {isLive ? 'Etapa atual' : 'Última etapa'}: {session.last_group_title || 'Não identificada'}
-                    </span>
-                  </div>
-                </div>
-
-                <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-              </button>
-            );
-          })}
-        </div>
       )}
+
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex items-center justify-between mb-3 shrink-0">
+          <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+            <Activity className="w-4 h-4" /> Histórico de Sessões
+          </h3>
+          <p className="text-[10px] text-muted-foreground">Mostrando as últimas 200 sessões</p>
+        </div>
+
+        <ScrollArea className="flex-1 -mx-1 px-1">
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4, 5].map(i => (
+                <Skeleton key={i} className="h-20 w-full rounded-2xl" />
+              ))}
+            </div>
+          ) : filteredSessions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-16 h-16 rounded-3xl bg-muted flex items-center justify-center mb-4">
+                <Search className="w-8 h-8 text-muted-foreground/40" />
+              </div>
+              <p className="text-sm font-bold text-foreground">Nenhuma sessão encontrada</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-[280px]">
+                Tente ajustar os filtros ou o termo de busca para encontrar o que procura.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 pb-4">
+              {filteredSessions.map(session => {
+                const mainVar = getMainVariable(session.variables as Record<string, string> | null);
+                const now = new Date().getTime();
+                const lastUpdate = new Date(session.updated_at || session.started_at).getTime();
+                const isLive = !session.ended_at && !session.completed && (now - lastUpdate < 120000);
+
+                return (
+                  <button
+                    key={session.id}
+                    onClick={() => openSession(session)}
+                    className="group w-full flex items-center gap-4 p-4 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-md hover:shadow-primary/5 transition-all text-left relative overflow-hidden"
+                  >
+                    {isLive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary animate-pulse" />}
+                    
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-colors ${
+                      isLive ? 'bg-primary/10 text-primary' : session.completed ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'
+                    }`}>
+                      {isLive ? <Activity className="w-5 h-5 animate-pulse" /> : session.completed ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                          {mainVar || 'Visitante Anônimo'}
+                        </p>
+                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-accent text-accent-foreground uppercase tracking-tighter">
+                          {getFunnelName(session.funnel_id)}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <Clock className="w-3 h-3" />
+                          {formatTime(session.started_at)}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                          <div className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-primary animate-pulse' : 'bg-muted-foreground/40'}`} />
+                          <span className="truncate max-w-[180px]">
+                            {isLive ? 'Etapa atual' : 'Última etapa'}: <span className="text-foreground">{session.last_group_title || 'Início'}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <div className="flex -space-x-1.5">
+                        {session.variables && Object.keys(session.variables).slice(0, 3).map((k, i) => (
+                          <div key={k} className="w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center text-[8px] font-bold text-muted-foreground" title={k}>
+                            {k[0].toUpperCase()}
+                          </div>
+                        ))}
+                        {session.variables && Object.keys(session.variables).length > 3 && (
+                          <div className="w-5 h-5 rounded-full bg-muted border border-border flex items-center justify-center text-[8px] font-bold text-muted-foreground">
+                            +{Object.keys(session.variables).length - 3}
+                          </div>
+                        )}
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </ScrollArea>
+      </div>
     </div>
   );
 };
