@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   ArrowLeft, MessageSquare, User, Bot, Cpu, CheckCircle, XCircle, 
   ChevronRight, Activity, Filter, Search, Calendar as CalendarIcon,
-  Clock, RefreshCw, Sparkles
+  Clock, RefreshCw, Sparkles, CreditCard
 } from 'lucide-react';
 import { getFunnelById } from '@/lib/funnel-storage';
 import { TypebotFlow } from '@/lib/typebot-types';
@@ -26,7 +26,7 @@ interface Session {
   variables: Record<string, string> | null;
   completed: boolean;
   updated_at?: string;
-  has_ai?: boolean; // Virtual field for filtering
+  has_ai?: boolean;
 }
 
 interface SessionEvent {
@@ -52,7 +52,7 @@ interface SessionStats {
   last3: number;
   last7: number;
   custom: number;
-  withAi: number;
+  reachedPayment: number;
 }
 
 const EVENT_ICONS: Record<string, typeof MessageSquare> = {
@@ -81,6 +81,15 @@ const PERIOD_LABELS: Record<PeriodPreset, string> = {
 
 const AUTO_REFRESH_MS = 5000;
 
+// Keywords to identify payment steps
+const PAYMENT_KEYWORDS = ['pagamento', 'checkout', 'pix', 'cartão', 'cartao', 'valor', 'preço', 'preco', 'oferta', 'comprar'];
+
+const isPaymentStep = (stepTitle: string | null) => {
+  if (!stepTitle) return false;
+  const lower = stepTitle.toLowerCase();
+  return PAYMENT_KEYWORDS.some(k => lower.includes(k));
+};
+
 const toDateInput = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -103,7 +112,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [selectedFunnel, setSelectedFunnel] = useState<string>(defaultFunnel || 'all');
   const [selectedStep, setSelectedStep] = useState<string>('all');
-  const [filterAi, setFilterAi] = useState(false);
+  const [filterPayment, setFilterPayment] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(false);
@@ -111,7 +120,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   const [period, setPeriod] = useState<PeriodPreset>('last7');
   const [customStart, setCustomStart] = useState<string>(() => toDateInput(addDays(new Date(), -6)));
   const [customEnd, setCustomEnd] = useState<string>(() => toDateInput(new Date()));
-  const [stats, setStats] = useState<SessionStats>({ today: 0, yesterday: 0, last3: 0, last7: 0, custom: 0, withAi: 0 });
+  const [stats, setStats] = useState<SessionStats>({ today: 0, yesterday: 0, last3: 0, last7: 0, custom: 0, reachedPayment: 0 });
   const [funnelSteps, setFunnelSteps] = useState<string[]>([]);
 
   const selectedSessionId = selectedSession?.id ?? null;
@@ -211,15 +220,15 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
     const activeRange = getRange(period);
     
-    // Count sessions with AI events in the current period
-    const { data: aiSessions } = await supabase
-      .from('funnel_session_events')
-      .select('session_id')
-      .eq('event_type', 'gpt_response')
-      .gte('created_at', activeRange.start || '1970-01-01')
-      .lte('created_at', activeRange.end || new Date().toISOString());
+    // Count sessions that reached payment steps
+    // We fetch sessions in the range and filter by last_group_title containing payment keywords
+    // Note: This only counts sessions where the CURRENT step is payment. 
+    // To be more accurate, we'd need to check all events, but this is a good proxy for "reached".
+    const base = supabase.from('funnel_sessions').select('id, last_group_title');
+    const filtered = applySessionFilters(base, activeRange);
+    const { data: sessionsData } = await filtered;
     
-    const uniqueAiSessions = new Set(aiSessions?.map(s => s.session_id) || []);
+    const reachedPaymentCount = (sessionsData || []).filter(s => isPaymentStep(s.last_group_title)).length;
 
     const [today, yesterday, last3, last7, custom] = await Promise.all([
       countSessionsInRange(getRange('today')),
@@ -229,9 +238,9 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
       countSessionsInRange(getRange('custom')),
     ]);
 
-    setStats({ today, yesterday, last3, last7, custom, withAi: uniqueAiSessions.size });
+    setStats({ today, yesterday, last3, last7, custom, reachedPayment: reachedPaymentCount });
     if (!silent) setLoadingStats(false);
-  }, [countSessionsInRange, getRange, period]);
+  }, [countSessionsInRange, getRange, period, applySessionFilters]);
 
   const loadSessions = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -341,8 +350,8 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   const filteredSessions = useMemo(() => {
     let result = sessions;
     
-    if (filterAi) {
-      result = result.filter(s => s.has_ai);
+    if (filterPayment) {
+      result = result.filter(s => isPaymentStep(s.last_group_title));
     }
 
     if (searchQuery.trim()) {
@@ -356,7 +365,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
     }
     
     return result;
-  }, [sessions, searchQuery, filterAi]);
+  }, [sessions, searchQuery, filterPayment]);
 
   const periodCards: Array<{ key: PeriodPreset; value: number }> = [
     { key: 'today', value: stats.today },
@@ -574,17 +583,17 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
           <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
             <button
-              onClick={() => setFilterAi(!filterAi)}
+              onClick={() => setFilterPayment(!filterPayment)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all whitespace-nowrap mr-2 ${
-                filterAi
-                  ? 'border-primary bg-primary/10 text-primary shadow-sm ring-2 ring-primary/20'
-                  : 'border-border bg-background text-muted-foreground hover:border-primary/30'
+                filterPayment
+                  ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 shadow-sm ring-2 ring-emerald-500/20'
+                  : 'border-border bg-background text-muted-foreground hover:border-emerald-500/30'
               }`}
             >
-              <Sparkles className={`w-4 h-4 ${filterAi ? 'fill-primary/20' : ''}`} />
-              <span className="text-[11px] font-bold uppercase tracking-wider">Com Resposta IA</span>
-              <span className={`text-sm font-bold ${filterAi ? 'text-primary' : 'text-foreground'}`}>
-                {loadingStats ? '...' : stats.withAi}
+              <CreditCard className={`w-4 h-4 ${filterPayment ? 'text-emerald-600' : ''}`} />
+              <span className="text-[11px] font-bold uppercase tracking-wider">Chegou no Pagamento</span>
+              <span className={`text-sm font-bold ${filterPayment ? 'text-emerald-600' : 'text-foreground'}`}>
+                {loadingStats ? '...' : stats.reachedPayment}
               </span>
             </button>
 
@@ -702,6 +711,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                 const now = new Date().getTime();
                 const lastUpdate = new Date(session.updated_at || session.started_at).getTime();
                 const isLive = !session.ended_at && !session.completed && (now - lastUpdate < 120000);
+                const reachedPayment = isPaymentStep(session.last_group_title);
 
                 return (
                   <button
@@ -725,6 +735,9 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                         <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-accent text-accent-foreground uppercase tracking-tighter">
                           {getFunnelName(session.funnel_id)}
                         </span>
+                        {reachedPayment && (
+                          <CreditCard className="w-3 h-3 text-emerald-500 fill-emerald-500/10" />
+                        )}
                         {session.has_ai && (
                           <Sparkles className="w-3 h-3 text-primary fill-primary/20" />
                         )}
