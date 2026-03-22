@@ -466,19 +466,18 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                   const isBot = event.event_type === 'bot_message';
 
                   return (
-                    <div key={event.id} className={`flex flex-col ${isUser ? 'items-end pr-2' : 'items-start pl-2'}`}>
-                      <div className="flex items-center gap-2 mb-1.5 px-1">
-                        {!isUser && <Icon className="w-3 h-3 text-muted-foreground" />}
+                    <div key={event.id} className={`flex flex-col w-full ${isUser ? 'items-end' : 'items-start'}`}>
+                      <div className={`flex items-center gap-2 mb-1.5 px-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <Icon className="w-3 h-3 text-muted-foreground" />
                         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                           {isUser ? 'Usuário' : isBot ? 'Assistente' : isGpt ? 'Inteligência Artificial' : label}
                         </span>
                         <span className="text-[10px] text-muted-foreground/40">
                           {new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                        {isUser && <Icon className="w-3 h-3 text-muted-foreground" />}
                       </div>
                       
-                      <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm border ${
+                      <div className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 text-sm shadow-sm border ${
                         isUser 
                           ? 'bg-primary text-primary-foreground border-primary rounded-tr-none' 
                           : isGpt 
