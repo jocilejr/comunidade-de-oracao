@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   ArrowLeft, MessageSquare, User, Bot, Cpu, CheckCircle, XCircle, 
   ChevronRight, Activity, Filter, Search, Calendar as CalendarIcon,
-  Clock, RefreshCw
+  Clock, RefreshCw, Sparkles
 } from 'lucide-react';
 import { getFunnelById } from '@/lib/funnel-storage';
 import { TypebotFlow } from '@/lib/typebot-types';
@@ -26,6 +26,7 @@ interface Session {
   variables: Record<string, string> | null;
   completed: boolean;
   updated_at?: string;
+  has_ai?: boolean; // Virtual field for filtering
 }
 
 interface SessionEvent {
@@ -51,6 +52,7 @@ interface SessionStats {
   last3: number;
   last7: number;
   custom: number;
+  withAi: number;
 }
 
 const EVENT_ICONS: Record<string, typeof MessageSquare> = {
@@ -101,6 +103,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [selectedFunnel, setSelectedFunnel] = useState<string>(defaultFunnel || 'all');
   const [selectedStep, setSelectedStep] = useState<string>('all');
+  const [filterAi, setFilterAi] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(false);
@@ -108,7 +111,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   const [period, setPeriod] = useState<PeriodPreset>('last7');
   const [customStart, setCustomStart] = useState<string>(() => toDateInput(addDays(new Date(), -6)));
   const [customEnd, setCustomEnd] = useState<string>(() => toDateInput(new Date()));
-  const [stats, setStats] = useState<SessionStats>({ today: 0, yesterday: 0, last3: 0, last7: 0, custom: 0 });
+  const [stats, setStats] = useState<SessionStats>({ today: 0, yesterday: 0, last3: 0, last7: 0, custom: 0, withAi: 0 });
   const [funnelSteps, setFunnelSteps] = useState<string[]>([]);
 
   const selectedSessionId = selectedSession?.id ?? null;
@@ -206,6 +209,18 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   const loadStats = useCallback(async (silent = false) => {
     if (!silent) setLoadingStats(true);
 
+    const activeRange = getRange(period);
+    
+    // Count sessions with AI events in the current period
+    const { data: aiSessions } = await supabase
+      .from('funnel_session_events')
+      .select('session_id')
+      .eq('event_type', 'gpt_response')
+      .gte('created_at', activeRange.start || '1970-01-01')
+      .lte('created_at', activeRange.end || new Date().toISOString());
+    
+    const uniqueAiSessions = new Set(aiSessions?.map(s => s.session_id) || []);
+
     const [today, yesterday, last3, last7, custom] = await Promise.all([
       countSessionsInRange(getRange('today')),
       countSessionsInRange(getRange('yesterday')),
@@ -214,9 +229,9 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
       countSessionsInRange(getRange('custom')),
     ]);
 
-    setStats({ today, yesterday, last3, last7, custom });
+    setStats({ today, yesterday, last3, last7, custom, withAi: uniqueAiSessions.size });
     if (!silent) setLoadingStats(false);
-  }, [countSessionsInRange, getRange]);
+  }, [countSessionsInRange, getRange, period]);
 
   const loadSessions = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -231,7 +246,24 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
     const filtered = applySessionFilters(base, activeRange);
     const { data } = await filtered;
 
-    const nextSessions = (data as Session[]) || [];
+    let nextSessions = (data as Session[]) || [];
+
+    // Fetch AI event presence for these sessions
+    if (nextSessions.length > 0) {
+      const sessionIds = nextSessions.map(s => s.id);
+      const { data: aiEvents } = await supabase
+        .from('funnel_session_events')
+        .select('session_id')
+        .in('session_id', sessionIds)
+        .eq('event_type', 'gpt_response');
+      
+      const aiSessionIds = new Set(aiEvents?.map(e => e.session_id) || []);
+      nextSessions = nextSessions.map(s => ({
+        ...s,
+        has_ai: aiSessionIds.has(s.id)
+      }));
+    }
+
     setSessions(nextSessions);
 
     if (selectedSessionId) {
@@ -307,15 +339,24 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   }, [sessions]);
 
   const filteredSessions = useMemo(() => {
-    if (!searchQuery.trim()) return sessions;
-    const q = searchQuery.toLowerCase();
-    return sessions.filter(s => {
-      const mainVar = getMainVariable(s.variables)?.toLowerCase() || '';
-      const funnelName = getFunnelName(s.funnel_id).toLowerCase();
-      const lastStep = (s.last_group_title || '').toLowerCase();
-      return mainVar.includes(q) || funnelName.includes(q) || lastStep.includes(q);
-    });
-  }, [sessions, searchQuery]);
+    let result = sessions;
+    
+    if (filterAi) {
+      result = result.filter(s => s.has_ai);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(s => {
+        const mainVar = getMainVariable(s.variables)?.toLowerCase() || '';
+        const funnelName = getFunnelName(s.funnel_id).toLowerCase();
+        const lastStep = (s.last_group_title || '').toLowerCase();
+        return mainVar.includes(q) || funnelName.includes(q) || lastStep.includes(q);
+      });
+    }
+    
+    return result;
+  }, [sessions, searchQuery, filterAi]);
 
   const periodCards: Array<{ key: PeriodPreset; value: number }> = [
     { key: 'today', value: stats.today },
@@ -416,7 +457,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                 <p className="text-sm text-muted-foreground">Nenhum evento registrado nesta sessão.</p>
               </div>
             ) : (
-              <div className="p-4 space-y-4">
+              <div className="p-4 space-y-6">
                 {events.map((event, idx) => {
                   const Icon = EVENT_ICONS[event.event_type] || MessageSquare;
                   const label = EVENT_LABELS[event.event_type] || event.event_type;
@@ -425,11 +466,11 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                   const isBot = event.event_type === 'bot_message';
 
                   return (
-                    <div key={event.id} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-                      <div className="flex items-center gap-2 mb-1 px-1">
+                    <div key={event.id} className={`flex flex-col ${isUser ? 'items-end pr-2' : 'items-start pl-2'}`}>
+                      <div className="flex items-center gap-2 mb-1.5 px-1">
                         {!isUser && <Icon className="w-3 h-3 text-muted-foreground" />}
-                        <span className="text-[10px] font-medium text-muted-foreground">
-                          {isUser ? 'Usuário' : isBot ? 'Assistente' : label}
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                          {isUser ? 'Usuário' : isBot ? 'Assistente' : isGpt ? 'Inteligência Artificial' : label}
                         </span>
                         <span className="text-[10px] text-muted-foreground/40">
                           {new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -437,12 +478,12 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                         {isUser && <Icon className="w-3 h-3 text-muted-foreground" />}
                       </div>
                       
-                      <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm border ${
+                      <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm border ${
                         isUser 
-                          ? 'bg-primary text-primary-foreground border-primary' 
+                          ? 'bg-primary text-primary-foreground border-primary rounded-tr-none' 
                           : isGpt 
-                            ? 'bg-secondary text-secondary-foreground border-border' 
-                            : 'bg-muted/50 text-foreground border-border'
+                            ? 'bg-secondary/50 text-secondary-foreground border-primary/20 rounded-tl-none' 
+                            : 'bg-muted/50 text-foreground border-border rounded-tl-none'
                       }`}>
                         {event.content ? (
                           <div className="whitespace-pre-wrap break-words leading-relaxed">
@@ -465,7 +506,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                       </div>
                       
                       {event.group_title && (
-                        <span className="text-[9px] text-muted-foreground/60 mt-1 px-2">
+                        <span className="text-[9px] text-muted-foreground/60 mt-1.5 px-2 font-medium">
                           Etapa: {event.group_title}
                         </span>
                       )}
@@ -531,6 +572,23 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
           </div>
 
           <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+            <button
+              onClick={() => setFilterAi(!filterAi)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all whitespace-nowrap mr-2 ${
+                filterAi
+                  ? 'border-primary bg-primary/10 text-primary shadow-sm ring-2 ring-primary/20'
+                  : 'border-border bg-background text-muted-foreground hover:border-primary/30'
+              }`}
+            >
+              <Sparkles className={`w-4 h-4 ${filterAi ? 'fill-primary/20' : ''}`} />
+              <span className="text-[11px] font-bold uppercase tracking-wider">Com Resposta IA</span>
+              <span className={`text-sm font-bold ${filterAi ? 'text-primary' : 'text-foreground'}`}>
+                {loadingStats ? '...' : stats.withAi}
+              </span>
+            </button>
+
+            <div className="w-px h-6 bg-border mx-1" />
+
             {periodCards.map(card => {
               const isActive = period === card.key;
               return (
@@ -666,6 +724,9 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                         <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-accent text-accent-foreground uppercase tracking-tighter">
                           {getFunnelName(session.funnel_id)}
                         </span>
+                        {session.has_ai && (
+                          <Sparkles className="w-3 h-3 text-primary fill-primary/20" />
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
