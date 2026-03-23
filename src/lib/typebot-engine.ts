@@ -225,6 +225,29 @@ export class TypebotEngine {
       } else {
         const { supabase } = await import('@/integrations/supabase/client');
         
+        // Increment access_count for the currently active preview image
+        const { data: funnelData } = await supabase
+          .from('funnels')
+          .select('preview_image')
+          .eq('id', this.funnelId!)
+          .maybeSingle();
+
+        if (funnelData?.preview_image) {
+          const { data: imgData } = await supabase
+            .from('funnel_preview_images')
+            .select('id, access_count')
+            .eq('funnel_id', this.funnelId!)
+            .eq('data_url', funnelData.preview_image)
+            .maybeSingle();
+
+          if (imgData) {
+            await supabase
+              .from('funnel_preview_images')
+              .update({ access_count: (imgData.access_count || 0) + 1 } as any)
+              .eq('id', imgData.id);
+          }
+        }
+
         const { data } = await supabase
           .from('funnel_sessions')
           .insert({ funnel_id: this.funnelId! })

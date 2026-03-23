@@ -274,6 +274,7 @@ export async function getFunnelPreviewImages(funnelId: string): Promise<FunnelPr
     funnelId: r.funnel_id, 
     dataUrl: r.data_url, 
     position: r.position,
+    accessCount: r.access_count || 0,
   }));
 }
 
