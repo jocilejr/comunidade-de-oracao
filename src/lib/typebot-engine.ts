@@ -311,8 +311,8 @@ export class TypebotEngine {
           variables: payload.variables,
           last_group_title: payload.last_group_title,
           last_block_id: payload.last_block_id,
-          ended_at: payload.ended_at,
-          completed: payload.completed,
+          ...(payload.ended_at ? { ended_at: payload.ended_at } : {}),
+          ...(payload.completed !== undefined ? { completed: payload.completed } : {}),
         }).eq('id', this.sessionId);
       }
     } catch (e) {
