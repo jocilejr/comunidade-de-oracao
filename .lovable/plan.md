@@ -1,33 +1,23 @@
 
 
-## Corrigir logs de sessão no domínio público
+## Corrigir imagens de preview não aparecendo no modal
 
 ### Problema raiz
 
-Na otimização de performance anterior, o `createSessionAsync()` foi tornado "fire-and-forget" (linha 193 do `typebot-engine.ts`). O problema é que `logEvent()` verifica `if (!this.sessionId) return;` na linha 234. Como a criação da sessão é assíncrona e não aguardada, o `sessionId` ainda é `null` quando os primeiros eventos (mensagens do bot, inputs do usuário) tentam ser registrados — todos os logs são silenciosamente descartados.
+Os funis antigos têm a imagem de preview salva diretamente na coluna `funnels.preview_image`, mas não possuem registros na tabela `funnel_preview_images` (galeria). O modal de previews só consulta a tabela de galeria, então mostra "Nenhuma imagem de preview" mesmo quando a imagem existe e aparece no card do funil.
 
 ### Solução
 
-Manter a renderização instantânea da primeira mensagem, mas garantir que os logs aguardem a sessão estar pronta.
+Quando o modal de previews é aberto e `funnel_preview_images` retorna vazio, verificar se o funil tem um `preview_image` definido. Se sim, migrar automaticamente essa imagem para a tabela `funnel_preview_images` como primeiro item da galeria.
 
-**1. `src/lib/typebot-engine.ts`** — Adicionar uma Promise de "session ready" que os métodos de log aguardam:
+### Arquivo modificado
 
-- Criar uma propriedade `sessionReady: Promise<void>` + seu `resolve`
-- No `start()`, continuar o fire-and-forget mas resolver a promise quando o `sessionId` for obtido
-- No `logEvent()` e `updateSession()`, fazer `await this.sessionReady` antes de verificar `sessionId`
+**`src/pages/Admin.tsx`** — No handler que abre o modal de previews (onde `getFunnelPreviewImages` é chamado), adicionar lógica de auto-migração:
 
-Isso garante que:
-- A primeira mensagem continua aparecendo instantaneamente (nenhum `await` no fluxo de renderização)
-- Os logs enfileiram e aguardam o `sessionId` ficar disponível antes de serem enviados
-- Nenhum evento é perdido
+1. Se `getFunnelPreviewImages(funnel.id)` retorna array vazio
+2. E `funnel.previewImage` existe e não é vazio
+3. Então chamar `addFunnelPreviewImage(funnel.id, funnel.previewImage)` para criar o registro na galeria
+4. Usar o resultado retornado como lista de imagens do modal
 
-### Arquivos modificados
-
-1. **`src/lib/typebot-engine.ts`** — Adicionar mecanismo de Promise para sincronizar session creation com logging
-
-### Impacto
-
-- Zero impacto na velocidade de renderização
-- Todos os eventos voltam a ser registrados corretamente no domínio público
-- Dashboard volta a exibir sessões e timeline de conversas
+Isso garante compatibilidade retroativa com funis criados antes da galeria, sem perder nenhuma imagem existente.
 
