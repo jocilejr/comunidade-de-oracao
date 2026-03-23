@@ -383,7 +383,11 @@ const Admin = () => {
     setPreviewGalleryDialog(funnel);
     setActivePreviewUrl(funnel.previewImage || null);
     setLoadingPreviews(true);
-    const imgs = await getFunnelPreviewImages(funnel.id);
+    let imgs = await getFunnelPreviewImages(funnel.id);
+    // Auto-migrate legacy preview_image to gallery table
+    if (imgs.length === 0 && funnel.previewImage) {
+      imgs = await addFunnelPreviewImage(funnel.id, funnel.previewImage);
+    }
     setPreviewImages(imgs);
     setLoadingPreviews(false);
   };
