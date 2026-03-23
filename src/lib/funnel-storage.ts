@@ -263,7 +263,7 @@ export async function getFunnelPreviewImages(funnelId: string): Promise<FunnelPr
 
   const { data, error } = await supabase
     .from('funnel_preview_images')
-    .select('id, funnel_id, data_url, position')
+    .select('id, funnel_id, data_url, position, access_count')
     .eq('funnel_id', funnelId)
     .eq('user_id', user.id)
     .order('position', { ascending: true });
