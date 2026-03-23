@@ -233,9 +233,9 @@ export class TypebotEngine {
           .maybeSingle();
 
         if (funnelData?.preview_image) {
-          const { data: imgData } = await supabase
+          const { data: imgData } = await (supabase
             .from('funnel_preview_images')
-            .select('id, access_count')
+            .select('id, access_count') as any)
             .eq('funnel_id', this.funnelId!)
             .eq('data_url', funnelData.preview_image)
             .maybeSingle();
