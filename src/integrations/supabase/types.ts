@@ -37,6 +37,7 @@ export type Database = {
       }
       funnel_preview_images: {
         Row: {
+          access_count: number
           created_at: string
           data_url: string
           funnel_id: string
@@ -45,6 +46,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          access_count?: number
           created_at?: string
           data_url: string
           funnel_id: string
@@ -53,6 +55,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          access_count?: number
           created_at?: string
           data_url?: string
           funnel_id?: string
