@@ -254,6 +254,7 @@ export interface FunnelPreviewImage {
   funnelId: string;
   dataUrl: string;
   position: number;
+  accessCount?: number;
 }
 
 export async function getFunnelPreviewImages(funnelId: string): Promise<FunnelPreviewImage[]> {
