@@ -307,13 +307,14 @@ export class TypebotEngine {
         });
       } else {
         const { supabase } = await import('@/integrations/supabase/client');
-        await supabase.from('funnel_sessions').update({
+        const updateData: Record<string, unknown> = {
           variables: payload.variables,
           last_group_title: payload.last_group_title,
           last_block_id: payload.last_block_id,
-          ...(payload.ended_at ? { ended_at: payload.ended_at } : {}),
-          ...(payload.completed !== undefined ? { completed: payload.completed } : {}),
-        }).eq('id', this.sessionId);
+        };
+        if ('ended_at' in payload) updateData.ended_at = (payload as any).ended_at;
+        if ('completed' in payload) updateData.completed = (payload as any).completed;
+        await supabase.from('funnel_sessions').update(updateData as any).eq('id', this.sessionId);
       }
     } catch (e) {
       console.warn('Failed to update session:', e);
