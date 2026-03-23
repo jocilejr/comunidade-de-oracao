@@ -261,15 +261,15 @@ export async function getFunnelPreviewImages(funnelId: string): Promise<FunnelPr
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase
     .from('funnel_preview_images')
-    .select('id, funnel_id, data_url, position, access_count')
+    .select('id, funnel_id, data_url, position, access_count') as any)
     .eq('funnel_id', funnelId)
     .eq('user_id', user.id)
     .order('position', { ascending: true });
 
   if (error || !data) return [];
-  return data.map(r => ({ 
+  return (data as any[]).map((r: any) => ({ 
     id: r.id, 
     funnelId: r.funnel_id, 
     dataUrl: r.data_url, 
