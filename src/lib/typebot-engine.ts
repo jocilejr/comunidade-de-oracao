@@ -225,32 +225,6 @@ export class TypebotEngine {
       } else {
         const { supabase } = await import('@/integrations/supabase/client');
         
-        // 1. Get current active preview image for this funnel
-        const { data: funnelData } = await supabase
-          .from('funnels')
-          .select('preview_image')
-          .eq('id', this.funnelId!)
-          .maybeSingle();
-          
-        if (funnelData?.preview_image) {
-          // 2. Increment access_count for the matching preview image
-          // We use a raw RPC or a simple update if we can't do atomic increment easily here
-          // But since we want to be accurate, let's try to find the image ID first
-          const { data: imgData } = await supabase
-            .from('funnel_preview_images')
-            .select('id, access_count')
-            .eq('funnel_id', this.funnelId!)
-            .eq('data_url', funnelData.preview_image)
-            .maybeSingle();
-            
-          if (imgData) {
-            await supabase
-              .from('funnel_preview_images')
-              .update({ access_count: (imgData.access_count || 0) + 1 })
-              .eq('id', imgData.id);
-          }
-        }
-
         const { data } = await supabase
           .from('funnel_sessions')
           .insert({ funnel_id: this.funnelId! })
