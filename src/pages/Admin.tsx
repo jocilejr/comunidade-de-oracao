@@ -101,16 +101,22 @@ const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUr
             return (
               <div key={img.id} className="relative group aspect-video rounded-lg overflow-hidden border border-border hover:border-primary/30 transition-colors">
                 <img src={img.dataUrl} alt={`Preview ${img.position + 1}`} className="w-full h-full object-cover" />
-                {isActive && (
-                  <div className="absolute top-1 left-1 bg-primary text-primary-foreground rounded-full p-0.5" title="Imagem ativa">
-                    <Star className="w-2.5 h-2.5 fill-current" />
+                <div className="absolute top-1 left-1 flex flex-col gap-1">
+                  {isActive && (
+                    <div className="bg-primary text-primary-foreground rounded-full p-0.5 shadow-sm w-fit" title="Imagem ativa">
+                      <Star className="w-2.5 h-2.5 fill-current" />
+                    </div>
+                  )}
+                  {isNext && !isActive && (
+                    <div className="bg-muted text-muted-foreground rounded-full p-0.5 border border-border shadow-sm w-fit" title="Próxima">
+                      <Clock className="w-2.5 h-2.5" />
+                    </div>
+                  )}
+                  <div className="bg-black/60 backdrop-blur-sm text-white px-1.5 py-0.5 rounded-md shadow-sm flex items-center gap-1 text-[9px] font-bold w-fit">
+                    <User className="w-2 h-2" />
+                    {img.accessCount || 0}
                   </div>
-                )}
-                {isNext && !isActive && (
-                  <div className="absolute top-1 left-1 bg-muted text-muted-foreground rounded-full p-0.5 border border-border" title="Próxima">
-                    <Clock className="w-2.5 h-2.5" />
-                  </div>
-                )}
+                </div>
                 <button
                   onClick={() => onRemove(img.id)}
                   className="absolute top-1 right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

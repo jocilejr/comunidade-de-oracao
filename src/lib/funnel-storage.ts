@@ -254,6 +254,7 @@ export interface FunnelPreviewImage {
   funnelId: string;
   dataUrl: string;
   position: number;
+  accessCount?: number;
 }
 
 export async function getFunnelPreviewImages(funnelId: string): Promise<FunnelPreviewImage[]> {
@@ -262,13 +263,19 @@ export async function getFunnelPreviewImages(funnelId: string): Promise<FunnelPr
 
   const { data, error } = await supabase
     .from('funnel_preview_images')
-    .select('id, funnel_id, data_url, position')
+    .select('id, funnel_id, data_url, position, access_count')
     .eq('funnel_id', funnelId)
     .eq('user_id', user.id)
     .order('position', { ascending: true });
 
   if (error || !data) return [];
-  return data.map(r => ({ id: r.id, funnelId: r.funnel_id, dataUrl: r.data_url, position: r.position }));
+  return data.map(r => ({ 
+    id: r.id, 
+    funnelId: r.funnel_id, 
+    dataUrl: r.data_url, 
+    position: r.position,
+    accessCount: r.access_count || 0 
+  }));
 }
 
 export async function addFunnelPreviewImage(funnelId: string, dataUrl: string): Promise<FunnelPreviewImage[]> {
