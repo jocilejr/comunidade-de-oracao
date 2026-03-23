@@ -261,20 +261,38 @@ export async function getFunnelPreviewImages(funnelId: string): Promise<FunnelPr
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data, error } = await (supabase
+  const withCount = await (supabase
     .from('funnel_preview_images')
     .select('id, funnel_id, data_url, position, access_count') as any)
     .eq('funnel_id', funnelId)
     .eq('user_id', user.id)
     .order('position', { ascending: true });
 
-  if (error || !data) return [];
-  return (data as any[]).map((r: any) => ({ 
-    id: r.id, 
-    funnelId: r.funnel_id, 
-    dataUrl: r.data_url, 
+  if (!withCount.error && withCount.data) {
+    return (withCount.data as any[]).map((r: any) => ({
+      id: r.id,
+      funnelId: r.funnel_id,
+      dataUrl: r.data_url,
+      position: r.position,
+      accessCount: r.access_count || 0,
+    }));
+  }
+
+  // Backward-compatible fallback for VPS databases that still don't have access_count
+  const withoutCount = await (supabase
+    .from('funnel_preview_images')
+    .select('id, funnel_id, data_url, position') as any)
+    .eq('funnel_id', funnelId)
+    .eq('user_id', user.id)
+    .order('position', { ascending: true });
+
+  if (withoutCount.error || !withoutCount.data) return [];
+  return (withoutCount.data as any[]).map((r: any) => ({
+    id: r.id,
+    funnelId: r.funnel_id,
+    dataUrl: r.data_url,
     position: r.position,
-    accessCount: r.access_count || 0,
+    accessCount: 0,
   }));
 }
 
