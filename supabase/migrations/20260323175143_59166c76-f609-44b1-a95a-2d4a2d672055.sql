@@ -1,0 +1,1 @@
+ALTER TABLE public.funnel_preview_images ADD COLUMN access_count integer NOT NULL DEFAULT 0;

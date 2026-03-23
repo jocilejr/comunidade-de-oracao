@@ -112,6 +112,10 @@ const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUr
                       <Clock className="w-2.5 h-2.5" />
                     </div>
                   )}
+                  <div className="bg-black/60 backdrop-blur-sm text-white px-1.5 py-0.5 rounded-md shadow-sm flex items-center gap-1 text-[9px] font-bold w-fit" title={`${img.accessCount || 0} acessos`}>
+                    <Eye className="w-2 h-2" />
+                    {img.accessCount || 0}
+                  </div>
                 </div>
                 <button
                   onClick={() => onRemove(img.id)}
