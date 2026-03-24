@@ -443,15 +443,15 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                   <p className="text-sm text-muted-foreground">Nenhum evento registrado.</p>
                 </div>
               ) : (
-                <div className="p-4 space-y-3">
-                  {activeEvents.map((event) => {
+                <div className="p-4 space-y-3 overflow-x-hidden">
+                  {[...activeEvents].reverse().map((event) => {
                     const Icon = EVENT_ICONS[event.event_type] || MessageSquare;
                     const isUser = event.event_type === 'user_input' || event.event_type === 'choice';
                     const isGpt = event.event_type === 'gpt_response';
 
                     return (
                       <div key={event.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-[12px] ${
+                        <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-[12px] overflow-hidden ${
                           isUser 
                             ? 'bg-primary text-primary-foreground rounded-tr-sm' 
                             : isGpt 
@@ -459,13 +459,13 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                               : 'bg-muted/60 text-foreground border border-border rounded-tl-sm'
                         }`}>
                           <div className="flex items-center gap-1.5 mb-0.5">
-                            <Icon className="w-3 h-3 opacity-60" />
+                            <Icon className="w-3 h-3 opacity-60 shrink-0" />
                             <span className="text-[9px] opacity-60 font-medium">
                               {new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
                           {event.content ? (
-                            <div className="whitespace-pre-wrap break-words leading-relaxed">
+                            <div className="whitespace-pre-wrap break-words leading-relaxed overflow-hidden">
                               {event.content.startsWith('http') && (event.content.includes('.png') || event.content.includes('.jpg') || event.content.includes('.webp')) ? (
                                 <img src={event.content} alt="Mídia" className="max-w-full rounded-lg my-1" />
                               ) : event.content === '[audio]' ? (
@@ -484,7 +484,6 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                       </div>
                     );
                   })}
-                  <div ref={timelineEndRef} />
                 </div>
               )}
             </ScrollArea>
