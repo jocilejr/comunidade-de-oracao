@@ -112,33 +112,9 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   const [customStart, setCustomStart] = useState<string>(() => toDateInput(addDays(new Date(), -6)));
   const [customEnd, setCustomEnd] = useState<string>(() => toDateInput(new Date()));
   const [stats, setStats] = useState<SessionStats>({ today: 0, yesterday: 0, last3: 0, last7: 0, custom: 0, withAi: 0 });
-  const [funnelSteps, setFunnelSteps] = useState<string[]>([]);
+  const [funnelSteps, setFunnelSteps] = useState<{name: string; count: number}[]>([]);
 
   const selectedSessionId = selectedSession?.id ?? null;
-
-  // Load funnel steps when funnel changes
-  useEffect(() => {
-    const loadSteps = async () => {
-      if (selectedFunnel === 'all') {
-        setFunnelSteps([]);
-        setSelectedStep('all');
-        return;
-      }
-      
-      try {
-        const funnel = await getFunnelById(selectedFunnel);
-        if (funnel?.flow?.groups) {
-          const steps = funnel.flow.groups
-            .map(g => g.title || g.id)
-            .filter((v, i, a) => a.indexOf(v) === i); // unique
-          setFunnelSteps(steps);
-        }
-      } catch (e) {
-        console.error('Error loading funnel steps:', e);
-      }
-    };
-    loadSteps();
-  }, [selectedFunnel]);
 
   const getRange = useCallback((preset: PeriodPreset): DateRange => {
     const now = new Date();
@@ -176,6 +152,64 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
       end: parsedEnd.toISOString(),
     };
   }, [customStart, customEnd]);
+
+  // Load funnel steps with counts when funnel or period changes
+  useEffect(() => {
+    const loadSteps = async () => {
+      if (selectedFunnel === 'all') {
+        setFunnelSteps([]);
+        setSelectedStep('all');
+        return;
+      }
+      
+      try {
+        const funnel = await getFunnelById(selectedFunnel);
+        if (funnel?.flow?.groups) {
+          const stepNames = funnel.flow.groups
+            .map(g => g.title || g.id)
+            .filter((v, i, a) => a.indexOf(v) === i);
+
+          // Get session IDs in the current date range
+          const activeRange = getRange(period);
+          let sessionQuery = supabase
+            .from('funnel_sessions')
+            .select('id')
+            .eq('funnel_id', selectedFunnel);
+          if (activeRange.start) sessionQuery = sessionQuery.gte('started_at', activeRange.start);
+          if (activeRange.end) sessionQuery = sessionQuery.lte('started_at', activeRange.end);
+          const { data: sessionRows } = await sessionQuery;
+          const sessionIds = sessionRows?.map(s => s.id) || [];
+
+          if (sessionIds.length === 0) {
+            setFunnelSteps(stepNames.map(name => ({ name, count: 0 })));
+            return;
+          }
+
+          // Count unique sessions per group_title from events
+          const { data: eventRows } = await supabase
+            .from('funnel_session_events')
+            .select('session_id, group_title')
+            .in('session_id', sessionIds)
+            .not('group_title', 'is', null);
+
+          const countMap: Record<string, Set<string>> = {};
+          for (const e of eventRows || []) {
+            if (!e.group_title) continue;
+            if (!countMap[e.group_title]) countMap[e.group_title] = new Set();
+            countMap[e.group_title].add(e.session_id);
+          }
+
+          setFunnelSteps(stepNames.map(name => ({
+            name,
+            count: countMap[name]?.size || 0,
+          })));
+        }
+      } catch (e) {
+        console.error('Error loading funnel steps:', e);
+      }
+    };
+    loadSteps();
+  }, [selectedFunnel, period, customStart, customEnd, getRange]);
 
   const applySessionFilters = useCallback((query: any, range: DateRange) => {
     let next = query;
@@ -576,7 +610,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                 >
                   <option value="all">Todas as Etapas</option>
                   {funnelSteps.map(step => (
-                    <option key={step} value={step}>{step}</option>
+                    <option key={step.name} value={step.name}>{step.name} ({step.count} leads)</option>
                   ))}
                 </select>
               </div>
