@@ -246,6 +246,19 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
     let nextSessions = (data as Session[]) || [];
 
+    // Filter by step: find sessions that PASSED THROUGH the selected step (not just ended there)
+    if (selectedStep !== 'all' && nextSessions.length > 0) {
+      const sessionIds = nextSessions.map(s => s.id);
+      const { data: stepEvents } = await supabase
+        .from('funnel_session_events')
+        .select('session_id')
+        .in('session_id', sessionIds)
+        .eq('group_title', selectedStep);
+      
+      const stepSessionIds = new Set(stepEvents?.map(e => e.session_id) || []);
+      nextSessions = nextSessions.filter(s => stepSessionIds.has(s.id));
+    }
+
     // Fetch AI event presence for these sessions
     if (nextSessions.length > 0) {
       const sessionIds = nextSessions.map(s => s.id);
@@ -270,7 +283,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
     }
 
     if (!silent) setLoading(false);
-  }, [applySessionFilters, getRange, period, selectedSessionId]);
+  }, [applySessionFilters, getRange, period, selectedSessionId, selectedStep]);
 
   const loadEvents = useCallback(async (sessionId: string, silent = false) => {
     if (!silent) setLoadingEvents(true);
