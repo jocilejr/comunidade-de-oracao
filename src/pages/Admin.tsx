@@ -197,37 +197,50 @@ const Admin = () => {
     setFunnels(data);
   }, []);
 
+  const galleryLoaded = useRef(false);
+  const settingsLoaded = useRef(false);
+
   useEffect(() => {
     const load = async () => {
       setLoadingFunnels(true);
-      setLoadingSettings(true);
-      const [funnelData, galleryData, settingsResult] = await Promise.all([
-        getAllFunnelsMeta(),
-        getAvatarGallery(),
-        getUserSettings(),
-      ]);
+      const funnelData = await getAllFunnelsMeta();
       setFunnels(funnelData);
-      setGallery(galleryData);
-      if (settingsResult.status === 'ok') {
-        setOpenaiKey(settingsResult.data.openai_api_key);
-        setTypebotToken(settingsResult.data.typebot_api_token);
-        setTypebotWorkspaceId(settingsResult.data.typebot_workspace_id);
-        setTypebotBaseUrl(settingsResult.data.typebot_base_url);
-        setBackendError(null);
-      } else if (settingsResult.status === 'error') {
-        setBackendError(settingsResult.message);
-      }
-      setLoadingSettings(false);
       setLoadingFunnels(false);
+
+      // Get userId from cached session (no roundtrip)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) setCurrentUserId(session.user.id);
     };
     load();
-
-    import('@/integrations/supabase/client').then(({ supabase }) => {
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (user) setCurrentUserId(user.id);
-      });
-    });
   }, []);
+
+  // Lazy-load gallery when tab is selected
+  useEffect(() => {
+    if (activeTab === 'gallery' && !galleryLoaded.current) {
+      galleryLoaded.current = true;
+      getAvatarGallery().then(setGallery);
+    }
+  }, [activeTab]);
+
+  // Lazy-load settings when tab is selected
+  useEffect(() => {
+    if (activeTab === 'settings' && !settingsLoaded.current) {
+      settingsLoaded.current = true;
+      setLoadingSettings(true);
+      getUserSettings().then((result) => {
+        if (result.status === 'ok') {
+          setOpenaiKey(result.data.openai_api_key);
+          setTypebotToken(result.data.typebot_api_token);
+          setTypebotWorkspaceId(result.data.typebot_workspace_id);
+          setTypebotBaseUrl(result.data.typebot_base_url);
+          setBackendError(null);
+        } else if (result.status === 'error') {
+          setBackendError(result.message);
+        }
+        setLoadingSettings(false);
+      });
+    }
+  }, [activeTab]);
 
   const handleFile = useCallback(async (file: File) => {
     try {

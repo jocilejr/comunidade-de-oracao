@@ -13,7 +13,15 @@ const Login = lazy(() => import("./pages/Login.tsx"));
 const Funnel = lazy(() => import("./pages/Funnel.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 /** Detecta se estamos no domínio público (só funis) */
 function isPublicDomain(): boolean {
