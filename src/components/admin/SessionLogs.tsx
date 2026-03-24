@@ -374,6 +374,12 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
     return vals[0] || null;
   };
 
+  const truncateWithEllipsis = (value: string | null | undefined, maxChars: number) => {
+    const text = (value || '').trim();
+    if (!text) return '';
+    return text.length > maxChars ? `${text.slice(0, maxChars).trimEnd()}...` : text;
+  };
+
   const isSessionLive = (session: Session) => {
     if (session.ended_at || session.completed) return false;
     const now = new Date().getTime();
