@@ -610,7 +610,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                 >
                   <option value="all">Todas as Etapas</option>
                   {funnelSteps.map(step => (
-                    <option key={step} value={step}>{step}</option>
+                    <option key={step.name} value={step.name}>{step.name} ({step.count} leads)</option>
                   ))}
                 </select>
               </div>
