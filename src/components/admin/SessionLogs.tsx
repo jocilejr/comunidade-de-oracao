@@ -112,7 +112,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   const [customStart, setCustomStart] = useState<string>(() => toDateInput(addDays(new Date(), -6)));
   const [customEnd, setCustomEnd] = useState<string>(() => toDateInput(new Date()));
   const [stats, setStats] = useState<SessionStats>({ today: 0, yesterday: 0, last3: 0, last7: 0, custom: 0, withAi: 0 });
-  const [funnelSteps, setFunnelSteps] = useState<string[]>([]);
+  const [funnelSteps, setFunnelSteps] = useState<{name: string; count: number}[]>([]);
 
   const selectedSessionId = selectedSession?.id ?? null;
 
