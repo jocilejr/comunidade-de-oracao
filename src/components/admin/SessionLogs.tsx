@@ -719,7 +719,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className="text-xs font-bold text-foreground truncate">{mainVar || 'Anônimo'}</p>
+                          <p className="text-xs font-bold text-foreground truncate">{truncateWithEllipsis(mainVar || 'Anônimo', 42)}</p>
                           {session.has_ai && <Sparkles className="w-3 h-3 text-primary shrink-0" />}
                         </div>
                         <p className="text-[10px] text-muted-foreground truncate">
