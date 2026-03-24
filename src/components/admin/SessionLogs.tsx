@@ -538,8 +538,8 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                     const media = parseEventMedia(event);
 
                     return (
-                      <div key={event.id} className={`flex w-full min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`min-w-0 max-w-[85%] rounded-2xl px-3 py-2 text-[12px] overflow-hidden ${
+                      <div key={event.id} className={`flex w-full min-w-0 overflow-x-hidden ${isUser ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`w-fit min-w-0 max-w-[85%] rounded-2xl px-3 py-2 text-[12px] ${
                           isUser 
                             ? 'bg-primary text-primary-foreground rounded-tr-sm' 
                             : isGpt 
@@ -552,7 +552,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                               {new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
-                          <div className="min-w-0 overflow-hidden">
+                          <div className="min-w-0 max-w-full overflow-hidden [&_a]:break-all">
                             {renderEventContent(media)}
                           </div>
                           {event.group_title && (
