@@ -2,16 +2,22 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import { StoredFunnel, TypebotFlow } from './typebot-types';
 
+// Helper: get userId from cached session (no server roundtrip)
+async function getCachedUserId(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user?.id ?? null;
+}
+
 // ---- Funnel CRUD (Supabase) ----
 
 export async function getAllFunnels(): Promise<StoredFunnel[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await getCachedUserId();
+  if (!userId) return [];
 
    const { data, error } = await supabase
     .from('funnels')
     .select('id, slug, name, created_at, bot_name, bot_avatar, flow, preview_image, page_title, page_description')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error || !data) return [];
@@ -32,13 +38,13 @@ export async function getAllFunnels(): Promise<StoredFunnel[]> {
 
 /** Lightweight listing without the heavy flow column */
 export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await getCachedUserId();
+  if (!userId) return [];
 
   const { data, error } = await supabase
     .from('funnels')
     .select('id, slug, name, created_at, bot_name, bot_avatar, preview_image, page_title, page_description')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error || !data) return [];
@@ -115,13 +121,13 @@ export async function getFunnelBySlug(slug: string): Promise<StoredFunnel | unde
 }
 
 export async function saveFunnel(name: string, slug: string, flow: TypebotFlow): Promise<StoredFunnel> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Não autenticado.');
+  const userId = await getCachedUserId();
+  if (!userId) throw new Error('Não autenticado.');
 
   const sanitizedSlug = slugify(slug) || `funil-${Date.now()}`;
 
   const payload = {
-    user_id: user.id,
+    user_id: userId,
     slug: sanitizedSlug,
     name,
     flow: flow as unknown as Json,
@@ -152,21 +158,21 @@ export async function saveFunnel(name: string, slug: string, flow: TypebotFlow):
 }
 
 export async function deleteFunnel(slug: string): Promise<boolean> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
+  const userId = await getCachedUserId();
+  if (!userId) return false;
 
   const { error } = await supabase
     .from('funnels')
     .delete()
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .eq('slug', slug);
 
   return !error;
 }
 
 export async function updateFunnelSlug(oldSlug: string, newSlug: string): Promise<boolean> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
+  const userId = await getCachedUserId();
+  if (!userId) return false;
 
   const sanitized = slugify(newSlug);
   if (!sanitized) return false;
@@ -174,15 +180,15 @@ export async function updateFunnelSlug(oldSlug: string, newSlug: string): Promis
   const { error } = await supabase
     .from('funnels')
     .update({ slug: sanitized })
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .eq('slug', oldSlug);
 
   return !error;
 }
 
 export async function updateFunnelProfile(slug: string, botName?: string, botAvatar?: string, pageTitle?: string, pageDescription?: string): Promise<boolean> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
+  const userId = await getCachedUserId();
+  if (!userId) return false;
 
   const { error } = await supabase
     .from('funnels')
@@ -192,7 +198,7 @@ export async function updateFunnelProfile(slug: string, botName?: string, botAva
       page_title: pageTitle || '',
       page_description: pageDescription || '',
     })
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .eq('slug', slug);
 
   return !error;
@@ -223,13 +229,13 @@ export async function getFunnelById(id: string): Promise<StoredFunnel | undefine
 }
 
 export async function updateFunnelPreviewImage(slug: string, previewImage: string): Promise<boolean> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
+  const userId = await getCachedUserId();
+  if (!userId) return false;
 
   const { error } = await supabase
     .from('funnels')
     .update({ preview_image: previewImage })
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .eq('slug', slug);
 
   return !error;
@@ -258,14 +264,14 @@ export interface FunnelPreviewImage {
 }
 
 export async function getFunnelPreviewImages(funnelId: string): Promise<FunnelPreviewImage[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await getCachedUserId();
+  if (!userId) return [];
 
   const withCount = await (supabase
     .from('funnel_preview_images')
     .select('id, funnel_id, data_url, position, access_count') as any)
     .eq('funnel_id', funnelId)
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .order('position', { ascending: true });
 
   if (!withCount.error && withCount.data) {
@@ -283,7 +289,7 @@ export async function getFunnelPreviewImages(funnelId: string): Promise<FunnelPr
     .from('funnel_preview_images')
     .select('id, funnel_id, data_url, position') as any)
     .eq('funnel_id', funnelId)
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .order('position', { ascending: true });
 
   if (withoutCount.error || !withoutCount.data) return [];
@@ -297,8 +303,8 @@ export async function getFunnelPreviewImages(funnelId: string): Promise<FunnelPr
 }
 
 export async function addFunnelPreviewImage(funnelId: string, dataUrl: string): Promise<FunnelPreviewImage[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await getCachedUserId();
+  if (!userId) return [];
 
   // Get next position
   const existing = await getFunnelPreviewImages(funnelId);
@@ -306,32 +312,32 @@ export async function addFunnelPreviewImage(funnelId: string, dataUrl: string): 
 
   await supabase.from('funnel_preview_images').insert({
     funnel_id: funnelId,
-    user_id: user.id,
+    user_id: userId,
     data_url: dataUrl,
     position: nextPos,
   });
 
   // If this is the first image, also set it as the active preview
   if (existing.length === 0) {
-    await supabase.from('funnels').update({ preview_image: dataUrl }).eq('id', funnelId).eq('user_id', user.id);
+    await supabase.from('funnels').update({ preview_image: dataUrl }).eq('id', funnelId).eq('user_id', userId);
   }
 
   return getFunnelPreviewImages(funnelId);
 }
 
 export async function removeFunnelPreviewImage(imageId: string, funnelId: string): Promise<FunnelPreviewImage[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await getCachedUserId();
+  if (!userId) return [];
 
-  await supabase.from('funnel_preview_images').delete().eq('id', imageId).eq('user_id', user.id);
+  await supabase.from('funnel_preview_images').delete().eq('id', imageId).eq('user_id', userId);
 
   const remaining = await getFunnelPreviewImages(funnelId);
 
   // Update active preview to first remaining or clear it
   if (remaining.length > 0) {
-    await supabase.from('funnels').update({ preview_image: remaining[0].dataUrl }).eq('id', funnelId).eq('user_id', user.id);
+    await supabase.from('funnels').update({ preview_image: remaining[0].dataUrl }).eq('id', funnelId).eq('user_id', userId);
   } else {
-    await supabase.from('funnels').update({ preview_image: null }).eq('id', funnelId).eq('user_id', user.id);
+    await supabase.from('funnels').update({ preview_image: null }).eq('id', funnelId).eq('user_id', userId);
   }
 
   return remaining;
@@ -345,13 +351,13 @@ export interface AvatarGalleryItem {
 }
 
 export async function getAvatarGallery(): Promise<AvatarGalleryItem[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await getCachedUserId();
+  if (!userId) return [];
 
   const { data, error } = await supabase
     .from('avatar_gallery')
     .select('id, data_url')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -360,24 +366,24 @@ export async function getAvatarGallery(): Promise<AvatarGalleryItem[]> {
 }
 
 export async function addToAvatarGallery(dataUrl: string): Promise<AvatarGalleryItem[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await getCachedUserId();
+  if (!userId) return [];
 
   const current = await getAvatarGallery();
   const alreadyExists = current.some(item => item.dataUrl === dataUrl);
 
   if (!alreadyExists) {
-    await supabase.from('avatar_gallery').insert({ user_id: user.id, data_url: dataUrl });
+    await supabase.from('avatar_gallery').insert({ user_id: userId, data_url: dataUrl });
   }
 
   return getAvatarGallery();
 }
 
 export async function removeFromAvatarGallery(imageId: string): Promise<AvatarGalleryItem[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await getCachedUserId();
+  if (!userId) return [];
 
-  await supabase.from('avatar_gallery').delete().eq('user_id', user.id).eq('id', imageId);
+  await supabase.from('avatar_gallery').delete().eq('user_id', userId).eq('id', imageId);
   return getAvatarGallery();
 }
 
@@ -475,13 +481,13 @@ export async function getUserSettings(): Promise<UserSettingsResult> {
       return { status: 'ok', data: result.data };
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { status: 'empty' };
+    const userId = await getCachedUserId();
+    if (!userId) return { status: 'empty' };
 
     const { data, error } = await supabase
       .from('user_settings')
       .select('openai_api_key, typebot_api_token, typebot_workspace_id, typebot_base_url')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (error) {
@@ -528,8 +534,8 @@ export async function saveUserSettings(settings: {
     return res.ok;
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
+  const userId = await getCachedUserId();
+  if (!userId) return false;
 
   const updateFields: Record<string, unknown> = {};
   if (settings.openai_api_key !== undefined) updateFields.openai_api_key = settings.openai_api_key;
@@ -541,19 +547,19 @@ export async function saveUserSettings(settings: {
   const { data: existing } = await supabase
     .from('user_settings')
     .select('id')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .maybeSingle();
 
   if (existing) {
     const { error } = await supabase
       .from('user_settings')
       .update(updateFields as any)
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
     return !error;
   } else {
     const { error } = await supabase
       .from('user_settings')
-      .insert({ user_id: user.id, ...updateFields } as any);
+      .insert({ user_id: userId, ...updateFields } as any);
     return !error;
   }
 }
