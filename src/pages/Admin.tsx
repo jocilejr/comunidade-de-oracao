@@ -195,6 +195,7 @@ const Admin = () => {
   const refresh = useCallback(async () => {
     const data = await getAllFunnelsMeta();
     setFunnels(data);
+    sessionStorage.setItem('funnels_cache', JSON.stringify(data));
   }, []);
 
   const galleryLoaded = useRef(false);
