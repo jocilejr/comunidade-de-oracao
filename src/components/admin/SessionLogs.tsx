@@ -430,7 +430,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
           </TabsContent>
 
           {/* Timeline tab */}
-          <TabsContent value="timeline" className="flex-1 m-0 min-h-0 flex flex-col">
+          <TabsContent value="timeline" className="flex-1 m-0 min-h-0 flex flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               {loadingEvents ? (
                 <div className="p-4 space-y-3">
@@ -443,15 +443,16 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                   <p className="text-sm text-muted-foreground">Nenhum evento registrado.</p>
                 </div>
               ) : (
-                <div className="p-4 space-y-3 overflow-x-hidden">
+                <div className="p-4 space-y-3 w-full overflow-x-hidden">
                   {[...activeEvents].reverse().map((event) => {
                     const Icon = EVENT_ICONS[event.event_type] || MessageSquare;
                     const isUser = event.event_type === 'user_input' || event.event_type === 'choice';
                     const isGpt = event.event_type === 'gpt_response';
+                    const media = parseEventMedia(event);
 
                     return (
-                      <div key={event.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-[12px] overflow-hidden ${
+                      <div key={event.id} className={`flex w-full min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`min-w-0 max-w-[85%] rounded-2xl px-3 py-2 text-[12px] overflow-hidden ${
                           isUser 
                             ? 'bg-primary text-primary-foreground rounded-tr-sm' 
                             : isGpt 
@@ -464,21 +465,11 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                               {new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
-                          {event.content ? (
-                            <div className="whitespace-pre-wrap break-words leading-relaxed overflow-hidden">
-                              {event.content.startsWith('http') && (event.content.includes('.png') || event.content.includes('.jpg') || event.content.includes('.webp')) ? (
-                                <img src={event.content} alt="Mídia" className="max-w-full rounded-lg my-1" />
-                              ) : event.content === '[audio]' ? (
-                                <span className="text-xs font-medium">🎙 Áudio</span>
-                              ) : (
-                                event.content
-                              )}
-                            </div>
-                          ) : (
-                            <span className="italic opacity-50 text-[11px]">Sem conteúdo</span>
-                          )}
+                          <div className="min-w-0 overflow-hidden">
+                            {renderEventContent(media)}
+                          </div>
                           {event.group_title && (
-                            <span className="text-[9px] opacity-40 block mt-0.5">{event.group_title}</span>
+                            <span className="text-[9px] opacity-40 block mt-0.5 truncate">{event.group_title}</span>
                           )}
                         </div>
                       </div>
