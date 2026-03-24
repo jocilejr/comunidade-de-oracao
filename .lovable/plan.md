@@ -1,23 +1,59 @@
 
 
-## Corrigir imagens de preview não aparecendo no modal
+## Redesign da visualização de sessão — layout split-panel instantâneo
 
-### Problema raiz
+### Problemas atuais
 
-Os funis antigos têm a imagem de preview salva diretamente na coluna `funnels.preview_image`, mas não possuem registros na tabela `funnel_preview_images` (galeria). O modal de previews só consulta a tabela de galeria, então mostra "Nenhuma imagem de preview" mesmo quando a imagem existe e aparece no card do funil.
+1. Clicar numa sessão faz query ao banco e mostra skeleton — delay perceptível
+2. A timeline da conversa é longa e o usuário precisa rolar até o final para ver onde a pessoa parou
+3. Os dados coletados são mostrados como chips compactos difíceis de ler
+4. A view substitui toda a lista, impedindo navegação rápida entre sessões
 
-### Solução
+### Nova abordagem: Split Panel
 
-Quando o modal de previews é aberto e `funnel_preview_images` retorna vazio, verificar se o funil tem um `preview_image` definido. Se sim, migrar automaticamente essa imagem para a tabela `funnel_preview_images` como primeiro item da galeria.
+Em vez de substituir a lista pela sessão, usar um layout de **duas colunas**:
+- **Esquerda**: Lista de sessões (já carregada, sem re-fetch)
+- **Direita**: Painel de detalhes da sessão selecionada
+
+Isso elimina o "voltar para a lista" e permite clicar entre sessões instantaneamente.
+
+### Mudanças em `src/components/admin/SessionLogs.tsx`
+
+**1. Layout split-panel**
+- Lista de sessões ocupa ~40% da largura, painel de detalhes ~60%
+- Clicar numa sessão a destaca na lista e mostra detalhes à direita
+- Sem navegação de página, sem "voltar"
+
+**2. Painel de detalhes reorganizado em 3 abas**
+- **Resumo** (default): Etapa atual, status (ativo/encerrado/concluído), horário, nome do funil — tudo visível imediatamente sem scroll
+- **Dados**: Tabela limpa com chave/valor para as variáveis coletadas, em vez de chips compactos. Fácil de ler e copiar
+- **Timeline**: Conversa completa, mas com scroll automático para o **final** (última mensagem) ao abrir — mostra onde a pessoa parou sem rolar manualmente
+
+**3. Pre-fetch de eventos**
+- Ao carregar as sessões, fazer prefetch dos eventos das primeiras 10 sessões em paralelo
+- Armazenar em cache local (Map), então clicar em qualquer sessão já carregada mostra instantaneamente
+- Sessões não-prefetchadas carregam on-click mas sem skeleton — mostam os dados da sessão (resumo/dados) imediato enquanto a timeline carrega em background
+
+**4. Timeline com auto-scroll**
+- Quando a aba Timeline é aberta, faz `scrollIntoView` do último evento
+- O usuário já vê a última interação do funil sem precisar rolar
+
+### Visual esperado
+
+```text
+┌─────────────────────┬──────────────────────────────────┐
+│ Lista de sessões    │  ┌─ Resumo ─┬─ Dados ─┬─ Chat ─┐│
+│                     │  │                               ││
+│ [João ✓ Group#57] ◀│  │  Funil: Manuscrito do Arcanjo ││
+│ [Maria × Group#44] │  │  Etapa: Group #57              ││
+│ [Pedro ● Group#35] │  │  Status: Concluído ✓           ││
+│ [Ana × Group#23]   │  │  Início: 23/03, 23:57          ││
+│  ...                │  │                               ││
+│                     │  └───────────────────────────────┘│
+└─────────────────────┴──────────────────────────────────┘
+```
 
 ### Arquivo modificado
 
-**`src/pages/Admin.tsx`** — No handler que abre o modal de previews (onde `getFunnelPreviewImages` é chamado), adicionar lógica de auto-migração:
-
-1. Se `getFunnelPreviewImages(funnel.id)` retorna array vazio
-2. E `funnel.previewImage` existe e não é vazio
-3. Então chamar `addFunnelPreviewImage(funnel.id, funnel.previewImage)` para criar o registro na galeria
-4. Usar o resultado retornado como lista de imagens do modal
-
-Isso garante compatibilidade retroativa com funis criados antes da galeria, sem perder nenhuma imagem existente.
+1. **`src/components/admin/SessionLogs.tsx`** — Reescrever layout para split-panel com 3 abas, cache de eventos, e auto-scroll na timeline
 
