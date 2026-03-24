@@ -440,7 +440,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
         {/* Header */}
         <div className="px-4 py-3 border-b border-border shrink-0 flex items-center gap-3 min-w-0">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-foreground truncate">{getMainVariable(vars) || 'Visitante Anônimo'}</p>
+            <p className="text-sm font-bold text-foreground truncate">{truncateWithEllipsis(getMainVariable(vars) || 'Visitante Anônimo', 72)}</p>
             <p className="text-[11px] text-muted-foreground truncate">{getFunnelName(selectedSession.funnel_id)}</p>
           </div>
           <span className={`inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full font-bold shrink-0 ${
