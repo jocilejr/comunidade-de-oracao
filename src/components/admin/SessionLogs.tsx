@@ -184,9 +184,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
       next = next.eq('funnel_id', selectedFunnel);
     }
 
-    if (selectedStep !== 'all') {
-      next = next.eq('last_group_title', selectedStep);
-    }
+    // Step filter is applied AFTER the query (client-side) via sessionIdsForStep
 
     if (range.start) {
       next = next.gte('started_at', range.start);
@@ -197,7 +195,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
     }
 
     return next;
-  }, [selectedFunnel, selectedStep]);
+  }, [selectedFunnel]);
 
   const countSessionsInRange = useCallback(async (range: DateRange): Promise<number> => {
     const base = supabase.from('funnel_sessions').select('id', { count: 'exact', head: true });
