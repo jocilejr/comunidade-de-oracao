@@ -374,6 +374,12 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
     return vals[0] || null;
   };
 
+  const truncateWithEllipsis = (value: string | null | undefined, maxChars: number) => {
+    const text = (value || '').trim();
+    if (!text) return '';
+    return text.length > maxChars ? `${text.slice(0, maxChars).trimEnd()}...` : text;
+  };
+
   const isSessionLive = (session: Session) => {
     if (session.ended_at || session.completed) return false;
     const now = new Date().getTime();
@@ -434,7 +440,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
         {/* Header */}
         <div className="px-4 py-3 border-b border-border shrink-0 flex items-center gap-3 min-w-0">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-foreground truncate">{getMainVariable(vars) || 'Visitante Anônimo'}</p>
+            <p className="text-sm font-bold text-foreground truncate">{truncateWithEllipsis(getMainVariable(vars) || 'Visitante Anônimo', 72)}</p>
             <p className="text-[11px] text-muted-foreground truncate">{getFunnelName(selectedSession.funnel_id)}</p>
           </div>
           <span className={`inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full font-bold shrink-0 ${
@@ -713,7 +719,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className="text-xs font-bold text-foreground truncate">{mainVar || 'Anônimo'}</p>
+                          <p className="text-xs font-bold text-foreground truncate">{truncateWithEllipsis(mainVar || 'Anônimo', 42)}</p>
                           {session.has_ai && <Sparkles className="w-3 h-3 text-primary shrink-0" />}
                         </div>
                         <p className="text-[10px] text-muted-foreground truncate">
