@@ -195,21 +195,33 @@ const Admin = () => {
   const refresh = useCallback(async () => {
     const data = await getAllFunnelsMeta();
     setFunnels(data);
+    sessionStorage.setItem('funnels_cache', JSON.stringify(data));
   }, []);
 
   const galleryLoaded = useRef(false);
   const settingsLoaded = useRef(false);
 
   useEffect(() => {
+    // Show cached funnels instantly, then refresh in background
+    const cached = sessionStorage.getItem('funnels_cache');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        setFunnels(parsed);
+        setLoadingFunnels(false);
+      } catch { /* ignore */ }
+    }
+
     const load = async () => {
-      setLoadingFunnels(true);
-      const funnelData = await getAllFunnelsMeta();
+      if (!cached) setLoadingFunnels(true);
+      const [funnelData, sessionResult] = await Promise.all([
+        getAllFunnelsMeta(),
+        supabase.auth.getSession(),
+      ]);
       setFunnels(funnelData);
       setLoadingFunnels(false);
-
-      // Get userId from cached session (no roundtrip)
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) setCurrentUserId(session.user.id);
+      sessionStorage.setItem('funnels_cache', JSON.stringify(funnelData));
+      if (sessionResult.data.session?.user) setCurrentUserId(sessionResult.data.session.user.id);
     };
     load();
   }, []);
