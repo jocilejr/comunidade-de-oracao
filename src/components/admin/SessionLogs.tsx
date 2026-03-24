@@ -71,7 +71,92 @@ const PERIOD_LABELS: Record<PeriodPreset, string> = {
   custom: 'Personalizado',
 };
 
-const AUTO_REFRESH_MS = 5000;
+const IMAGE_EXTS = /\.(png|jpg|jpeg|gif|webp|svg|bmp)(\?.*)?$/i;
+const AUDIO_EXTS = /\.(mp3|ogg|wav|m4a|aac|webm|opus)(\?.*)?$/i;
+const VIDEO_EXTS = /\.(mp4|mov|avi|mkv)(\?.*)?$/i;
+
+type MediaParsed = { type: 'text' | 'audio' | 'image' | 'video' | 'embed'; url?: string; text?: string };
+
+const parseEventMedia = (event: SessionEvent): MediaParsed => {
+  const meta = event.metadata as Record<string, any> | null;
+  if (meta?.mediaType && meta?.mediaUrl) {
+    return { type: meta.mediaType as MediaParsed['type'], url: meta.mediaUrl, text: event.content || undefined };
+  }
+
+  const content = (event.content || '').trim();
+  if (!content) return { type: 'text', text: '' };
+
+  // [audio] URL or [image] URL patterns
+  const prefixMatch = content.match(/^\[(audio|image|video|embed)\]\s*(https?:\/\/\S+)/i);
+  if (prefixMatch) {
+    return { type: prefixMatch[1].toLowerCase() as MediaParsed['type'], url: prefixMatch[2] };
+  }
+
+  // Direct URL detection
+  if (/^https?:\/\/\S+$/i.test(content)) {
+    if (IMAGE_EXTS.test(content)) return { type: 'image', url: content };
+    if (AUDIO_EXTS.test(content)) return { type: 'audio', url: content };
+    if (VIDEO_EXTS.test(content)) return { type: 'video', url: content };
+  }
+
+  return { type: 'text', text: content };
+};
+
+const renderEventContent = (media: MediaParsed) => {
+  if (media.type === 'image' && media.url) {
+    return (
+      <div>
+        <img
+          src={media.url}
+          alt="Imagem"
+          className="max-w-full max-h-[260px] rounded-lg object-contain my-1"
+          loading="lazy"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = 'none';
+            const fallback = document.createElement('a');
+            fallback.href = media.url!;
+            fallback.target = '_blank';
+            fallback.className = 'text-[11px] underline break-all';
+            fallback.textContent = '📷 Imagem (clique para abrir)';
+            (e.target as HTMLElement).parentElement?.appendChild(fallback);
+          }}
+        />
+        {media.text && <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed mt-1">{media.text}</p>}
+      </div>
+    );
+  }
+
+  if (media.type === 'audio' && media.url) {
+    return (
+      <div>
+        <audio controls preload="none" className="w-full max-w-[280px] h-8">
+          <source src={media.url} />
+        </audio>
+        {media.text && <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed mt-1">{media.text}</p>}
+      </div>
+    );
+  }
+
+  if (media.type === 'video' && media.url) {
+    return (
+      <video controls preload="none" className="max-w-full max-h-[200px] rounded-lg my-1">
+        <source src={media.url} />
+      </video>
+    );
+  }
+
+  if (media.type === 'embed' && media.url) {
+    return (
+      <iframe src={media.url} className="w-full rounded-lg" style={{ height: '200px' }} />
+    );
+  }
+
+  if (!media.text) return <span className="italic opacity-50 text-[11px]">Sem conteúdo</span>;
+
+  return <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">{media.text}</div>;
+};
+
+
 
 const toDateInput = (date: Date) => {
   const y = date.getFullYear();
