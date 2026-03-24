@@ -482,7 +482,7 @@ export async function getUserSettings(): Promise<UserSettingsResult> {
     }
 
     const userId = await getCachedUserId();
-    if (!user) return { status: 'empty' };
+    if (!userId) return { status: 'empty' };
 
     const { data, error } = await supabase
       .from('user_settings')
