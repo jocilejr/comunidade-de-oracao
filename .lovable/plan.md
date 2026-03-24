@@ -1,59 +1,46 @@
 
+Objetivo: corrigir a aba de Chat dos logs para (1) nunca estourar a largura da caixa e (2) renderizar mídia real (áudio/imagem) em vez de URL bruta.
 
-## Redesign da visualização de sessão — layout split-panel instantâneo
+Plano de implementação
 
-### Problemas atuais
+1) Normalizar eventos de mídia no frontend dos logs
+- Criar um helper em `src/components/admin/SessionLogs.tsx` para interpretar o conteúdo dos eventos:
+  - Formato atual salvo no banco: `"[audio] https://..."`, `"[image] https://..."`, etc.
+  - Formato alternativo/futuro via `metadata` (se existir `mediaType`/`mediaUrl`)
+  - URLs diretas de imagem sem prefixo `[image]`
+- O helper retorna um objeto único: `{ type: "text" | "audio" | "image" | "video" | "embed", url?, text? }`.
 
-1. Clicar numa sessão faz query ao banco e mostra skeleton — delay perceptível
-2. A timeline da conversa é longa e o usuário precisa rolar até o final para ver onde a pessoa parou
-3. Os dados coletados são mostrados como chips compactos difíceis de ler
-4. A view substitui toda a lista, impedindo navegação rápida entre sessões
+2) Renderizar mídia de forma visual na timeline
+- Na aba `Chat`, trocar a renderização de `event.content` por render condicional usando esse helper:
+  - `audio` → `<audio controls preload="none" className="w-full max-w-[320px]">`
+  - `image` → `<img ... className="max-w-full max-h-[260px] rounded-lg object-contain">`
+  - `video` → `<video controls ...>`
+  - `embed` → `<iframe ...>` com altura limitada
+  - `text` → texto normal
+- Se houver falha de mídia (ex.: URL inválida), mostrar fallback elegante (“Não foi possível carregar mídia”) + link clicável.
 
-### Nova abordagem: Split Panel
+3) Blindar layout para não sair da box
+- Ajustar wrappers dos itens da timeline para impedir overflow horizontal:
+  - Linha da mensagem com `w-full min-w-0`
+  - Bubble com `min-w-0 max-w-[85%] overflow-hidden`
+  - Conteúdo textual com `whitespace-pre-wrap break-words`
+  - Em textos com URL longa, aplicar `break-all` especificamente para links
+- Garantir que `ScrollArea` e contêiner interno mantenham `overflow-x-hidden`.
 
-Em vez de substituir a lista pela sessão, usar um layout de **duas colunas**:
-- **Esquerda**: Lista de sessões (já carregada, sem re-fetch)
-- **Direita**: Painel de detalhes da sessão selecionada
+4) Compatibilidade com logs já existentes
+- Manter suporte aos eventos antigos (`[audio] URL`, `[image] URL`) para funcionar imediatamente sem migração de banco.
+- Não alterar estrutura de tabela nem fluxo de gravação neste passo (correção focada na visualização).
 
-Isso elimina o "voltar para a lista" e permite clicar entre sessões instantaneamente.
+5) Validação após ajuste
+- Testar na aba Chat de sessão com:
+  - evento de áudio (deve exibir player)
+  - evento de imagem (deve exibir preview)
+  - texto longo/url longa (não pode ultrapassar a box)
+  - ordem atual (última mensagem primeiro) preservada
 
-### Mudanças em `src/components/admin/SessionLogs.tsx`
+Arquivo a alterar
+- `src/components/admin/SessionLogs.tsx`
 
-**1. Layout split-panel**
-- Lista de sessões ocupa ~40% da largura, painel de detalhes ~60%
-- Clicar numa sessão a destaca na lista e mostra detalhes à direita
-- Sem navegação de página, sem "voltar"
-
-**2. Painel de detalhes reorganizado em 3 abas**
-- **Resumo** (default): Etapa atual, status (ativo/encerrado/concluído), horário, nome do funil — tudo visível imediatamente sem scroll
-- **Dados**: Tabela limpa com chave/valor para as variáveis coletadas, em vez de chips compactos. Fácil de ler e copiar
-- **Timeline**: Conversa completa, mas com scroll automático para o **final** (última mensagem) ao abrir — mostra onde a pessoa parou sem rolar manualmente
-
-**3. Pre-fetch de eventos**
-- Ao carregar as sessões, fazer prefetch dos eventos das primeiras 10 sessões em paralelo
-- Armazenar em cache local (Map), então clicar em qualquer sessão já carregada mostra instantaneamente
-- Sessões não-prefetchadas carregam on-click mas sem skeleton — mostam os dados da sessão (resumo/dados) imediato enquanto a timeline carrega em background
-
-**4. Timeline com auto-scroll**
-- Quando a aba Timeline é aberta, faz `scrollIntoView` do último evento
-- O usuário já vê a última interação do funil sem precisar rolar
-
-### Visual esperado
-
-```text
-┌─────────────────────┬──────────────────────────────────┐
-│ Lista de sessões    │  ┌─ Resumo ─┬─ Dados ─┬─ Chat ─┐│
-│                     │  │                               ││
-│ [João ✓ Group#57] ◀│  │  Funil: Manuscrito do Arcanjo ││
-│ [Maria × Group#44] │  │  Etapa: Group #57              ││
-│ [Pedro ● Group#35] │  │  Status: Concluído ✓           ││
-│ [Ana × Group#23]   │  │  Início: 23/03, 23:57          ││
-│  ...                │  │                               ││
-│                     │  └───────────────────────────────┘│
-└─────────────────────┴──────────────────────────────────┘
-```
-
-### Arquivo modificado
-
-1. **`src/components/admin/SessionLogs.tsx`** — Reescrever layout para split-panel com 3 abas, cache de eventos, e auto-scroll na timeline
-
+Detalhes técnicos (resumo)
+- Causa do problema atual: os eventos de mídia chegam como string (`"[audio] URL"`), mas a UI só reconhece `event.content === "[audio]"` ou URL pura iniciando com `http`.
+- Correção: parser robusto + renderer por tipo de conteúdo + classes anti-overflow.
