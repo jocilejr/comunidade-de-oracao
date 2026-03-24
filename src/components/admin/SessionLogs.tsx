@@ -154,7 +154,18 @@ const renderEventContent = (media: MediaParsed) => {
 
   if (!media.text) return <span className="italic opacity-50 text-[11px]">Sem conteúdo</span>;
 
-  return <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">{media.text}</div>;
+  // Check if content contains HTML tags
+  const hasHtml = /<[a-z][\s\S]*>/i.test(media.text);
+  if (hasHtml) {
+    return (
+      <div
+        className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere] [word-break:break-word] [&_a]:break-all [&_a]:underline [&_p]:mb-0.5 [&_p:last-child]:mb-0"
+        dangerouslySetInnerHTML={{ __html: media.text }}
+      />
+    );
+  }
+
+  return <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere] [word-break:break-word]">{media.text}</div>;
 };
 
 const AUTO_REFRESH_MS = 5000;
