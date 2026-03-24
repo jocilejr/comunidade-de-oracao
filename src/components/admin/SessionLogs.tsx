@@ -71,7 +71,93 @@ const PERIOD_LABELS: Record<PeriodPreset, string> = {
   custom: 'Personalizado',
 };
 
+const IMAGE_EXTS = /\.(png|jpg|jpeg|gif|webp|svg|bmp)(\?.*)?$/i;
+const AUDIO_EXTS = /\.(mp3|ogg|wav|m4a|aac|webm|opus)(\?.*)?$/i;
+const VIDEO_EXTS = /\.(mp4|mov|avi|mkv)(\?.*)?$/i;
+
+type MediaParsed = { type: 'text' | 'audio' | 'image' | 'video' | 'embed'; url?: string; text?: string };
+
+const parseEventMedia = (event: SessionEvent): MediaParsed => {
+  const meta = event.metadata as Record<string, any> | null;
+  if (meta?.mediaType && meta?.mediaUrl) {
+    return { type: meta.mediaType as MediaParsed['type'], url: meta.mediaUrl, text: event.content || undefined };
+  }
+
+  const content = (event.content || '').trim();
+  if (!content) return { type: 'text', text: '' };
+
+  // [audio] URL or [image] URL patterns
+  const prefixMatch = content.match(/^\[(audio|image|video|embed)\]\s*(https?:\/\/\S+)/i);
+  if (prefixMatch) {
+    return { type: prefixMatch[1].toLowerCase() as MediaParsed['type'], url: prefixMatch[2] };
+  }
+
+  // Direct URL detection
+  if (/^https?:\/\/\S+$/i.test(content)) {
+    if (IMAGE_EXTS.test(content)) return { type: 'image', url: content };
+    if (AUDIO_EXTS.test(content)) return { type: 'audio', url: content };
+    if (VIDEO_EXTS.test(content)) return { type: 'video', url: content };
+  }
+
+  return { type: 'text', text: content };
+};
+
+const renderEventContent = (media: MediaParsed) => {
+  if (media.type === 'image' && media.url) {
+    return (
+      <div>
+        <img
+          src={media.url}
+          alt="Imagem"
+          className="max-w-full max-h-[260px] rounded-lg object-contain my-1"
+          loading="lazy"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = 'none';
+            const fallback = document.createElement('a');
+            fallback.href = media.url!;
+            fallback.target = '_blank';
+            fallback.className = 'text-[11px] underline break-all';
+            fallback.textContent = '📷 Imagem (clique para abrir)';
+            (e.target as HTMLElement).parentElement?.appendChild(fallback);
+          }}
+        />
+        {media.text && <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed mt-1">{media.text}</p>}
+      </div>
+    );
+  }
+
+  if (media.type === 'audio' && media.url) {
+    return (
+      <div>
+        <audio controls preload="none" className="w-full max-w-[280px] h-8">
+          <source src={media.url} />
+        </audio>
+        {media.text && <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed mt-1">{media.text}</p>}
+      </div>
+    );
+  }
+
+  if (media.type === 'video' && media.url) {
+    return (
+      <video controls preload="none" className="max-w-full max-h-[200px] rounded-lg my-1">
+        <source src={media.url} />
+      </video>
+    );
+  }
+
+  if (media.type === 'embed' && media.url) {
+    return (
+      <iframe src={media.url} className="w-full rounded-lg" style={{ height: '200px' }} />
+    );
+  }
+
+  if (!media.text) return <span className="italic opacity-50 text-[11px]">Sem conteúdo</span>;
+
+  return <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">{media.text}</div>;
+};
+
 const AUTO_REFRESH_MS = 5000;
+
 
 const toDateInput = (date: Date) => {
   const y = date.getFullYear();
@@ -430,7 +516,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
           </TabsContent>
 
           {/* Timeline tab */}
-          <TabsContent value="timeline" className="flex-1 m-0 min-h-0 flex flex-col">
+          <TabsContent value="timeline" className="flex-1 m-0 min-h-0 flex flex-col overflow-hidden">
             <ScrollArea className="flex-1">
               {loadingEvents ? (
                 <div className="p-4 space-y-3">
@@ -443,15 +529,16 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                   <p className="text-sm text-muted-foreground">Nenhum evento registrado.</p>
                 </div>
               ) : (
-                <div className="p-4 space-y-3 overflow-x-hidden">
+                <div className="p-4 space-y-3 w-full overflow-x-hidden">
                   {[...activeEvents].reverse().map((event) => {
                     const Icon = EVENT_ICONS[event.event_type] || MessageSquare;
                     const isUser = event.event_type === 'user_input' || event.event_type === 'choice';
                     const isGpt = event.event_type === 'gpt_response';
+                    const media = parseEventMedia(event);
 
                     return (
-                      <div key={event.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-[12px] overflow-hidden ${
+                      <div key={event.id} className={`flex w-full min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`min-w-0 max-w-[85%] rounded-2xl px-3 py-2 text-[12px] overflow-hidden ${
                           isUser 
                             ? 'bg-primary text-primary-foreground rounded-tr-sm' 
                             : isGpt 
@@ -464,21 +551,11 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
                               {new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
-                          {event.content ? (
-                            <div className="whitespace-pre-wrap break-words leading-relaxed overflow-hidden">
-                              {event.content.startsWith('http') && (event.content.includes('.png') || event.content.includes('.jpg') || event.content.includes('.webp')) ? (
-                                <img src={event.content} alt="Mídia" className="max-w-full rounded-lg my-1" />
-                              ) : event.content === '[audio]' ? (
-                                <span className="text-xs font-medium">🎙 Áudio</span>
-                              ) : (
-                                event.content
-                              )}
-                            </div>
-                          ) : (
-                            <span className="italic opacity-50 text-[11px]">Sem conteúdo</span>
-                          )}
+                          <div className="min-w-0 overflow-hidden">
+                            {renderEventContent(media)}
+                          </div>
                           {event.group_title && (
-                            <span className="text-[9px] opacity-40 block mt-0.5">{event.group_title}</span>
+                            <span className="text-[9px] opacity-40 block mt-0.5 truncate">{event.group_title}</span>
                           )}
                         </div>
                       </div>
