@@ -1,15 +1,15 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { 
-  ArrowLeft, MessageSquare, User, Bot, Cpu, CheckCircle, XCircle, 
+  MessageSquare, User, Bot, Cpu, CheckCircle, XCircle, 
   ChevronRight, Activity, Filter, Search, Calendar as CalendarIcon,
-  Clock, RefreshCw, Sparkles
+  Clock, RefreshCw, Sparkles, Copy, Check
 } from 'lucide-react';
 import { getFunnelById } from '@/lib/funnel-storage';
-import { TypebotFlow } from '@/lib/typebot-types';
 
 interface FunnelMeta {
   id: string;
@@ -26,7 +26,7 @@ interface Session {
   variables: Record<string, string> | null;
   completed: boolean;
   updated_at?: string;
-  has_ai?: boolean; // Virtual field for filtering
+  has_ai?: boolean;
 }
 
 interface SessionEvent {
@@ -63,14 +63,6 @@ const EVENT_ICONS: Record<string, typeof MessageSquare> = {
   end: CheckCircle,
 };
 
-const EVENT_LABELS: Record<string, string> = {
-  user_input: 'Resposta do usuário',
-  choice: 'Escolha do usuário',
-  bot_message: 'Mensagem do bot',
-  gpt_response: 'Resposta GPT',
-  end: 'Fim da conversa',
-};
-
 const PERIOD_LABELS: Record<PeriodPreset, string> = {
   today: 'Hoje',
   yesterday: 'Ontem',
@@ -99,135 +91,71 @@ const endOfDayIso = (date: Date) => new Date(date.getFullYear(), date.getMonth()
 
 const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaultFunnel?: string }) => {
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [events, setEvents] = useState<SessionEvent[]>([]);
-  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedFunnel, setSelectedFunnel] = useState<string>(defaultFunnel || 'all');
   const [selectedStep, setSelectedStep] = useState<string>('all');
   const [filterAi, setFilterAi] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [loadingEvents, setLoadingEvents] = useState(false);
   const [loadingStats, setLoadingStats] = useState(true);
   const [period, setPeriod] = useState<PeriodPreset>('last7');
   const [customStart, setCustomStart] = useState<string>(() => toDateInput(addDays(new Date(), -6)));
   const [customEnd, setCustomEnd] = useState<string>(() => toDateInput(new Date()));
   const [stats, setStats] = useState<SessionStats>({ today: 0, yesterday: 0, last3: 0, last7: 0, custom: 0, withAi: 0 });
   const [funnelSteps, setFunnelSteps] = useState<{name: string; count: number}[]>([]);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const selectedSessionId = selectedSession?.id ?? null;
+  // Event cache
+  const eventsCache = useRef<Map<string, SessionEvent[]>>(new Map());
+  const [activeEvents, setActiveEvents] = useState<SessionEvent[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const timelineEndRef = useRef<HTMLDivElement>(null);
+
+  const selectedSession = useMemo(() => sessions.find(s => s.id === selectedSessionId) || null, [sessions, selectedSessionId]);
 
   const getRange = useCallback((preset: PeriodPreset): DateRange => {
     const now = new Date();
-
-    if (preset === 'today') {
-      return { start: startOfDayIso(now), end: endOfDayIso(now) };
-    }
-
-    if (preset === 'yesterday') {
-      const y = addDays(now, -1);
-      return { start: startOfDayIso(y), end: endOfDayIso(y) };
-    }
-
-    if (preset === 'last3') {
-      const start = addDays(now, -2);
-      return { start: startOfDayIso(start), end: endOfDayIso(now) };
-    }
-
-    if (preset === 'last7') {
-      const start = addDays(now, -6);
-      return { start: startOfDayIso(start), end: endOfDayIso(now) };
-    }
-
+    if (preset === 'today') return { start: startOfDayIso(now), end: endOfDayIso(now) };
+    if (preset === 'yesterday') { const y = addDays(now, -1); return { start: startOfDayIso(y), end: endOfDayIso(y) }; }
+    if (preset === 'last3') return { start: startOfDayIso(addDays(now, -2)), end: endOfDayIso(now) };
+    if (preset === 'last7') return { start: startOfDayIso(addDays(now, -6)), end: endOfDayIso(now) };
     if (!customStart || !customEnd) return { start: null, end: null };
-
     const parsedStart = new Date(`${customStart}T00:00:00`);
     const parsedEnd = new Date(`${customEnd}T23:59:59.999`);
-
-    if (Number.isNaN(parsedStart.getTime()) || Number.isNaN(parsedEnd.getTime())) {
-      return { start: null, end: null };
-    }
-
-    return {
-      start: parsedStart.toISOString(),
-      end: parsedEnd.toISOString(),
-    };
+    if (Number.isNaN(parsedStart.getTime()) || Number.isNaN(parsedEnd.getTime())) return { start: null, end: null };
+    return { start: parsedStart.toISOString(), end: parsedEnd.toISOString() };
   }, [customStart, customEnd]);
 
-  // Load funnel steps with counts when funnel or period changes
+  // Load funnel steps with counts
   useEffect(() => {
     const loadSteps = async () => {
-      if (selectedFunnel === 'all') {
-        setFunnelSteps([]);
-        setSelectedStep('all');
-        return;
-      }
-      
+      if (selectedFunnel === 'all') { setFunnelSteps([]); setSelectedStep('all'); return; }
       try {
         const funnel = await getFunnelById(selectedFunnel);
         if (funnel?.flow?.groups) {
-          const stepNames = funnel.flow.groups
-            .map(g => g.title || g.id)
-            .filter((v, i, a) => a.indexOf(v) === i);
-
-          // Get session IDs in the current date range
+          const stepNames = funnel.flow.groups.map(g => g.title || g.id).filter((v, i, a) => a.indexOf(v) === i);
           const activeRange = getRange(period);
-          let sessionQuery = supabase
-            .from('funnel_sessions')
-            .select('id')
-            .eq('funnel_id', selectedFunnel);
+          let sessionQuery = supabase.from('funnel_sessions').select('id').eq('funnel_id', selectedFunnel);
           if (activeRange.start) sessionQuery = sessionQuery.gte('started_at', activeRange.start);
           if (activeRange.end) sessionQuery = sessionQuery.lte('started_at', activeRange.end);
           const { data: sessionRows } = await sessionQuery;
           const sessionIds = sessionRows?.map(s => s.id) || [];
-
-          if (sessionIds.length === 0) {
-            setFunnelSteps(stepNames.map(name => ({ name, count: 0 })));
-            return;
-          }
-
-          // Count unique sessions per group_title from events
-          const { data: eventRows } = await supabase
-            .from('funnel_session_events')
-            .select('session_id, group_title')
-            .in('session_id', sessionIds)
-            .not('group_title', 'is', null);
-
+          if (sessionIds.length === 0) { setFunnelSteps(stepNames.map(name => ({ name, count: 0 }))); return; }
+          const { data: eventRows } = await supabase.from('funnel_session_events').select('session_id, group_title').in('session_id', sessionIds).not('group_title', 'is', null);
           const countMap: Record<string, Set<string>> = {};
-          for (const e of eventRows || []) {
-            if (!e.group_title) continue;
-            if (!countMap[e.group_title]) countMap[e.group_title] = new Set();
-            countMap[e.group_title].add(e.session_id);
-          }
-
-          setFunnelSteps(stepNames.map(name => ({
-            name,
-            count: countMap[name]?.size || 0,
-          })));
+          for (const e of eventRows || []) { if (!e.group_title) continue; if (!countMap[e.group_title]) countMap[e.group_title] = new Set(); countMap[e.group_title].add(e.session_id); }
+          setFunnelSteps(stepNames.map(name => ({ name, count: countMap[name]?.size || 0 })));
         }
-      } catch (e) {
-        console.error('Error loading funnel steps:', e);
-      }
+      } catch (e) { console.error('Error loading funnel steps:', e); }
     };
     loadSteps();
   }, [selectedFunnel, period, customStart, customEnd, getRange]);
 
   const applySessionFilters = useCallback((query: any, range: DateRange) => {
     let next = query;
-
-    if (selectedFunnel !== 'all') {
-      next = next.eq('funnel_id', selectedFunnel);
-    }
-
-    // Step filter is applied AFTER the query (client-side) via sessionIdsForStep
-
-    if (range.start) {
-      next = next.gte('started_at', range.start);
-    }
-
-    if (range.end) {
-      next = next.lte('started_at', range.end);
-    }
-
+    if (selectedFunnel !== 'all') next = next.eq('funnel_id', selectedFunnel);
+    if (range.start) next = next.gte('started_at', range.start);
+    if (range.end) next = next.lte('started_at', range.end);
     return next;
   }, [selectedFunnel]);
 
@@ -240,19 +168,9 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
   const loadStats = useCallback(async (silent = false) => {
     if (!silent) setLoadingStats(true);
-
     const activeRange = getRange(period);
-    
-    // Count sessions with AI events in the current period
-    const { data: aiSessions } = await supabase
-      .from('funnel_session_events')
-      .select('session_id')
-      .eq('event_type', 'gpt_response')
-      .gte('created_at', activeRange.start || '1970-01-01')
-      .lte('created_at', activeRange.end || new Date().toISOString());
-    
+    const { data: aiSessions } = await supabase.from('funnel_session_events').select('session_id').eq('event_type', 'gpt_response').gte('created_at', activeRange.start || '1970-01-01').lte('created_at', activeRange.end || new Date().toISOString());
     const uniqueAiSessions = new Set(aiSessions?.map(s => s.session_id) || []);
-
     const [today, yesterday, last3, last7, custom] = await Promise.all([
       countSessionsInRange(getRange('today')),
       countSessionsInRange(getRange('yesterday')),
@@ -260,104 +178,90 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
       countSessionsInRange(getRange('last7')),
       countSessionsInRange(getRange('custom')),
     ]);
-
     setStats({ today, yesterday, last3, last7, custom, withAi: uniqueAiSessions.size });
     if (!silent) setLoadingStats(false);
   }, [countSessionsInRange, getRange, period]);
 
   const loadSessions = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-
     const activeRange = getRange(period);
-    const base = supabase
-      .from('funnel_sessions')
-      .select('*')
-      .order('started_at', { ascending: false })
-      .limit(200);
-
+    const base = supabase.from('funnel_sessions').select('*').order('started_at', { ascending: false }).limit(200);
     const filtered = applySessionFilters(base, activeRange);
     const { data } = await filtered;
-
     let nextSessions = (data as Session[]) || [];
 
-    // Filter by step: find sessions that PASSED THROUGH the selected step (not just ended there)
     if (selectedStep !== 'all' && nextSessions.length > 0) {
       const sessionIds = nextSessions.map(s => s.id);
-      const { data: stepEvents } = await supabase
-        .from('funnel_session_events')
-        .select('session_id')
-        .in('session_id', sessionIds)
-        .eq('group_title', selectedStep);
-      
+      const { data: stepEvents } = await supabase.from('funnel_session_events').select('session_id').in('session_id', sessionIds).eq('group_title', selectedStep);
       const stepSessionIds = new Set(stepEvents?.map(e => e.session_id) || []);
       nextSessions = nextSessions.filter(s => stepSessionIds.has(s.id));
     }
 
-    // Fetch AI event presence for these sessions
     if (nextSessions.length > 0) {
       const sessionIds = nextSessions.map(s => s.id);
-      const { data: aiEvents } = await supabase
-        .from('funnel_session_events')
-        .select('session_id')
-        .in('session_id', sessionIds)
-        .eq('event_type', 'gpt_response');
-      
+      const { data: aiEvents } = await supabase.from('funnel_session_events').select('session_id').in('session_id', sessionIds).eq('event_type', 'gpt_response');
       const aiSessionIds = new Set(aiEvents?.map(e => e.session_id) || []);
-      nextSessions = nextSessions.map(s => ({
-        ...s,
-        has_ai: aiSessionIds.has(s.id)
-      }));
+      nextSessions = nextSessions.map(s => ({ ...s, has_ai: aiSessionIds.has(s.id) }));
     }
 
     setSessions(nextSessions);
-
-    if (selectedSessionId) {
-      const updatedSelected = nextSessions.find(s => s.id === selectedSessionId);
-      if (updatedSelected) setSelectedSession(updatedSelected);
-    }
-
     if (!silent) setLoading(false);
-  }, [applySessionFilters, getRange, period, selectedSessionId, selectedStep]);
+  }, [applySessionFilters, getRange, period, selectedStep]);
 
   const loadEvents = useCallback(async (sessionId: string, silent = false) => {
+    // Check cache first
+    if (eventsCache.current.has(sessionId) && silent) {
+      setActiveEvents(eventsCache.current.get(sessionId)!);
+      return;
+    }
     if (!silent) setLoadingEvents(true);
-
-    const { data } = await supabase
-      .from('funnel_session_events')
-      .select('*')
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: true });
-
-    setEvents((data as SessionEvent[]) || []);
+    const { data } = await supabase.from('funnel_session_events').select('*').eq('session_id', sessionId).order('created_at', { ascending: true });
+    const events = (data as SessionEvent[]) || [];
+    eventsCache.current.set(sessionId, events);
+    setActiveEvents(events);
     if (!silent) setLoadingEvents(false);
   }, []);
 
+  // Prefetch events for first 10 sessions
   useEffect(() => {
-    loadSessions();
-    loadStats();
-  }, [loadSessions, loadStats]);
+    if (sessions.length === 0) return;
+    const toPrefetch = sessions.slice(0, 10);
+    toPrefetch.forEach(s => {
+      if (!eventsCache.current.has(s.id)) {
+        supabase.from('funnel_session_events').select('*').eq('session_id', s.id).order('created_at', { ascending: true })
+          .then(({ data }) => { if (data) eventsCache.current.set(s.id, data as SessionEvent[]); });
+      }
+    });
+  }, [sessions]);
+
+  useEffect(() => { loadSessions(); loadStats(); }, [loadSessions, loadStats]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       loadSessions(true);
       loadStats(true);
-
-      if (selectedSessionId) {
-        loadEvents(selectedSessionId, true);
-      }
+      if (selectedSessionId) loadEvents(selectedSessionId, true);
     }, AUTO_REFRESH_MS);
-
     return () => window.clearInterval(interval);
   }, [loadEvents, loadSessions, loadStats, selectedSessionId]);
 
-  const openSession = async (session: Session) => {
-    setSelectedSession(session);
-    await loadEvents(session.id);
+  // Auto-scroll timeline to bottom
+  useEffect(() => {
+    if (timelineEndRef.current) {
+      setTimeout(() => timelineEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    }
+  }, [activeEvents, selectedSessionId]);
+
+  const selectSession = (session: Session) => {
+    setSelectedSessionId(session.id);
+    if (eventsCache.current.has(session.id)) {
+      setActiveEvents(eventsCache.current.get(session.id)!);
+    } else {
+      loadEvents(session.id);
+    }
   };
 
-  const getFunnelName = (funnelId: string) => {
-    return funnels.find(f => f.id === funnelId)?.name || 'Funil desconhecido';
-  };
+  const getFunnelName = (funnelId: string) => funnels.find(f => f.id === funnelId)?.name || 'Funil desconhecido';
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
@@ -367,29 +271,23 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
   const getMainVariable = (vars: Record<string, string> | null) => {
     if (!vars) return null;
     const nameKeys = ['nome', 'name', 'Nome', 'Name', 'whatsapp', 'phone', 'email'];
-    for (const k of nameKeys) {
-      if (vars[k]) return vars[k];
-    }
+    for (const k of nameKeys) { if (vars[k]) return vars[k]; }
     const vals = Object.values(vars).filter(Boolean);
     return vals[0] || null;
   };
 
-  const activeSessionsCount = useMemo(() => {
+  const isSessionLive = (session: Session) => {
+    if (session.ended_at || session.completed) return false;
     const now = new Date().getTime();
-    return sessions.filter(session => {
-      if (session.ended_at || session.completed) return false;
-      const lastUpdate = new Date(session.updated_at || session.started_at).getTime();
-      return now - lastUpdate < 120000;
-    }).length;
-  }, [sessions]);
+    const lastUpdate = new Date(session.updated_at || session.started_at).getTime();
+    return now - lastUpdate < 120000;
+  };
+
+  const activeSessionsCount = useMemo(() => sessions.filter(isSessionLive).length, [sessions]);
 
   const filteredSessions = useMemo(() => {
     let result = sessions;
-    
-    if (filterAi) {
-      result = result.filter(s => s.has_ai);
-    }
-
+    if (filterAi) result = result.filter(s => s.has_ai);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(s => {
@@ -399,7 +297,6 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
         return mainVar.includes(q) || funnelName.includes(q) || lastStep.includes(q);
       });
     }
-    
     return result;
   }, [sessions, searchQuery, filterAi]);
 
@@ -411,405 +308,344 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
     { key: 'custom', value: stats.custom },
   ];
 
-  if (selectedSession) {
+  const copyToClipboard = (key: string, value: string) => {
+    navigator.clipboard.writeText(value);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  };
+
+  // ─── Detail panel (right side) ───
+  const renderDetailPanel = () => {
+    if (!selectedSession) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-center p-8">
+          <div className="w-16 h-16 rounded-3xl bg-muted flex items-center justify-center mb-4">
+            <MessageSquare className="w-8 h-8 text-muted-foreground/40" />
+          </div>
+          <p className="text-sm font-bold text-foreground">Selecione uma sessão</p>
+          <p className="text-xs text-muted-foreground mt-1">Clique em uma sessão à esquerda para ver os detalhes</p>
+        </div>
+      );
+    }
+
     const vars = selectedSession.variables as Record<string, string> | null;
-    const now = new Date().getTime();
-    const lastUpdate = new Date(selectedSession.updated_at || selectedSession.started_at).getTime();
-    const isLive = !selectedSession.ended_at && !selectedSession.completed && (now - lastUpdate < 120000);
+    const live = isSessionLive(selectedSession);
 
     return (
-      <div className="flex flex-col h-full max-h-[80vh]">
-        <div className="flex items-center justify-between mb-4 shrink-0">
-          <Button variant="ghost" size="sm" onClick={() => { setSelectedSession(null); setEvents([]); }} className="h-8">
-            <ArrowLeft className="w-4 h-4 mr-2" /> Voltar para a lista
-          </Button>
-          <div className="flex items-center gap-2">
-            <span className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full font-medium ${
-              isLive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'
-            }`}>
-              <Activity className={`w-3.5 h-3.5 ${isLive ? 'animate-pulse' : ''}`} />
-              {isLive ? 'Sessão Ativa' : 'Sessão Encerrada'}
-            </span>
+      <div className="flex flex-col h-full">
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-border shrink-0 flex items-center justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-foreground truncate">{getMainVariable(vars) || 'Visitante Anônimo'}</p>
+            <p className="text-[11px] text-muted-foreground">{getFunnelName(selectedSession.funnel_id)}</p>
           </div>
+          <span className={`inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-full font-bold shrink-0 ${
+            live ? 'bg-emerald-500/10 text-emerald-500' : selectedSession.completed ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+          }`}>
+            <Activity className={`w-3 h-3 ${live ? 'animate-pulse' : ''}`} />
+            {live ? 'Ativa' : selectedSession.completed ? 'Concluída' : 'Encerrada'}
+          </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 shrink-0">
-          <div className="md:col-span-2 rounded-xl border border-border bg-card p-4">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-sm font-bold text-foreground">{getFunnelName(selectedSession.funnel_id)}</h3>
-                <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
-                  <Clock className="w-3 h-3" /> Iniciada em {formatTime(selectedSession.started_at)}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Etapa Atual</p>
-                <p className="text-sm font-medium text-primary">{selectedSession.last_group_title || 'Início'}</p>
-              </div>
-            </div>
+        {/* Tabs */}
+        <Tabs defaultValue="resumo" className="flex-1 flex flex-col min-h-0">
+          <TabsList className="w-full justify-start rounded-none border-b border-border bg-transparent h-auto p-0 shrink-0">
+            <TabsTrigger value="resumo" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs font-bold px-4 py-2.5">
+              Resumo
+            </TabsTrigger>
+            <TabsTrigger value="dados" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs font-bold px-4 py-2.5">
+              Dados {vars && Object.keys(vars).length > 0 && <span className="ml-1 text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{Object.keys(vars).length}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="timeline" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs font-bold px-4 py-2.5">
+              Chat {activeEvents.length > 0 && <span className="ml-1 text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{activeEvents.length}</span>}
+            </TabsTrigger>
+          </TabsList>
 
-            {vars && Object.keys(vars).length > 0 && (
-              <div className="space-y-2">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Dados Coletados</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(vars).map(([k, v]) => (
-                    <div key={k} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent/50 border border-border/50">
-                      <span className="text-[10px] text-muted-foreground font-medium">{k}:</span>
-                      <span className="text-[11px] text-foreground font-semibold">{v}</span>
-                    </div>
-                  ))}
+          {/* Resumo tab */}
+          <TabsContent value="resumo" className="flex-1 m-0 overflow-auto">
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-border bg-muted/30 p-3">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Etapa Atual</p>
+                  <p className="text-sm font-bold text-foreground">{selectedSession.last_group_title || 'Início'}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/30 p-3">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Status</p>
+                  <p className="text-sm font-bold text-foreground">
+                    {live ? '🟢 Navegando' : selectedSession.completed ? '✅ Concluiu' : '⛔ Abandonou'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/30 p-3">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Início</p>
+                  <p className="text-sm font-medium text-foreground">{formatTime(selectedSession.started_at)}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/30 p-3">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Interações</p>
+                  <p className="text-sm font-bold text-foreground">{activeEvents.length} eventos</p>
                 </div>
               </div>
-            )}
+              {selectedSession.has_ai && (
+                <div className="flex items-center gap-2 p-3 rounded-xl border border-primary/20 bg-primary/5">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  <span className="text-xs font-medium text-primary">Esta sessão teve interação com IA</span>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Dados tab */}
+          <TabsContent value="dados" className="flex-1 m-0 overflow-auto">
+            <div className="p-4">
+              {!vars || Object.keys(vars).length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-sm text-muted-foreground">Nenhum dado coletado nesta sessão.</p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40">
+                        <th className="text-left px-4 py-2.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Campo</th>
+                        <th className="text-left px-4 py-2.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Valor</th>
+                        <th className="w-10"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(vars).map(([k, v]) => (
+                        <tr key={k} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                          <td className="px-4 py-2.5 text-xs font-medium text-muted-foreground">{k}</td>
+                          <td className="px-4 py-2.5 text-xs font-semibold text-foreground break-all">{v}</td>
+                          <td className="px-2 py-2.5">
+                            <button onClick={() => copyToClipboard(k, v)} className="p-1 rounded hover:bg-muted transition-colors" title="Copiar">
+                              {copiedKey === k ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Timeline tab */}
+          <TabsContent value="timeline" className="flex-1 m-0 min-h-0 flex flex-col">
+            <ScrollArea className="flex-1">
+              {loadingEvents ? (
+                <div className="p-4 space-y-3">
+                  <Skeleton className="h-10 w-3/4 rounded-lg" />
+                  <Skeleton className="h-10 w-1/2 rounded-lg ml-auto" />
+                  <Skeleton className="h-10 w-2/3 rounded-lg" />
+                </div>
+              ) : activeEvents.length === 0 ? (
+                <div className="p-8 text-center">
+                  <p className="text-sm text-muted-foreground">Nenhum evento registrado.</p>
+                </div>
+              ) : (
+                <div className="p-4 space-y-3">
+                  {activeEvents.map((event) => {
+                    const Icon = EVENT_ICONS[event.event_type] || MessageSquare;
+                    const isUser = event.event_type === 'user_input' || event.event_type === 'choice';
+                    const isGpt = event.event_type === 'gpt_response';
+
+                    return (
+                      <div key={event.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-[12px] ${
+                          isUser 
+                            ? 'bg-primary text-primary-foreground rounded-tr-sm' 
+                            : isGpt 
+                              ? 'bg-secondary/40 text-secondary-foreground border border-primary/20 rounded-tl-sm' 
+                              : 'bg-muted/60 text-foreground border border-border rounded-tl-sm'
+                        }`}>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <Icon className="w-3 h-3 opacity-60" />
+                            <span className="text-[9px] opacity-60 font-medium">
+                              {new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          {event.content ? (
+                            <div className="whitespace-pre-wrap break-words leading-relaxed">
+                              {event.content.startsWith('http') && (event.content.includes('.png') || event.content.includes('.jpg') || event.content.includes('.webp')) ? (
+                                <img src={event.content} alt="Mídia" className="max-w-full rounded-lg my-1" />
+                              ) : event.content === '[audio]' ? (
+                                <span className="text-xs font-medium">🎙 Áudio</span>
+                              ) : (
+                                event.content
+                              )}
+                            </div>
+                          ) : (
+                            <span className="italic opacity-50 text-[11px]">Sem conteúdo</span>
+                          )}
+                          {event.group_title && (
+                            <span className="text-[9px] opacity-40 block mt-0.5">{event.group_title}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={timelineEndRef} />
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-full max-h-[85vh]">
+      {/* Filters & Stats bar */}
+      <div className="space-y-3 mb-4 shrink-0">
+        {/* Period cards + active count */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+          <button
+            onClick={() => setFilterAi(!filterAi)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all whitespace-nowrap text-[11px] font-bold ${
+              filterAi ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:border-primary/30'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            IA {loadingStats ? '...' : stats.withAi}
+          </button>
+
+          <div className="w-px h-5 bg-border" />
+
+          {periodCards.map(card => (
+            <button
+              key={card.key}
+              onClick={() => setPeriod(card.key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all whitespace-nowrap text-[11px] font-bold ${
+                period === card.key ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-background text-muted-foreground hover:border-primary/30'
+              }`}
+            >
+              {PERIOD_LABELS[card.key]} <span className={period === card.key ? 'text-primary' : 'text-foreground'}>{loadingStats ? '...' : card.value}</span>
+            </button>
+          ))}
+
+          <div className="w-px h-5 bg-border" />
+
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-emerald-600 whitespace-nowrap text-[11px] font-bold">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            {activeSessionsCount} ativos
           </div>
 
-          <div className="rounded-xl border border-border bg-card p-4 flex flex-col justify-center items-center text-center">
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${
-              isLive ? 'bg-primary/10 text-primary' : selectedSession.completed ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'
-            }`}>
-              {isLive ? <Activity className="w-6 h-6 animate-pulse" /> : selectedSession.completed ? <CheckCircle className="w-6 h-6" /> : <XCircle className="w-6 h-6" />}
-            </div>
-            <p className="text-sm font-bold text-foreground">
-              {isLive ? 'Navegando agora' : selectedSession.completed ? 'Concluiu o funil' : 'Abandonou o funil'}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {isLive ? 'O usuário ainda está interagindo' : 'Interação finalizada'}
-            </p>
-          </div>
+          <Button variant="ghost" size="sm" onClick={() => { loadSessions(); loadStats(); }} className="h-7 w-7 p-0 shrink-0">
+            <RefreshCw className="w-3.5 h-3.5" />
+          </Button>
         </div>
 
-        <div className="flex-1 min-h-0 rounded-xl border border-border bg-card flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-muted/30 shrink-0">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-muted-foreground" />
-              <p className="text-xs font-bold text-foreground uppercase tracking-wider">Timeline da Conversa</p>
-            </div>
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-              <RefreshCw className="w-3 h-3 animate-spin-slow" />
-              <span>Atualizando em tempo real</span>
-            </div>
+        {/* Search + filters */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Buscar..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full h-8 pl-9 pr-3 rounded-lg border border-border bg-background text-xs focus:ring-2 focus:ring-primary/20 outline-none"
+            />
           </div>
 
+          {!defaultFunnel && (
+            <select
+              value={selectedFunnel}
+              onChange={e => setSelectedFunnel(e.target.value)}
+              className="h-8 px-3 rounded-lg border border-border bg-background text-xs font-medium appearance-none outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="all">Todos os Funis</option>
+              {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          )}
+
+          <select
+            value={selectedStep}
+            onChange={e => setSelectedStep(e.target.value)}
+            disabled={selectedFunnel === 'all'}
+            className="h-8 px-3 rounded-lg border border-border bg-background text-xs font-medium appearance-none outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+          >
+            <option value="all">Todas Etapas</option>
+            {funnelSteps.map(step => <option key={step.name} value={step.name}>{step.name} ({step.count})</option>)}
+          </select>
+        </div>
+
+        {period === 'custom' && (
+          <div className="flex items-center gap-2">
+            <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="h-8 rounded-lg border border-border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-primary/20" />
+            <span className="text-xs text-muted-foreground">até</span>
+            <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="h-8 rounded-lg border border-border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-primary/20" />
+            <Button size="sm" onClick={() => { setPeriod('custom'); loadStats(); loadSessions(); }} className="h-8 px-4 text-xs font-bold">Aplicar</Button>
+          </div>
+        )}
+      </div>
+
+      {/* Split panel: sessions list + detail */}
+      <div className="flex-1 min-h-0 flex gap-3 rounded-xl border border-border bg-card overflow-hidden">
+        {/* Left: session list */}
+        <div className="w-[40%] border-r border-border flex flex-col min-h-0">
+          <div className="px-3 py-2 border-b border-border bg-muted/30 shrink-0">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+              {filteredSessions.length} sessões
+            </p>
+          </div>
           <ScrollArea className="flex-1">
-            {loadingEvents ? (
-              <div className="p-6 space-y-4">
-                <Skeleton className="h-12 w-3/4 rounded-lg" />
-                <Skeleton className="h-12 w-1/2 rounded-lg ml-auto" />
-                <Skeleton className="h-12 w-2/3 rounded-lg" />
+            {loading ? (
+              <div className="p-3 space-y-2">
+                {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
               </div>
-            ) : events.length === 0 ? (
-              <div className="p-12 text-center">
-                <p className="text-sm text-muted-foreground">Nenhum evento registrado nesta sessão.</p>
+            ) : filteredSessions.length === 0 ? (
+              <div className="p-8 text-center">
+                <Search className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">Nenhuma sessão encontrada</p>
               </div>
             ) : (
-              <div className="p-6 space-y-8 max-w-full overflow-x-hidden">
-                {events.map((event, idx) => {
-                  const Icon = EVENT_ICONS[event.event_type] || MessageSquare;
-                  const label = EVENT_LABELS[event.event_type] || event.event_type;
-                  const isUser = event.event_type === 'user_input' || event.event_type === 'choice';
-                  const isGpt = event.event_type === 'gpt_response';
-                  const isBot = event.event_type === 'bot_message';
+              <div className="p-2 space-y-1">
+                {filteredSessions.map(session => {
+                  const mainVar = getMainVariable(session.variables as Record<string, string> | null);
+                  const live = isSessionLive(session);
+                  const isSelected = selectedSessionId === session.id;
 
                   return (
-                    <div key={event.id} className={`flex flex-col w-full ${isUser ? 'items-end' : 'items-start'}`}>
-                      <div className={`flex items-center gap-2 mb-2 px-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isUser ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                          <Icon className="w-3 h-3" />
-                        </div>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                          {isUser ? 'Usuário' : isBot ? 'Assistente' : isGpt ? 'IA' : label}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground/40 font-mono">
-                          {new Date(event.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      
-                      <div className={`relative max-w-[85%] sm:max-w-[70%] rounded-2xl px-4 py-3 text-[13px] shadow-sm border transition-all ${
-                        isUser 
-                          ? 'bg-primary text-primary-foreground border-primary rounded-tr-none mr-1' 
-                          : isGpt 
-                            ? 'bg-secondary/40 text-secondary-foreground border-primary/20 rounded-tl-none ml-1' 
-                            : 'bg-muted/40 text-foreground border-border rounded-tl-none ml-1'
+                    <button
+                      key={session.id}
+                      onClick={() => selectSession(session)}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all ${
+                        isSelected 
+                          ? 'bg-primary/10 border border-primary/30' 
+                          : 'hover:bg-muted/50 border border-transparent'
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        live ? 'bg-emerald-500/10 text-emerald-500' : session.completed ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
                       }`}>
-                        {event.content ? (
-                          <div className="whitespace-pre-wrap break-words leading-relaxed">
-                            {event.content.startsWith('http') && (event.content.includes('.png') || event.content.includes('.jpg') || event.content.includes('.webp')) ? (
-                              <img src={event.content} alt="Mídia" className="max-w-full rounded-lg my-1" />
-                            ) : event.content === '[audio]' ? (
-                              <div className="flex items-center gap-2 py-1">
-                                <div className="w-8 h-8 rounded-full bg-background/20 flex items-center justify-center">
-                                  <Activity className="w-4 h-4" />
-                                </div>
-                                <span className="text-xs font-medium">Mensagem de áudio</span>
-                              </div>
-                            ) : (
-                              event.content
-                            )}
-                          </div>
-                        ) : (
-                          <span className="italic opacity-50 text-xs">Sem conteúdo</span>
-                        )}
+                        {live ? <Activity className="w-4 h-4 animate-pulse" /> : session.completed ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                       </div>
-                      
-                      {event.group_title && (
-                        <span className="text-[9px] text-muted-foreground/60 mt-1.5 px-2 font-medium">
-                          Etapa: {event.group_title}
-                        </span>
-                      )}
-                    </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xs font-bold text-foreground truncate">{mainVar || 'Anônimo'}</p>
+                          {session.has_ai && <Sparkles className="w-3 h-3 text-primary shrink-0" />}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground truncate">
+                          {session.last_group_title || 'Início'} · {formatTime(session.started_at)}
+                        </p>
+                      </div>
+
+                      <ChevronRight className={`w-4 h-4 shrink-0 transition-colors ${isSelected ? 'text-primary' : 'text-muted-foreground/40'}`} />
+                    </button>
                   );
                 })}
               </div>
             )}
           </ScrollArea>
         </div>
-      </div>
-    );
-  }
 
-  return (
-    <div className="flex flex-col h-full max-h-[85vh]">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6 shrink-0">
-        <div className="lg:col-span-3 space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[240px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Buscar por nome, funil ou etapa..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="w-full h-10 pl-10 pr-4 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-              />
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {!defaultFunnel && (
-                <div className="relative">
-                  <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                  <select
-                    value={selectedFunnel}
-                    onChange={e => setSelectedFunnel(e.target.value)}
-                    className="h-10 pl-9 pr-4 rounded-xl border border-border bg-background text-xs font-medium appearance-none outline-none focus:ring-2 focus:ring-primary/20"
-                  >
-                    <option value="all">Todos os Funis</option>
-                    {funnels.map(f => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="relative">
-                <Activity className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <select
-                  value={selectedStep}
-                  onChange={e => setSelectedStep(e.target.value)}
-                  disabled={selectedFunnel === 'all'}
-                  className="h-10 pl-9 pr-4 rounded-xl border border-border bg-background text-xs font-medium appearance-none outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
-                >
-                  <option value="all">Todas as Etapas</option>
-                  {funnelSteps.map(step => (
-                    <option key={step.name} value={step.name}>{step.name} ({step.count} leads)</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-            <button
-              onClick={() => setFilterAi(!filterAi)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all whitespace-nowrap mr-2 ${
-                filterAi
-                  ? 'border-primary bg-primary/10 text-primary shadow-sm ring-2 ring-primary/20'
-                  : 'border-border bg-background text-muted-foreground hover:border-primary/30'
-              }`}
-            >
-              <Sparkles className={`w-4 h-4 ${filterAi ? 'fill-primary/20' : ''}`} />
-              <span className="text-[11px] font-bold uppercase tracking-wider">Com Resposta IA</span>
-              <span className={`text-sm font-bold ${filterAi ? 'text-primary' : 'text-foreground'}`}>
-                {loadingStats ? '...' : stats.withAi}
-              </span>
-            </button>
-
-            <div className="w-px h-6 bg-border mx-1" />
-
-            {periodCards.map(card => {
-              const isActive = period === card.key;
-              return (
-                <button
-                  key={card.key}
-                  onClick={() => setPeriod(card.key)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all whitespace-nowrap ${
-                    isActive
-                      ? 'border-primary bg-primary/5 text-primary shadow-sm'
-                      : 'border-border bg-background text-muted-foreground hover:border-primary/30'
-                  }`}
-                >
-                  <span className="text-[11px] font-bold uppercase tracking-wider">{PERIOD_LABELS[card.key]}</span>
-                  <span className={`text-sm font-bold ${isActive ? 'text-primary' : 'text-foreground'}`}>
-                    {loadingStats ? '...' : card.value}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        {/* Right: detail panel */}
+        <div className="flex-1 flex flex-col min-h-0">
+          {renderDetailPanel()}
         </div>
-
-        <div className="rounded-xl border border-border bg-muted/30 p-4 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Status Agora</p>
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          </div>
-          <div>
-            <p className="text-2xl font-black text-foreground">{activeSessionsCount}</p>
-            <p className="text-[11px] text-muted-foreground font-medium">Usuários ativos nos últimos 2 min</p>
-          </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => { loadSessions(); loadStats(); }}
-            className="mt-3 h-8 text-[11px] font-bold uppercase tracking-wider"
-          >
-            <RefreshCw className="w-3 h-3 mr-2" /> Atualizar
-          </Button>
-        </div>
-      </div>
-
-      {period === 'custom' && (
-        <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl border border-dashed border-border mb-6 bg-muted/10 shrink-0">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <CalendarIcon className="w-3 h-3" /> Data Inicial
-            </label>
-            <input
-              type="date"
-              value={customStart}
-              onChange={e => setCustomStart(e.target.value)}
-              className="h-9 rounded-lg border border-border bg-background px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <CalendarIcon className="w-3 h-3" /> Data Final
-            </label>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={e => setCustomEnd(e.target.value)}
-              className="h-9 rounded-lg border border-border bg-background px-3 text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-          <Button
-            size="sm"
-            onClick={() => {
-              setPeriod('custom');
-              loadStats();
-              loadSessions();
-            }}
-            className="h-9 px-6 font-bold text-xs uppercase tracking-wider"
-          >
-            Aplicar Filtro
-          </Button>
-        </div>
-      )}
-
-      <div className="flex-1 min-h-0 flex flex-col">
-        <div className="flex items-center justify-between mb-3 shrink-0">
-          <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-            <Activity className="w-4 h-4" /> Histórico de Sessões
-          </h3>
-          <p className="text-[10px] text-muted-foreground">Mostrando as últimas 200 sessões</p>
-        </div>
-
-        <ScrollArea className="flex-1 -mx-1 px-1">
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map(i => (
-                <Skeleton key={i} className="h-20 w-full rounded-2xl" />
-              ))}
-            </div>
-          ) : filteredSessions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="w-16 h-16 rounded-3xl bg-muted flex items-center justify-center mb-4">
-                <Search className="w-8 h-8 text-muted-foreground/40" />
-              </div>
-              <p className="text-sm font-bold text-foreground">Nenhuma sessão encontrada</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-[280px]">
-                Tente ajustar os filtros ou o termo de busca para encontrar o que procura.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-2 pb-4">
-              {filteredSessions.map(session => {
-                const mainVar = getMainVariable(session.variables as Record<string, string> | null);
-                const now = new Date().getTime();
-                const lastUpdate = new Date(session.updated_at || session.started_at).getTime();
-                const isLive = !session.ended_at && !session.completed && (now - lastUpdate < 120000);
-
-                return (
-                  <button
-                    key={session.id}
-                    onClick={() => openSession(session)}
-                    className="group w-full flex items-center gap-4 p-4 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-md hover:shadow-primary/5 transition-all text-left relative overflow-hidden"
-                  >
-                    {isLive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary animate-pulse" />}
-                    
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-colors ${
-                      isLive ? 'bg-primary/10 text-primary' : session.completed ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted text-muted-foreground'
-                    }`}>
-                      {isLive ? <Activity className="w-5 h-5 animate-pulse" /> : session.completed ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
-                          {mainVar || 'Visitante Anônimo'}
-                        </p>
-                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-accent text-accent-foreground uppercase tracking-tighter">
-                          {getFunnelName(session.funnel_id)}
-                        </span>
-                        {session.has_ai && (
-                          <Sparkles className="w-3 h-3 text-primary fill-primary/20" />
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                          <Clock className="w-3 h-3" />
-                          {formatTime(session.started_at)}
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                          <div className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-primary animate-pulse' : 'bg-muted-foreground/40'}`} />
-                          <span className="truncate max-w-[180px]">
-                            {isLive ? 'Etapa atual' : 'Última etapa'}: <span className="text-foreground">{session.last_group_title || 'Início'}</span>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <div className="flex -space-x-1.5">
-                        {session.variables && Object.keys(session.variables).slice(0, 3).map((k, i) => (
-                          <div key={k} className="w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center text-[8px] font-bold text-muted-foreground" title={k}>
-                            {k[0].toUpperCase()}
-                          </div>
-                        ))}
-                        {session.variables && Object.keys(session.variables).length > 3 && (
-                          <div className="w-5 h-5 rounded-full bg-muted border border-border flex items-center justify-center text-[8px] font-bold text-muted-foreground">
-                            +{Object.keys(session.variables).length - 3}
-                          </div>
-                        )}
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </ScrollArea>
       </div>
     </div>
   );
