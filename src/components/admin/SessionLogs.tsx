@@ -156,6 +156,7 @@ const renderEventContent = (media: MediaParsed) => {
   return <div className="whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">{media.text}</div>;
 };
 
+const AUTO_REFRESH_MS = 5000;
 
 
 const toDateInput = (date: Date) => {
