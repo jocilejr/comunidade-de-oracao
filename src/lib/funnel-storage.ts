@@ -2,11 +2,17 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import { StoredFunnel, TypebotFlow } from './typebot-types';
 
+// Helper: get userId from cached session (no server roundtrip)
+async function getCachedUserId(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user?.id ?? null;
+}
+
 // ---- Funnel CRUD (Supabase) ----
 
 export async function getAllFunnels(): Promise<StoredFunnel[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  const userId = await getCachedUserId();
+  if (!userId) return [];
 
    const { data, error } = await supabase
     .from('funnels')
