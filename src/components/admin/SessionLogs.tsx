@@ -116,7 +116,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
   const selectedSessionId = selectedSession?.id ?? null;
 
-  // Load funnel steps when funnel changes
+  // Load funnel steps with counts when funnel or period changes
   useEffect(() => {
     const loadSteps = async () => {
       if (selectedFunnel === 'all') {
@@ -128,17 +128,51 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
       try {
         const funnel = await getFunnelById(selectedFunnel);
         if (funnel?.flow?.groups) {
-          const steps = funnel.flow.groups
+          const stepNames = funnel.flow.groups
             .map(g => g.title || g.id)
-            .filter((v, i, a) => a.indexOf(v) === i); // unique
-          setFunnelSteps(steps);
+            .filter((v, i, a) => a.indexOf(v) === i);
+
+          // Get session IDs in the current date range
+          const activeRange = getRange(period);
+          let sessionQuery = supabase
+            .from('funnel_sessions')
+            .select('id')
+            .eq('funnel_id', selectedFunnel);
+          if (activeRange.start) sessionQuery = sessionQuery.gte('started_at', activeRange.start);
+          if (activeRange.end) sessionQuery = sessionQuery.lte('started_at', activeRange.end);
+          const { data: sessionRows } = await sessionQuery;
+          const sessionIds = sessionRows?.map(s => s.id) || [];
+
+          if (sessionIds.length === 0) {
+            setFunnelSteps(stepNames.map(name => ({ name, count: 0 })));
+            return;
+          }
+
+          // Count unique sessions per group_title from events
+          const { data: eventRows } = await supabase
+            .from('funnel_session_events')
+            .select('session_id, group_title')
+            .in('session_id', sessionIds)
+            .not('group_title', 'is', null);
+
+          const countMap: Record<string, Set<string>> = {};
+          for (const e of eventRows || []) {
+            if (!e.group_title) continue;
+            if (!countMap[e.group_title]) countMap[e.group_title] = new Set();
+            countMap[e.group_title].add(e.session_id);
+          }
+
+          setFunnelSteps(stepNames.map(name => ({
+            name,
+            count: countMap[name]?.size || 0,
+          })));
         }
       } catch (e) {
         console.error('Error loading funnel steps:', e);
       }
     };
     loadSteps();
-  }, [selectedFunnel]);
+  }, [selectedFunnel, period, customStart, customEnd, getRange]);
 
   const getRange = useCallback((preset: PeriodPreset): DateRange => {
     const now = new Date();
