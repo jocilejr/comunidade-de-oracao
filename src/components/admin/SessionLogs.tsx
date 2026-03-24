@@ -128,9 +128,10 @@ const renderEventContent = (media: MediaParsed) => {
 
   if (media.type === 'audio' && media.url) {
     return (
-      <div>
-        <audio controls preload="none" className="w-full max-w-[280px] h-8">
+      <div className="min-w-[200px]">
+        <audio controls preload="metadata" className="w-full max-w-[300px]" style={{ height: '40px' }}>
           <source src={media.url} />
+          <a href={media.url} target="_blank" rel="noopener" className="text-[11px] underline">🎙 Ouvir áudio</a>
         </audio>
         {media.text && <p className="whitespace-pre-wrap break-words text-[12px] leading-relaxed mt-1">{media.text}</p>}
       </div>
