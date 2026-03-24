@@ -116,6 +116,43 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
   const selectedSessionId = selectedSession?.id ?? null;
 
+  const getRange = useCallback((preset: PeriodPreset): DateRange => {
+    const now = new Date();
+
+    if (preset === 'today') {
+      return { start: startOfDayIso(now), end: endOfDayIso(now) };
+    }
+
+    if (preset === 'yesterday') {
+      const y = addDays(now, -1);
+      return { start: startOfDayIso(y), end: endOfDayIso(y) };
+    }
+
+    if (preset === 'last3') {
+      const start = addDays(now, -2);
+      return { start: startOfDayIso(start), end: endOfDayIso(now) };
+    }
+
+    if (preset === 'last7') {
+      const start = addDays(now, -6);
+      return { start: startOfDayIso(start), end: endOfDayIso(now) };
+    }
+
+    if (!customStart || !customEnd) return { start: null, end: null };
+
+    const parsedStart = new Date(`${customStart}T00:00:00`);
+    const parsedEnd = new Date(`${customEnd}T23:59:59.999`);
+
+    if (Number.isNaN(parsedStart.getTime()) || Number.isNaN(parsedEnd.getTime())) {
+      return { start: null, end: null };
+    }
+
+    return {
+      start: parsedStart.toISOString(),
+      end: parsedEnd.toISOString(),
+    };
+  }, [customStart, customEnd]);
+
   // Load funnel steps with counts when funnel or period changes
   useEffect(() => {
     const loadSteps = async () => {
@@ -173,43 +210,6 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
     };
     loadSteps();
   }, [selectedFunnel, period, customStart, customEnd, getRange]);
-
-  const getRange = useCallback((preset: PeriodPreset): DateRange => {
-    const now = new Date();
-
-    if (preset === 'today') {
-      return { start: startOfDayIso(now), end: endOfDayIso(now) };
-    }
-
-    if (preset === 'yesterday') {
-      const y = addDays(now, -1);
-      return { start: startOfDayIso(y), end: endOfDayIso(y) };
-    }
-
-    if (preset === 'last3') {
-      const start = addDays(now, -2);
-      return { start: startOfDayIso(start), end: endOfDayIso(now) };
-    }
-
-    if (preset === 'last7') {
-      const start = addDays(now, -6);
-      return { start: startOfDayIso(start), end: endOfDayIso(now) };
-    }
-
-    if (!customStart || !customEnd) return { start: null, end: null };
-
-    const parsedStart = new Date(`${customStart}T00:00:00`);
-    const parsedEnd = new Date(`${customEnd}T23:59:59.999`);
-
-    if (Number.isNaN(parsedStart.getTime()) || Number.isNaN(parsedEnd.getTime())) {
-      return { start: null, end: null };
-    }
-
-    return {
-      start: parsedStart.toISOString(),
-      end: parsedEnd.toISOString(),
-    };
-  }, [customStart, customEnd]);
 
   const applySessionFilters = useCallback((query: any, range: DateRange) => {
     let next = query;
