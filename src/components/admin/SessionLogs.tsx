@@ -550,7 +550,7 @@ const SessionLogs = ({ funnels, defaultFunnel }: { funnels: FunnelMeta[]; defaul
 
                     return (
                       <div key={event.id} className={`flex w-full min-w-0 overflow-x-hidden ${isUser ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`w-fit min-w-0 max-w-[85%] rounded-2xl px-3 py-2 text-[12px] ${
+                        <div className={`min-w-0 max-w-[75%] rounded-2xl px-3 py-2 text-[12px] overflow-hidden ${
                           isUser 
                             ? 'bg-primary text-primary-foreground rounded-tr-sm' 
                             : isGpt 
