@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 
 function getShareUrl(slug: string): string {
   const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
@@ -24,6 +24,14 @@ import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import ChatRenderer from '@/components/chat/ChatRenderer';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+type PeriodPreset = 'today' | 'yesterday' | 'custom';
+
+interface SessionStats {
+  today: number;
+  yesterday: number;
+  custom: number;
+}
 
 const NAV_ITEMS = [
   { id: 'funnels', label: 'Funis', icon: FolderOpen },
@@ -188,15 +196,61 @@ const Admin = () => {
   const [loadingPreviews, setLoadingPreviews] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [activePreviewUrl, setActivePreviewUrl] = useState<string | null>(null);
+  const [stats, setStats] = useState<SessionStats>({ today: 0, yesterday: 0, custom: 0 });
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [customStart, setCustomStart] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0];
+  });
+  const [customEnd, setCustomEnd] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const { toast } = useToast();
   const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+
+  const startOfDayIso = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0).toISOString();
+  const endOfDayIso = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999).toISOString();
+
+  const loadStats = useCallback(async () => {
+    setLoadingStats(true);
+    try {
+      const now = new Date();
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      const ranges = {
+        today: { start: startOfDayIso(now), end: endOfDayIso(now) },
+        yesterday: { start: startOfDayIso(yesterday), end: endOfDayIso(yesterday) },
+        custom: { 
+          start: new Date(`${customStart}T00:00:00`).toISOString(), 
+          end: new Date(`${customEnd}T23:59:59.999`).toISOString() 
+        }
+      };
+
+      const [todayRes, yesterdayRes, customRes] = await Promise.all([
+        supabase.from('funnel_sessions').select('id', { count: 'exact', head: true }).gte('started_at', ranges.today.start).lte('started_at', ranges.today.end),
+        supabase.from('funnel_sessions').select('id', { count: 'exact', head: true }).gte('started_at', ranges.yesterday.start).lte('started_at', ranges.yesterday.end),
+        supabase.from('funnel_sessions').select('id', { count: 'exact', head: true }).gte('started_at', ranges.custom.start).lte('started_at', ranges.custom.end),
+      ]);
+
+      setStats({
+        today: todayRes.count || 0,
+        yesterday: yesterdayRes.count || 0,
+        custom: customRes.count || 0,
+      });
+    } catch (e) {
+      console.error('Error loading stats:', e);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, [customStart, customEnd]);
 
   const refresh = useCallback(async () => {
     const data = await getAllFunnelsMeta();
     setFunnels(data);
     sessionStorage.setItem('funnels_cache', JSON.stringify(data));
-  }, []);
+    loadStats();
+  }, [loadStats]);
 
   const galleryLoaded = useRef(false);
   const settingsLoaded = useRef(false);
@@ -223,8 +277,9 @@ const Admin = () => {
       sessionStorage.setItem('funnels_cache', JSON.stringify(funnelData));
       if (sessionResult.data.session?.user) setCurrentUserId(sessionResult.data.session.user.id);
     };
-    load();
-  }, []);
+      load();
+      loadStats();
+  }, [loadStats]);
 
   // Lazy-load gallery when tab is selected
   useEffect(() => {
@@ -611,24 +666,58 @@ const Admin = () => {
             {/* ===== FUNNELS TAB ===== */}
             {activeTab === 'funnels' && (
               <div className="space-y-5 max-w-6xl">
-                {/* Upload */}
-                <div
-                  className={`rounded-xl border-2 border-dashed transition-all cursor-pointer p-8 text-center ${
-                    dragOver
-                      ? 'border-primary bg-primary/5 scale-[1.01]'
-                      : 'border-border hover:border-primary/30 hover:bg-accent/30'
-                  }`}
-                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={handleDrop}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <Upload className="w-5 h-5 text-primary" />
+                {/* Stats & Upload Header */}
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-card border border-border rounded-xl p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Acessos Hoje</span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-xl font-bold text-foreground">{loadingStats ? '...' : stats.today}</span>
+                      </div>
                     </div>
-                    <p className="text-sm font-medium text-foreground">Arraste o JSON aqui ou clique para selecionar</p>
-                    <p className="text-[11px] text-muted-foreground">Aceita arquivos exportados do Typebot (.json)</p>
+                    <div className="w-px h-8 bg-border mx-2 hidden sm:block" />
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ontem</span>
+                      <span className="text-xl font-bold text-foreground">{loadingStats ? '...' : stats.yesterday}</span>
+                    </div>
+                    <div className="w-px h-8 bg-border mx-2 hidden sm:block" />
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Personalizado</span>
+                        <div className="flex items-center gap-1">
+                          <input 
+                            type="date" 
+                            value={customStart} 
+                            onChange={e => setCustomStart(e.target.value)} 
+                            className="bg-transparent border-none p-0 text-[10px] text-primary hover:underline cursor-pointer outline-none w-[85px]"
+                          />
+                          <span className="text-[10px] text-muted-foreground">até</span>
+                          <input 
+                            type="date" 
+                            value={customEnd} 
+                            onChange={e => setCustomEnd(e.target.value)} 
+                            className="bg-transparent border-none p-0 text-[10px] text-primary hover:underline cursor-pointer outline-none w-[85px]"
+                          />
+                          <Button variant="ghost" size="icon" className="h-4 w-4 p-0" onClick={loadStats} disabled={loadingStats}>
+                            <RefreshCw className={`w-2.5 h-2.5 ${loadingStats ? 'animate-spin' : ''}`} />
+                          </Button>
+                        </div>
+                      </div>
+                      <span className="text-xl font-bold text-foreground">{loadingStats ? '...' : stats.custom}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-9 gap-2 text-xs font-semibold border-primary/20 hover:bg-primary/5 hover:text-primary transition-all"
+                      onClick={() => fileRef.current?.click()}
+                    >
+                      <Plus className="w-4 h-4" />
+                      Novo Funil (JSON)
+                    </Button>
                   </div>
                 </div>
                 <input
