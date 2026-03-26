@@ -1389,32 +1389,7 @@ const Admin = () => {
 
             {/* ===== MARKETING TAB ===== */}
             {activeTab === 'marketing' && (
-              <div className="space-y-5 max-w-3xl">
-                <p className="text-sm text-muted-foreground">
-                  Configure o <strong>Meta Pixel</strong> para cada funil. O pixel será injetado automaticamente na página pública e os eventos dos blocos de Script (ex: <code className="text-xs bg-muted px-1 py-0.5 rounded">fbq('track', 'Lead')</code>) serão disparados normalmente.
-                </p>
-
-                {funnels.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Megaphone className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Nenhum funil cadastrado</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {funnels.map(funnel => (
-                      <PixelConfigCard
-                        key={funnel.id}
-                        funnel={funnel}
-                        onSaved={async () => {
-                          const data = await getAllFunnelsMeta();
-                          setFunnels(data);
-                          sessionStorage.setItem('funnels_cache', JSON.stringify(data));
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+              <GlobalPixelManager />
             )}
           </div>
         </main>
