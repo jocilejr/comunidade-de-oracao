@@ -691,20 +691,18 @@ export class TypebotEngine {
 
         case 'pixel': {
           const pb = block as any;
-          const pixelId = pb.options?.pixelId;
+          // O eventType vem da configuração do bloco (ex: ViewContent, Lead, Purchase)
           const eventType = pb.options?.eventType || 'ViewContent';
 
-          if (pixelId && eventType) {
-            // Fire-and-forget: não bloqueia o fluxo do funil
-            // O fbq stub já está na fila mesmo antes do fbevents.js carregar
-            setTimeout(() => {
-              const fbq = (window as any).fbq;
-              if (typeof fbq === 'function') {
-                fbq('init', pixelId);
-                fbq('trackSingle', pixelId, eventType);
-              }
-            }, 0);
-          }
+          // Fire-and-forget para os pixels globais já inicializados via dashboard
+          // Não usamos o pixelId do bloco — disparamos para TODOS os pixels globais
+          // Não bloqueia o fluxo do funil em nenhuma hipótese
+          setTimeout(() => {
+            const fbq = (window as any).fbq;
+            if (typeof fbq === 'function') {
+              fbq('track', eventType);
+            }
+          }, 0);
           return 'continue';
         }
 
