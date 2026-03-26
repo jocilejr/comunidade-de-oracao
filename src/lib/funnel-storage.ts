@@ -162,6 +162,8 @@ export async function saveFunnel(name: string, slug: string, flow: TypebotFlow):
     previewImage: data.preview_image || '',
     pageTitle: data.page_title || '',
     pageDescription: data.page_description || '',
+    metaPixelId: (data as any).meta_pixel_id || '',
+    metaCapiToken: (data as any).meta_capi_token || '',
   };
 }
 
