@@ -206,6 +206,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_pixels: {
+        Row: {
+          capi_token: string | null
+          created_at: string
+          id: string
+          pixel_id: string
+          user_id: string
+        }
+        Insert: {
+          capi_token?: string | null
+          created_at?: string
+          id?: string
+          pixel_id: string
+          user_id: string
+        }
+        Update: {
+          capi_token?: string | null
+          created_at?: string
+          id?: string
+          pixel_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_settings: {
         Row: {
           created_at: string
