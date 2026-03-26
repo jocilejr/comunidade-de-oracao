@@ -489,6 +489,21 @@ export interface UserPixelRow {
 }
 
 export async function getUserPixels(): Promise<import('./typebot-types').UserPixel[]> {
+  // VPS: use api-server endpoint directly (bypasses PostgREST)
+  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+  if (publicDomain) {
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session?.access_token) return [];
+    try {
+      const res = await fetch('/functions/v1/user-pixels', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) return [];
+      const result = await res.json();
+      return Array.isArray(result.data) ? result.data : [];
+    } catch { return []; }
+  }
+
   const userId = await getCachedUserId();
   if (!userId) return [];
 
@@ -507,6 +522,20 @@ export async function getUserPixels(): Promise<import('./typebot-types').UserPix
 }
 
 export async function addUserPixel(pixelId: string, capiToken?: string): Promise<boolean> {
+  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+  if (publicDomain) {
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session?.access_token) return false;
+    try {
+      const res = await fetch('/functions/v1/user-pixels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ pixelId, capiToken: capiToken || null }),
+      });
+      return res.ok;
+    } catch { return false; }
+  }
+
   const userId = await getCachedUserId();
   if (!userId) return false;
 
@@ -518,6 +547,20 @@ export async function addUserPixel(pixelId: string, capiToken?: string): Promise
 }
 
 export async function updateUserPixel(id: string, pixelId: string, capiToken?: string): Promise<boolean> {
+  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+  if (publicDomain) {
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session?.access_token) return false;
+    try {
+      const res = await fetch('/functions/v1/user-pixels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ id, pixelId, capiToken: capiToken || null }),
+      });
+      return res.ok;
+    } catch { return false; }
+  }
+
   const userId = await getCachedUserId();
   if (!userId) return false;
 
@@ -531,6 +574,20 @@ export async function updateUserPixel(id: string, pixelId: string, capiToken?: s
 }
 
 export async function removeUserPixel(id: string): Promise<boolean> {
+  const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
+  if (publicDomain) {
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session?.access_token) return false;
+    try {
+      const res = await fetch('/functions/v1/user-pixels', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ id }),
+      });
+      return res.ok;
+    } catch { return false; }
+  }
+
   const userId = await getCachedUserId();
   if (!userId) return false;
 

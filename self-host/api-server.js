@@ -607,6 +607,71 @@ async function handleRotateImages(req, res) {
 }
 
 // ── Auth: signup ──────────────────────────────────────────
+// ── Route: /user-pixels ───────────────────────────────────
+async function handleUserPixels(req, res) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer "))
+    return json(res, { error: "Missing authorization" }, 401);
+
+  let userId;
+  try {
+    const decoded = jwt.verify(authHeader.replace("Bearer ", ""), JWT_SECRET, { algorithms: ["HS256"] });
+    userId = decoded.sub;
+  } catch (e) {
+    return json(res, { error: "Invalid token" }, 401);
+  }
+
+  // Ensure table exists (auto-create for VPS installs that haven't run latest migration)
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS public.user_pixels (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id uuid NOT NULL,
+      pixel_id text NOT NULL,
+      capi_token text DEFAULT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+  } catch (_) { /* ignore if already exists */ }
+
+  if (req.method === "GET") {
+    const { rows } = await pool.query(
+      `SELECT id, pixel_id, capi_token FROM user_pixels WHERE user_id = $1 ORDER BY created_at ASC`,
+      [userId]
+    );
+    return json(res, { data: rows.map(r => ({ id: r.id, pixelId: r.pixel_id, capiToken: r.capi_token || '' })) });
+  }
+
+  if (req.method === "POST") {
+    const body = JSON.parse(await readBody(req));
+    const { pixelId, capiToken, id: updateId } = body;
+    if (!pixelId) return json(res, { error: "pixelId is required" }, 400);
+
+    if (updateId) {
+      // Update existing
+      await pool.query(
+        `UPDATE user_pixels SET pixel_id = $1, capi_token = $2 WHERE id = $3 AND user_id = $4`,
+        [pixelId, capiToken || null, updateId, userId]
+      );
+    } else {
+      // Insert new
+      await pool.query(
+        `INSERT INTO user_pixels (user_id, pixel_id, capi_token) VALUES ($1, $2, $3)`,
+        [userId, pixelId, capiToken || null]
+      );
+    }
+    return json(res, { ok: true });
+  }
+
+  if (req.method === "DELETE") {
+    const body = JSON.parse(await readBody(req));
+    const { id: deleteId } = body;
+    if (!deleteId) return json(res, { error: "id is required" }, 400);
+    await pool.query(`DELETE FROM user_pixels WHERE id = $1 AND user_id = $2`, [deleteId, userId]);
+    return json(res, { ok: true });
+  }
+
+  return json(res, { error: "Method not allowed" }, 405);
+}
+
 async function handleSignup(req, res) {
   const body = JSON.parse(await readBody(req));
   const { email, password } = body;
@@ -803,6 +868,7 @@ const server = http.createServer(async (req, res) => {
     if (path === "/rotate-preview-images" && (req.method === "POST" || req.method === "GET")) return await handleRotateImages(req, res);
     if ((path === "/user-settings" || path === "/user-settings/") && (req.method === "GET" || req.method === "POST")) return await handleUserSettings(req, res);
     if ((path === "/session-log" || path === "/session-log/") && req.method === "POST") return await handleSessionLog(req, res);
+    if ((path === "/user-pixels" || path === "/user-pixels/") && (req.method === "GET" || req.method === "POST" || req.method === "DELETE")) return await handleUserPixels(req, res);
     if (path === "/health") return json(res, { status: "ok", timestamp: new Date().toISOString() });
 
     // ── Diagnostic endpoint: prove which stack is responding ──
