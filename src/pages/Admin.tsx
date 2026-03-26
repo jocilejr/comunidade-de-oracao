@@ -7,11 +7,11 @@ function getShareUrl(slug: string): string {
   }
   return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${slug}&v=${Date.now()}`;
 }
-import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, compressPreviewImage, getActiveFunnelPreview, updateFunnelPixel, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
+import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, compressPreviewImage, getActiveFunnelPreview, updateFunnelPixel, getUserPixels, addUserPixel, updateUserPixel, removeUserPixel, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
 import { supabase } from '@/integrations/supabase/client';
 import FunnelInspector from '@/components/admin/FunnelInspector';
 import SessionLogs from '@/components/admin/SessionLogs';
-import { StoredFunnel } from '@/lib/typebot-types';
+import { StoredFunnel, UserPixel } from '@/lib/typebot-types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -141,90 +141,191 @@ const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUr
   );
 };
 
-const PixelConfigCard = ({ funnel, onSaved }: { funnel: StoredFunnel; onSaved: () => void }) => {
-  const [pixelId, setPixelId] = useState(funnel.metaPixelId || '');
-  const [capiToken, setCapiToken] = useState(funnel.metaCapiToken || '');
+const GlobalPixelManager = () => {
+  const [pixels, setPixels] = useState<UserPixel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newPixelId, setNewPixelId] = useState('');
+  const [newCapiToken, setNewCapiToken] = useState('');
+  const [showNewCapi, setShowNewCapi] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editPixelId, setEditPixelId] = useState('');
+  const [editCapiToken, setEditCapiToken] = useState('');
+  const [showEditCapi, setShowEditCapi] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [showCapi, setShowCapi] = useState(false);
   const { toast } = useToast();
 
-  const hasChanges = pixelId !== (funnel.metaPixelId || '') || capiToken !== (funnel.metaCapiToken || '');
+  const loadPixels = useCallback(async () => {
+    const data = await getUserPixels();
+    setPixels(data);
+    setLoading(false);
+  }, []);
 
-  const handleSave = async () => {
+  useEffect(() => { loadPixels(); }, [loadPixels]);
+
+  const handleAdd = async () => {
+    if (!newPixelId.trim()) return;
+    setAdding(true);
+    const ok = await addUserPixel(newPixelId.trim(), newCapiToken.trim() || undefined);
+    setAdding(false);
+    if (ok) {
+      setNewPixelId('');
+      setNewCapiToken('');
+      toast({ title: 'Pixel adicionado!' });
+      loadPixels();
+    } else {
+      toast({ title: 'Erro ao adicionar pixel', variant: 'destructive' });
+    }
+  };
+
+  const handleRemove = async (id: string) => {
+    const ok = await removeUserPixel(id);
+    if (ok) {
+      toast({ title: 'Pixel removido' });
+      loadPixels();
+    }
+  };
+
+  const startEdit = (pixel: UserPixel) => {
+    setEditingId(pixel.id);
+    setEditPixelId(pixel.pixelId);
+    setEditCapiToken(pixel.capiToken || '');
+    setShowEditCapi(false);
+  };
+
+  const handleUpdate = async () => {
+    if (!editingId || !editPixelId.trim()) return;
     setSaving(true);
-    const ok = await updateFunnelPixel(funnel.id, pixelId.trim(), capiToken.trim());
+    const ok = await updateUserPixel(editingId, editPixelId.trim(), editCapiToken.trim() || undefined);
     setSaving(false);
     if (ok) {
-      toast({ title: 'Pixel salvo!', description: `Configuração do pixel atualizada para "${funnel.name}".` });
-      onSaved();
+      setEditingId(null);
+      toast({ title: 'Pixel atualizado!' });
+      loadPixels();
     } else {
-      toast({ title: 'Erro', description: 'Não foi possível salvar.', variant: 'destructive' });
+      toast({ title: 'Erro ao atualizar', variant: 'destructive' });
     }
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-      <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full overflow-hidden border border-border shrink-0 bg-muted flex items-center justify-center">
-          {funnel.botAvatar ? (
-            <img src={funnel.botAvatar} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <CircleUser className="w-4 h-4 text-muted-foreground" />
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-foreground truncate">{funnel.name}</p>
-          <p className="text-[11px] text-muted-foreground font-mono">/{funnel.slug}</p>
-        </div>
-        {pixelId && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium shrink-0">
-            Pixel ativo
-          </span>
-        )}
-      </div>
+    <div className="space-y-5 max-w-3xl">
+      <p className="text-sm text-muted-foreground">
+        Configure seus <strong>Meta Pixels globais</strong>. Todos os pixels cadastrados aqui serão inicializados automaticamente em <strong>todos os funis</strong>. Os eventos <code className="text-xs bg-muted px-1 py-0.5 rounded">fbq('track', ...)</code> nos blocos de Script serão disparados em todos os pixels.
+      </p>
 
-      <div className="space-y-2">
-        <div className="space-y-1">
-          <Label className="text-[11px] text-muted-foreground">Pixel ID</Label>
-          <Input
-            placeholder="Ex: 123456789012345"
-            value={pixelId}
-            onChange={e => setPixelId(e.target.value)}
-            className="font-mono text-xs"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <Label className="text-[11px] text-muted-foreground">Token API de Conversões (opcional)</Label>
-          <div className="relative">
+      {/* Add new pixel */}
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <Plus className="w-4 h-4" />
+          Adicionar Pixel
+        </h3>
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <Label className="text-[11px] text-muted-foreground">Pixel ID</Label>
             <Input
-              type={showCapi ? 'text' : 'password'}
-              placeholder="EAA..."
-              value={capiToken}
-              onChange={e => setCapiToken(e.target.value)}
-              className="pr-9 font-mono text-xs"
+              placeholder="Ex: 123456789012345"
+              value={newPixelId}
+              onChange={e => setNewPixelId(e.target.value)}
+              className="font-mono text-xs"
             />
-            <button
-              type="button"
-              onClick={() => setShowCapi(!showCapi)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              {showCapi ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            </button>
           </div>
+          <div className="space-y-1">
+            <Label className="text-[11px] text-muted-foreground">Token API de Conversões (opcional)</Label>
+            <div className="relative">
+              <Input
+                type={showNewCapi ? 'text' : 'password'}
+                placeholder="EAA..."
+                value={newCapiToken}
+                onChange={e => setNewCapiToken(e.target.value)}
+                className="pr-9 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewCapi(!showNewCapi)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showNewCapi ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+          <Button size="sm" onClick={handleAdd} disabled={adding || !newPixelId.trim()} className="gap-1">
+            <Plus className="w-3.5 h-3.5" />
+            {adding ? 'Adicionando...' : 'Adicionar'}
+          </Button>
         </div>
       </div>
 
-      {hasChanges && (
-        <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">
-          <Save className="w-3.5 h-3.5" />
-          {saving ? 'Salvando...' : 'Salvar'}
-        </Button>
+      {/* Existing pixels list */}
+      {loading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-16 w-full rounded-xl" />
+          <Skeleton className="h-16 w-full rounded-xl" />
+        </div>
+      ) : pixels.length === 0 ? (
+        <div className="text-center py-12 border-2 border-dashed border-border rounded-xl">
+          <Megaphone className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">Nenhum pixel cadastrado</p>
+          <p className="text-[11px] text-muted-foreground mt-1">Adicione um pixel acima para começar a rastrear</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {pixels.map(pixel => (
+            <div key={pixel.id} className="rounded-xl border border-border bg-card p-4">
+              {editingId === pixel.id ? (
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground">Pixel ID</Label>
+                    <Input value={editPixelId} onChange={e => setEditPixelId(e.target.value)} className="font-mono text-xs" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px] text-muted-foreground">Token CAPI (opcional)</Label>
+                    <div className="relative">
+                      <Input
+                        type={showEditCapi ? 'text' : 'password'}
+                        value={editCapiToken}
+                        onChange={e => setEditCapiToken(e.target.value)}
+                        className="pr-9 font-mono text-xs"
+                      />
+                      <button type="button" onClick={() => setShowEditCapi(!showEditCapi)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                        {showEditCapi ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleUpdate} disabled={saving} className="gap-1">
+                      <Save className="w-3.5 h-3.5" />
+                      {saving ? 'Salvando...' : 'Salvar'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-mono text-foreground">{pixel.pixelId}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {pixel.capiToken ? 'CAPI configurado ✓' : 'Sem token CAPI'}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => startEdit(pixel)}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="w-8 h-8 text-destructive hover:text-destructive" onClick={() => handleRemove(pixel.id)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
 };
-
 const FunnelCardSkeleton = () => (
   <div className="flex items-center gap-4 p-4 rounded-xl border border-border bg-card animate-in fade-in duration-300">
     <Skeleton className="w-11 h-11 rounded-full shrink-0" />
@@ -1288,32 +1389,7 @@ const Admin = () => {
 
             {/* ===== MARKETING TAB ===== */}
             {activeTab === 'marketing' && (
-              <div className="space-y-5 max-w-3xl">
-                <p className="text-sm text-muted-foreground">
-                  Configure o <strong>Meta Pixel</strong> para cada funil. O pixel será injetado automaticamente na página pública e os eventos dos blocos de Script (ex: <code className="text-xs bg-muted px-1 py-0.5 rounded">fbq('track', 'Lead')</code>) serão disparados normalmente.
-                </p>
-
-                {funnels.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Megaphone className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Nenhum funil cadastrado</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {funnels.map(funnel => (
-                      <PixelConfigCard
-                        key={funnel.id}
-                        funnel={funnel}
-                        onSaved={async () => {
-                          const data = await getAllFunnelsMeta();
-                          setFunnels(data);
-                          sessionStorage.setItem('funnels_cache', JSON.stringify(data));
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+              <GlobalPixelManager />
             )}
           </div>
         </main>

@@ -362,6 +362,14 @@ export interface StoredFunnel {
   userId?: string;
   metaPixelId?: string;
   metaCapiToken?: string;
+  globalPixels?: UserPixel[];
+}
+
+// User Pixel (global)
+export interface UserPixel {
+  id: string;
+  pixelId: string;
+  capiToken?: string;
 }
 
 // Chat message for rendering

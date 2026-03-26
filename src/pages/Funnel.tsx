@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { getFunnelBySlug } from '@/lib/funnel-storage';
-import { StoredFunnel } from '@/lib/typebot-types';
+import { getFunnelBySlug, getPixelsByUserId } from '@/lib/funnel-storage';
+import { StoredFunnel, UserPixel } from '@/lib/typebot-types';
 import ChatRenderer from '@/components/chat/ChatRenderer';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, MoreVertical, Phone, Video } from 'lucide-react';
@@ -35,10 +35,19 @@ const ChatSkeleton = () => (
 const Funnel = () => {
   const { slug } = useParams<{ slug: string }>();
   const [funnel, setFunnel] = useState<StoredFunnel | null | undefined>(undefined);
+  const [globalPixels, setGlobalPixels] = useState<UserPixel[]>([]);
 
   useEffect(() => {
     if (!slug) { setFunnel(null); return; }
-    getFunnelBySlug(slug).then(f => setFunnel(f ?? null));
+    getFunnelBySlug(slug).then(f => {
+      setFunnel(f ?? null);
+      // Use global_pixels from VPS response, or fetch from Supabase
+      if (f?.globalPixels && f.globalPixels.length > 0) {
+        setGlobalPixels(f.globalPixels);
+      } else if (f?.userId) {
+        getPixelsByUserId(f.userId).then(setGlobalPixels);
+      }
+    });
   }, [slug]);
 
   useEffect(() => {
@@ -66,9 +75,14 @@ const Funnel = () => {
     setMeta('meta[name="twitter:description"]', 'content', funnel.pageDescription || '');
     setMeta('meta[name="twitter:image"]', 'content', funnel.previewImage || '');
 
-    // Inject Meta Pixel if configured
-    if (funnel.metaPixelId && !document.getElementById('meta-pixel-script')) {
-      const pixelId = funnel.metaPixelId;
+    // Collect all pixel IDs: global pixels + per-funnel legacy pixel
+    const allPixelIds: string[] = [];
+    globalPixels.forEach(p => { if (p.pixelId && !allPixelIds.includes(p.pixelId)) allPixelIds.push(p.pixelId); });
+    if (funnel.metaPixelId && !allPixelIds.includes(funnel.metaPixelId)) allPixelIds.push(funnel.metaPixelId);
+
+    // Inject Meta Pixel base code for all pixels
+    if (allPixelIds.length > 0 && !document.getElementById('meta-pixel-script')) {
+      const initLines = allPixelIds.map(id => `fbq('init', '${id}');`).join('\n        ');
       const script = document.createElement('script');
       script.id = 'meta-pixel-script';
       script.textContent = `
@@ -80,30 +94,29 @@ const Funnel = () => {
         t.src=v;s=b.getElementsByTagName(e)[0];
         s.parentNode.insertBefore(t,s)}(window, document,'script',
         'https://connect.facebook.net/en_US/fbevents.js');
-        fbq('init', '${pixelId}');
+        ${initLines}
         fbq('track', 'PageView');
       `;
       document.head.appendChild(script);
 
-      // noscript fallback
+      // noscript fallback for first pixel
       const noscript = document.createElement('noscript');
       noscript.id = 'meta-pixel-noscript';
       const img = document.createElement('img');
       img.height = 1;
       img.width = 1;
       img.style.display = 'none';
-      img.src = `https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1`;
+      img.src = `https://www.facebook.com/tr?id=${allPixelIds[0]}&ev=PageView&noscript=1`;
       noscript.appendChild(img);
       document.head.appendChild(noscript);
     }
 
     return () => {
       document.title = 'Typebot Inteligente Origem Viva';
-      // Clean up pixel scripts on unmount
       document.getElementById('meta-pixel-script')?.remove();
       document.getElementById('meta-pixel-noscript')?.remove();
     };
-  }, [funnel]);
+  }, [funnel, globalPixels]);
 
   // Loading state — show WhatsApp skeleton instantly
   if (funnel === undefined) {

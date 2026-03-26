@@ -71,7 +71,21 @@ async function handleShare(req, res, slug, format) {
       [slug]
     );
     if (!rows.length) return json(res, { error: "Not found" }, 404);
-    return json(res, rows[0]);
+
+    const funnel = rows[0];
+
+    // Fetch global pixels for the funnel owner
+    let globalPixels = [];
+    try {
+      const { rows: pixelRows } = await pool.query(
+        `SELECT id, pixel_id, capi_token FROM user_pixels WHERE user_id = $1 ORDER BY created_at ASC`,
+        [funnel.user_id]
+      );
+      globalPixels = pixelRows.map(r => ({ id: r.id, pixelId: r.pixel_id, capiToken: r.capi_token || '' }));
+    } catch (_) { /* table may not exist on older VPS installs */ }
+
+    funnel.global_pixels = globalPixels;
+    return json(res, funnel);
   }
 
   const { rows } = await pool.query(
