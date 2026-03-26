@@ -11,7 +11,7 @@ import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFu
 import { supabase } from '@/integrations/supabase/client';
 import FunnelInspector from '@/components/admin/FunnelInspector';
 import SessionLogs from '@/components/admin/SessionLogs';
-import { StoredFunnel } from '@/lib/typebot-types';
+import { StoredFunnel, UserPixel } from '@/lib/typebot-types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
