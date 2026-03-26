@@ -35,10 +35,17 @@ const ChatSkeleton = () => (
 const Funnel = () => {
   const { slug } = useParams<{ slug: string }>();
   const [funnel, setFunnel] = useState<StoredFunnel | null | undefined>(undefined);
+  const [globalPixels, setGlobalPixels] = useState<UserPixel[]>([]);
 
   useEffect(() => {
     if (!slug) { setFunnel(null); return; }
-    getFunnelBySlug(slug).then(f => setFunnel(f ?? null));
+    getFunnelBySlug(slug).then(f => {
+      setFunnel(f ?? null);
+      // Load global pixels from the funnel owner
+      if (f?.userId) {
+        getPixelsByUserId(f.userId).then(setGlobalPixels);
+      }
+    });
   }, [slug]);
 
   useEffect(() => {
