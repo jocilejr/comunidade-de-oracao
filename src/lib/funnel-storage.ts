@@ -68,16 +68,6 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
 }
 
 export async function getFunnelBySlug(slug: string): Promise<StoredFunnel | undefined> {
-  // ── Fast path: data already embedded in the page HTML by api-server ──────
-  // In VPS mode, handleShareRobust injects window.__PREFETCHED_FUNNEL__ so
-  // there is zero extra network request needed.
-  const prefetched = (window as any).__PREFETCHED_FUNNEL__;
-  if (prefetched && prefetched.slug === slug) {
-    // Consume once (prevents stale data on client-side navigation)
-    delete (window as any).__PREFETCHED_FUNNEL__;
-    return prefetched as StoredFunnel;
-  }
-
   // On public domain, use api-server /share endpoint to avoid CORS and PostgREST auth issues
   const publicDomain = import.meta.env.VITE_PUBLIC_DOMAIN;
   if (publicDomain) {
