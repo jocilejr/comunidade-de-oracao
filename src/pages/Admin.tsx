@@ -141,6 +141,90 @@ const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUr
   );
 };
 
+const PixelConfigCard = ({ funnel, onSaved }: { funnel: StoredFunnel; onSaved: () => void }) => {
+  const [pixelId, setPixelId] = useState(funnel.metaPixelId || '');
+  const [capiToken, setCapiToken] = useState(funnel.metaCapiToken || '');
+  const [saving, setSaving] = useState(false);
+  const [showCapi, setShowCapi] = useState(false);
+  const { toast } = useToast();
+
+  const hasChanges = pixelId !== (funnel.metaPixelId || '') || capiToken !== (funnel.metaCapiToken || '');
+
+  const handleSave = async () => {
+    setSaving(true);
+    const ok = await updateFunnelPixel(funnel.id, pixelId.trim(), capiToken.trim());
+    setSaving(false);
+    if (ok) {
+      toast({ title: 'Pixel salvo!', description: `Configuração do pixel atualizada para "${funnel.name}".` });
+      onSaved();
+    } else {
+      toast({ title: 'Erro', description: 'Não foi possível salvar.', variant: 'destructive' });
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full overflow-hidden border border-border shrink-0 bg-muted flex items-center justify-center">
+          {funnel.botAvatar ? (
+            <img src={funnel.botAvatar} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <CircleUser className="w-4 h-4 text-muted-foreground" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-foreground truncate">{funnel.name}</p>
+          <p className="text-[11px] text-muted-foreground font-mono">/{funnel.slug}</p>
+        </div>
+        {pixelId && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium shrink-0">
+            Pixel ativo
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">Pixel ID</Label>
+          <Input
+            placeholder="Ex: 123456789012345"
+            value={pixelId}
+            onChange={e => setPixelId(e.target.value)}
+            className="font-mono text-xs"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">Token API de Conversões (opcional)</Label>
+          <div className="relative">
+            <Input
+              type={showCapi ? 'text' : 'password'}
+              placeholder="EAA..."
+              value={capiToken}
+              onChange={e => setCapiToken(e.target.value)}
+              className="pr-9 font-mono text-xs"
+            />
+            <button
+              type="button"
+              onClick={() => setShowCapi(!showCapi)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showCapi ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {hasChanges && (
+        <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">
+          <Save className="w-3.5 h-3.5" />
+          {saving ? 'Salvando...' : 'Salvar'}
+        </Button>
+      )}
+    </div>
+  );
+};
+
 const FunnelCardSkeleton = () => (
   <div className="flex items-center gap-4 p-4 rounded-xl border border-border bg-card animate-in fade-in duration-300">
     <Skeleton className="w-11 h-11 rounded-full shrink-0" />
