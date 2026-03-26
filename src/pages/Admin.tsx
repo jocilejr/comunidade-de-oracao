@@ -7,7 +7,7 @@ function getShareUrl(slug: string): string {
   }
   return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/share?slug=${slug}&v=${Date.now()}`;
 }
-import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, compressPreviewImage, getActiveFunnelPreview, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
+import { getAllFunnelsMeta, saveFunnel, deleteFunnel, updateFunnelSlug, updateFunnelProfile, updateFunnelPreviewImage, getAvatarGallery, addToAvatarGallery, removeFromAvatarGallery, validateTypebotJson, slugify, getUserSettings, saveUserSettings, getFunnelById, getFunnelPreviewImages, addFunnelPreviewImage, removeFunnelPreviewImage, compressPreviewImage, getActiveFunnelPreview, updateFunnelPixel, FunnelPreviewImage, UserSettings, AvatarGalleryItem, UserSettingsResult } from '@/lib/funnel-storage';
 import { supabase } from '@/integrations/supabase/client';
 import FunnelInspector from '@/components/admin/FunnelInspector';
 import SessionLogs from '@/components/admin/SessionLogs';
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Upload, Trash2, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera, Plus, Star, Download, Loader2, Copy, Clock, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Upload, Trash2, Pencil, Check, X, Eye, LogOut, Sun, Moon, Save, Image, Bot, Settings, FolderOpen, BarChart3, Smartphone, ImagePlus, CircleUser, Key, EyeOff, ScrollText, Camera, Plus, Star, Download, Loader2, Copy, Clock, RefreshCw, AlertTriangle, Megaphone } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
@@ -35,6 +35,7 @@ interface SessionStats {
 
 const NAV_ITEMS = [
   { id: 'funnels', label: 'Funis', icon: FolderOpen },
+  { id: 'marketing', label: 'Marketing', icon: Megaphone },
   { id: 'gallery', label: 'Avatares', icon: ImagePlus },
   { id: 'stats', label: 'Estatísticas', icon: BarChart3 },
   { id: 'settings', label: 'Configurações', icon: Settings },
@@ -135,6 +136,90 @@ const RotationCountdownGallery = ({ previewImages, loadingPreviews, activeDataUr
             );
           })}
         </div>
+      )}
+    </div>
+  );
+};
+
+const PixelConfigCard = ({ funnel, onSaved }: { funnel: StoredFunnel; onSaved: () => void }) => {
+  const [pixelId, setPixelId] = useState(funnel.metaPixelId || '');
+  const [capiToken, setCapiToken] = useState(funnel.metaCapiToken || '');
+  const [saving, setSaving] = useState(false);
+  const [showCapi, setShowCapi] = useState(false);
+  const { toast } = useToast();
+
+  const hasChanges = pixelId !== (funnel.metaPixelId || '') || capiToken !== (funnel.metaCapiToken || '');
+
+  const handleSave = async () => {
+    setSaving(true);
+    const ok = await updateFunnelPixel(funnel.id, pixelId.trim(), capiToken.trim());
+    setSaving(false);
+    if (ok) {
+      toast({ title: 'Pixel salvo!', description: `Configuração do pixel atualizada para "${funnel.name}".` });
+      onSaved();
+    } else {
+      toast({ title: 'Erro', description: 'Não foi possível salvar.', variant: 'destructive' });
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full overflow-hidden border border-border shrink-0 bg-muted flex items-center justify-center">
+          {funnel.botAvatar ? (
+            <img src={funnel.botAvatar} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <CircleUser className="w-4 h-4 text-muted-foreground" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-foreground truncate">{funnel.name}</p>
+          <p className="text-[11px] text-muted-foreground font-mono">/{funnel.slug}</p>
+        </div>
+        {pixelId && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium shrink-0">
+            Pixel ativo
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">Pixel ID</Label>
+          <Input
+            placeholder="Ex: 123456789012345"
+            value={pixelId}
+            onChange={e => setPixelId(e.target.value)}
+            className="font-mono text-xs"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">Token API de Conversões (opcional)</Label>
+          <div className="relative">
+            <Input
+              type={showCapi ? 'text' : 'password'}
+              placeholder="EAA..."
+              value={capiToken}
+              onChange={e => setCapiToken(e.target.value)}
+              className="pr-9 font-mono text-xs"
+            />
+            <button
+              type="button"
+              onClick={() => setShowCapi(!showCapi)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showCapi ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {hasChanges && (
+        <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">
+          <Save className="w-3.5 h-3.5" />
+          {saving ? 'Salvando...' : 'Salvar'}
+        </Button>
       )}
     </div>
   );
@@ -635,14 +720,14 @@ const Admin = () => {
               <div>
                 <h2 className="text-lg font-bold text-foreground tracking-tight">
                   {activeTab === 'funnels' && 'Funis'}
-                  
+                  {activeTab === 'marketing' && 'Marketing'}
                   {activeTab === 'gallery' && 'Galeria de Avatares'}
                   {activeTab === 'stats' && 'Estatísticas'}
                   {activeTab === 'settings' && 'Configurações'}
                 </h2>
                 <p className="text-[13px] text-muted-foreground mt-0.5">
                   {activeTab === 'funnels' && 'Gerencie seus funis de conversação'}
-                  
+                  {activeTab === 'marketing' && 'Configure pixels e rastreamento de conversões'}
                   {activeTab === 'gallery' && 'Fotos de perfil para reutilizar nos funis'}
                   {activeTab === 'stats' && 'Acompanhe o desempenho dos funis'}
                   {activeTab === 'settings' && 'Configure integrações e chaves de API'}
@@ -1197,6 +1282,36 @@ const Admin = () => {
                   </div>
                 </div>
                 </>
+                )}
+              </div>
+            )}
+
+            {/* ===== MARKETING TAB ===== */}
+            {activeTab === 'marketing' && (
+              <div className="space-y-5 max-w-3xl">
+                <p className="text-sm text-muted-foreground">
+                  Configure o <strong>Meta Pixel</strong> para cada funil. O pixel será injetado automaticamente na página pública e os eventos dos blocos de Script (ex: <code className="text-xs bg-muted px-1 py-0.5 rounded">fbq('track', 'Lead')</code>) serão disparados normalmente.
+                </p>
+
+                {funnels.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Megaphone className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Nenhum funil cadastrado</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {funnels.map(funnel => (
+                      <PixelConfigCard
+                        key={funnel.id}
+                        funnel={funnel}
+                        onSaved={async () => {
+                          const data = await getAllFunnelsMeta();
+                          setFunnels(data);
+                          sessionStorage.setItem('funnels_cache', JSON.stringify(data));
+                        }}
+                      />
+                    ))}
+                  </div>
                 )}
               </div>
             )}

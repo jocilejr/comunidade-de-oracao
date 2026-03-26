@@ -360,6 +360,8 @@ export interface StoredFunnel {
   pageTitle?: string;
   pageDescription?: string;
   userId?: string;
+  metaPixelId?: string;
+  metaCapiToken?: string;
 }
 
 // Chat message for rendering

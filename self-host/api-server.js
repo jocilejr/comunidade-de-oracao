@@ -65,7 +65,8 @@ async function handleShare(req, res, slug, format) {
   if (format === 'json') {
     const { rows } = await pool.query(
       `SELECT id, slug, name, created_at, flow, bot_name, bot_avatar,
-              preview_image, page_title, page_description, user_id
+              preview_image, page_title, page_description, user_id,
+              meta_pixel_id, meta_capi_token
        FROM funnels WHERE slug = $1 LIMIT 1`,
       [slug]
     );
