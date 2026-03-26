@@ -63,13 +63,32 @@ function readBody(req) {
 async function handleShare(req, res, slug, format) {
   // JSON format: return full funnel data (used by SPA on public domain)
   if (format === 'json') {
-    const { rows } = await pool.query(
-      `SELECT id, slug, name, created_at, flow, bot_name, bot_avatar,
-              preview_image, page_title, page_description, user_id,
-              meta_pixel_id, meta_capi_token
-       FROM funnels WHERE slug = $1 LIMIT 1`,
-      [slug]
-    );
+    let rows = [];
+    try {
+      const result = await pool.query(
+        `SELECT id, slug, name, created_at, flow, bot_name, bot_avatar,
+                preview_image, page_title, page_description, user_id,
+                meta_pixel_id, meta_capi_token
+         FROM funnels WHERE slug = $1 LIMIT 1`,
+        [slug]
+      );
+      rows = result.rows;
+    } catch (err) {
+      // Backward compatibility for VPS databases that still don't have legacy pixel columns on funnels
+      if (err?.code !== "42703") throw err;
+      const legacyResult = await pool.query(
+        `SELECT id, slug, name, created_at, flow, bot_name, bot_avatar,
+                preview_image, page_title, page_description, user_id
+         FROM funnels WHERE slug = $1 LIMIT 1`,
+        [slug]
+      );
+      rows = legacyResult.rows.map((row) => ({
+        ...row,
+        meta_pixel_id: null,
+        meta_capi_token: null,
+      }));
+    }
+
     if (!rows.length) return json(res, { error: "Not found" }, 404);
 
     const funnel = rows[0];
