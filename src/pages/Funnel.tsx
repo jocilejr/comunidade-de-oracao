@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { getFunnelBySlug } from '@/lib/funnel-storage';
-import { StoredFunnel } from '@/lib/typebot-types';
+import { getFunnelBySlug, getPixelsByUserId } from '@/lib/funnel-storage';
+import { StoredFunnel, UserPixel } from '@/lib/typebot-types';
 import ChatRenderer from '@/components/chat/ChatRenderer';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, MoreVertical, Phone, Video } from 'lucide-react';
