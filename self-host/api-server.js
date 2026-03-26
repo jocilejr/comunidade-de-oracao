@@ -291,8 +291,12 @@ async function handleShareRobust(req, res, slug) {
     globalPixels,
   };
 
-  // Inline script — available before any React JS runs
-  const prefetchScript = `<script id="__prefetched_funnel__">window.__PREFETCHED_FUNNEL__=${JSON.stringify(prefetchedFunnel)};</script>`;
+  // Inline script — safe JSON embedding (unicode escapes prevent </script> breaking the page)
+  const safeJson = JSON.stringify(prefetchedFunnel)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+  const prefetchScript = `<script id="__prefetched_funnel__">window.__PREFETCHED_FUNNEL__=${safeJson};</script>`;
 
   let html = indexHtml
     .replace(/<meta\s+(property="og:|name="twitter:)[^>]*>/gi, "")
