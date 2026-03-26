@@ -95,19 +95,17 @@ const Funnel = () => {
         s.parentNode.insertBefore(t,s)}(window, document,'script',
         'https://connect.facebook.net/en_US/fbevents.js');
         ${initLines}
-        fbq('track', 'PageView');
+        if (!window._fv_pageview_init) {
+          window._fv_pageview_init = true;
+          fbq('track', 'PageView');
+        }
       `;
       document.head.appendChild(script);
 
       // noscript fallback for first pixel
       const noscript = document.createElement('noscript');
       noscript.id = 'meta-pixel-noscript';
-      const img = document.createElement('img');
-      img.height = 1;
-      img.width = 1;
-      img.style.display = 'none';
-      img.src = `https://www.facebook.com/tr?id=${allPixelIds[0]}&ev=PageView&noscript=1`;
-      noscript.appendChild(img);
+      noscript.innerHTML = `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${allPixelIds[0]}&ev=PageView&noscript=1" />`;
       document.head.appendChild(noscript);
     }
 

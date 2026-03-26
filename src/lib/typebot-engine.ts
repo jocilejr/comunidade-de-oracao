@@ -689,6 +689,23 @@ export class TypebotEngine {
           return 'continue';
         }
 
+        case 'pixel': {
+          const pb = block as any;
+          const pixelId = pb.options?.pixelId;
+          const eventType = pb.options?.eventType || 'ViewContent';
+          
+          if (pixelId && eventType) {
+            if (typeof window !== 'undefined' && (window as any).fbq) {
+              // Garante que o pixel customizado também está inicializado
+              (window as any).fbq('init', pixelId);
+              // Dispara APENAS o evento customizado (ViewContent, etc) usando trackSingle para não cruzar dados
+              (window as any).fbq('trackSingle', pixelId, eventType);
+              console.log(`[Pixel] Disparando evento ${eventType} para o ID ${pixelId}`);
+            }
+          }
+          return 'continue';
+        }
+
         default:
           console.warn(`Unsupported block type: ${block.type}`);
           return 'continue';
@@ -1074,6 +1091,7 @@ export class TypebotEngine {
     if (t.includes('typebot link')) return 'typebotlink';
     if (t === 'openai') return 'openai';
     if (t === 'start') return 'start';
+    if (t === 'pixel') return 'pixel';
     return t;
   }
 
