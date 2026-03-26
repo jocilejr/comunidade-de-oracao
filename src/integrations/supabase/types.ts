@@ -162,6 +162,8 @@ export type Database = {
           created_at: string
           flow: Json
           id: string
+          meta_capi_token: string | null
+          meta_pixel_id: string | null
           name: string
           page_description: string | null
           page_title: string | null
@@ -176,6 +178,8 @@ export type Database = {
           created_at?: string
           flow: Json
           id?: string
+          meta_capi_token?: string | null
+          meta_pixel_id?: string | null
           name: string
           page_description?: string | null
           page_title?: string | null
@@ -190,6 +194,8 @@ export type Database = {
           created_at?: string
           flow?: Json
           id?: string
+          meta_capi_token?: string | null
+          meta_pixel_id?: string | null
           name?: string
           page_description?: string | null
           page_title?: string | null
