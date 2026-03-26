@@ -468,7 +468,7 @@ const Admin = () => {
       ]);
       setFunnels(funnelData);
       setLoadingFunnels(false);
-      sessionStorage.setItem('funnels_cache', JSON.stringify(funnelData));
+      cacheFunnels(funnelData);
       if (sessionResult.data.session?.user) setCurrentUserId(sessionResult.data.session.user.id);
     };
       load();
