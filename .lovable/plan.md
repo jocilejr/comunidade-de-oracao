@@ -1,57 +1,64 @@
 
 
-## Otimização de Performance — Login e Carregamento
+## Pixel Global — Configuração Centralizada
 
-### Problemas identificados
+### O que muda
 
-1. **Chamadas redundantes a `supabase.auth.getUser()`**: Quase toda função em `funnel-storage.ts` faz `await supabase.auth.getUser()` individualmente. Quando o Admin carrega, `getAllFunnelsMeta()`, `getAvatarGallery()` e `getUserSettings()` são chamados em paralelo, resultando em 3+ roundtrips ao endpoint `/auth/v1/user` (visível nos network logs — 4 chamadas GET /user simultâneas). Isso causa lentidão e "failed to fetch" em conexões instáveis.
+Atualmente o pixel é configurado **por funil** (cada funil tem seu próprio Pixel ID). Você quer definir **um ou mais pixels globais** que disparam automaticamente em **todos os funis**.
 
-2. **AuthProvider inicializa com `loading: true`**: O `onAuthStateChange` + `getSession()` já resolvem a sessão, mas toda a app fica bloqueada até isso completar. No domínio público (funis), o AuthProvider é montado desnecessariamente, adicionando latência ao carregar um funil público.
+### Como vai funcionar
 
-3. **QueryClient sem configuração de cache**: O `QueryClient` é criado com defaults, sem `staleTime` ou `retry` configurados, causando re-fetches desnecessários.
+1. **Nova tabela `user_pixels`** no banco de dados:
+   - `id`, `user_id`, `pixel_id` (o ID do Meta Pixel), `capi_token` (opcional), `created_at`
+   - Permite adicionar múltiplos pixels
+   - RLS: cada usuário vê/edita apenas os seus
 
-4. **Admin carrega tudo no mount**: Funis, galeria de avatares e settings são carregados simultaneamente no `useEffect`, mas a galeria e settings só são necessários quando o usuário acessa essas abas.
+2. **Aba Marketing redesenhada** — em vez de cards por funil, terá:
+   - Lista dos seus pixels globais (adicionar/remover)
+   - Cada pixel com campo para ID e Token CAPI (opcional)
+   - Botão "Adicionar Pixel" para cadastrar novos
+   - Todos os pixels cadastrados disparam em todos os funis automaticamente
 
-### Plano de implementação
+3. **Página pública (`Funnel.tsx`)** — ao carregar um funil:
+   - Busca todos os pixels do dono do funil (`user_id`) na tabela `user_pixels`
+   - Injeta o base code do Meta Pixel com `fbq('init', pixelId)` para **cada** pixel cadastrado
+   - Dispara `PageView` em todos
+   - Os eventos `fbq('track', ...)` nos blocos Script do fluxo já funcionam automaticamente para todos os pixels inicializados
 
-**1. `src/lib/auth-context.tsx` — Eliminar bloqueio no domínio público**
-- Detectar `isPublicDomain()` dentro do AuthProvider
-- Se domínio público, setar `loading: false` e `user: null` imediatamente sem consultar auth
-- Mantém o comportamento atual para dashboard/admin
+4. **Manter compatibilidade**: os campos `meta_pixel_id` e `meta_capi_token` na tabela `funnels` continuam existindo (não quebra nada), mas a aba Marketing passa a usar a nova tabela global.
 
-**2. `src/lib/funnel-storage.ts` — Cache de userId e redução de roundtrips**
-- Criar helper `getCachedUserId()` que usa `supabase.auth.getSession()` (leitura local, sem roundtrip) em vez de `supabase.auth.getUser()` (roundtrip ao servidor)
-- `getSession()` retorna a sessão do cache local, resolve instantaneamente
-- Substituir todas as ~12 chamadas de `getUser()` por `getSession().user` no arquivo
-- Isso elimina os 3-4 roundtrips redundantes ao `/auth/v1/user` por carregamento de página
-
-**3. `src/App.tsx` — QueryClient com retry e staleTime**
-- Configurar `defaultOptions.queries.staleTime: 30_000` (30s)
-- Configurar `retry: 1` para evitar loops de retry em "failed to fetch"
-- Configurar `refetchOnWindowFocus: false`
-
-**4. `src/pages/Admin.tsx` — Lazy-load de dados por aba**
-- Carregar apenas `getAllFunnelsMeta()` no mount inicial
-- Mover `getAvatarGallery()` para ser carregado apenas quando a aba "Avatares" é selecionada
-- Mover `getUserSettings()` para ser carregado apenas quando a aba "Configurações" é selecionada
-- Usar flags `loaded` para evitar re-fetch ao revisitar a aba
-
-**5. `src/lib/auth-context.tsx` — Login mais resiliente**
-- Adicionar timeout de 10s no login com mensagem amigável de erro
-- Tratar `TypeError: Failed to fetch` com mensagem "Verifique sua conexão"
+5. **Self-host (`api-server.js`)**: atualizar o endpoint do funil público para também retornar os pixels globais do dono.
 
 ### Arquivos modificados
 
-1. `src/lib/auth-context.tsx`
-2. `src/lib/funnel-storage.ts`
-3. `src/App.tsx`
-4. `src/pages/Admin.tsx`
+| Arquivo | Mudança |
+|---------|---------|
+| Migration SQL | Criar tabela `user_pixels` com RLS |
+| `src/lib/funnel-storage.ts` | CRUD de pixels globais (`getUserPixels`, `addUserPixel`, `removeUserPixel`) |
+| `src/pages/Admin.tsx` | Aba Marketing com lista de pixels globais (add/remove) |
+| `src/pages/Funnel.tsx` | Buscar pixels do dono e inicializar todos |
+| `src/lib/typebot-types.ts` | Tipo `UserPixel` |
+| `self-host/api-server.js` | Endpoint retorna pixels do dono |
 
-### Impacto esperado
+### Detalhes técnicos
 
-- Eliminação de 3-4 roundtrips desnecessários ao `/auth/v1/user` por pageload
-- Página pública carrega sem esperar auth resolver
-- Admin carrega ~50% mais rápido (menos dados iniciais)
-- "Failed to fetch" tratado com mensagem amigável em vez de erro genérico
-- Zero funcionalidades removidas
+**Tabela `user_pixels`:**
+```sql
+CREATE TABLE public.user_pixels (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  pixel_id text NOT NULL,
+  capi_token text DEFAULT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.user_pixels ENABLE ROW LEVEL SECURITY;
+-- Policies: SELECT/INSERT/DELETE para auth.uid() = user_id
+-- Policy pública de SELECT para carregar pixels do dono na página do funil
+```
+
+**Inicialização múltipla de pixels:**
+```javascript
+// Para cada pixel: fbq('init', 'PIXEL_1'); fbq('init', 'PIXEL_2');
+// Um único fbq('track', 'PageView') dispara em todos os pixels inicializados
+```
 
