@@ -41,8 +41,10 @@ const Funnel = () => {
     if (!slug) { setFunnel(null); return; }
     getFunnelBySlug(slug).then(f => {
       setFunnel(f ?? null);
-      // Load global pixels from the funnel owner
-      if (f?.userId) {
+      // Use global_pixels from VPS response, or fetch from Supabase
+      if (f?.globalPixels && f.globalPixels.length > 0) {
+        setGlobalPixels(f.globalPixels);
+      } else if (f?.userId) {
         getPixelsByUserId(f.userId).then(setGlobalPixels);
       }
     });
