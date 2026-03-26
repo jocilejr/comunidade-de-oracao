@@ -93,8 +93,9 @@ const Funnel = () => {
         }
       };
 
-      // Slight defer so pixel never competes with first chat message render
-      setTimeout(initPixels, 200);
+      // Usar microtask (sem delay) para não competir com o render mas garantir
+      // que o fbq seja inicializado ANTES do engine processar o primeiro bloco Pixel
+      Promise.resolve().then(initPixels);
     });
   }, [slug]);
 
