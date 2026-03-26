@@ -235,7 +235,25 @@ export async function getFunnelById(id: string): Promise<StoredFunnel | undefine
     pageTitle: data.page_title || '',
     pageDescription: data.page_description || '',
     userId: data.user_id,
+    metaPixelId: (data as any).meta_pixel_id || '',
+    metaCapiToken: (data as any).meta_capi_token || '',
   };
+}
+
+export async function updateFunnelPixel(funnelId: string, metaPixelId: string, metaCapiToken: string): Promise<boolean> {
+  const userId = await getCachedUserId();
+  if (!userId) return false;
+
+  const { error } = await supabase
+    .from('funnels')
+    .update({
+      meta_pixel_id: metaPixelId || null,
+      meta_capi_token: metaCapiToken || null,
+    } as any)
+    .eq('user_id', userId)
+    .eq('id', funnelId);
+
+  return !error;
 }
 
 export async function updateFunnelPreviewImage(slug: string, previewImage: string): Promise<boolean> {
