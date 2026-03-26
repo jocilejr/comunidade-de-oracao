@@ -62,6 +62,8 @@ export async function getAllFunnelsMeta(): Promise<StoredFunnel[]> {
     previewImage: row.preview_image || '',
     pageTitle: row.page_title || '',
     pageDescription: row.page_description || '',
+    metaPixelId: (row as any).meta_pixel_id || '',
+    metaCapiToken: (row as any).meta_capi_token || '',
   }));
 }
 
