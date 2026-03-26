@@ -479,6 +479,83 @@ export function validateTypebotJson(json: unknown): { valid: boolean; flow?: Typ
   }
 }
 
+// ---- User Pixels (Global) ----
+
+export interface UserPixelRow {
+  id: string;
+  pixel_id: string;
+  capi_token: string | null;
+}
+
+export async function getUserPixels(): Promise<import('./typebot-types').UserPixel[]> {
+  const userId = await getCachedUserId();
+  if (!userId) return [];
+
+  const { data, error } = await (supabase
+    .from('user_pixels' as any)
+    .select('id, pixel_id, capi_token')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true }) as any);
+
+  if (error || !data) return [];
+  return (data as UserPixelRow[]).map(r => ({
+    id: r.id,
+    pixelId: r.pixel_id,
+    capiToken: r.capi_token || '',
+  }));
+}
+
+export async function addUserPixel(pixelId: string, capiToken?: string): Promise<boolean> {
+  const userId = await getCachedUserId();
+  if (!userId) return false;
+
+  const { error } = await (supabase
+    .from('user_pixels' as any)
+    .insert({ user_id: userId, pixel_id: pixelId, capi_token: capiToken || null }) as any);
+
+  return !error;
+}
+
+export async function updateUserPixel(id: string, pixelId: string, capiToken?: string): Promise<boolean> {
+  const userId = await getCachedUserId();
+  if (!userId) return false;
+
+  const { error } = await (supabase
+    .from('user_pixels' as any)
+    .update({ pixel_id: pixelId, capi_token: capiToken || null })
+    .eq('id', id)
+    .eq('user_id', userId) as any);
+
+  return !error;
+}
+
+export async function removeUserPixel(id: string): Promise<boolean> {
+  const userId = await getCachedUserId();
+  if (!userId) return false;
+
+  const { error } = await (supabase
+    .from('user_pixels' as any)
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId) as any);
+
+  return !error;
+}
+
+export async function getPixelsByUserId(userId: string): Promise<import('./typebot-types').UserPixel[]> {
+  const { data, error } = await (supabase
+    .from('user_pixels' as any)
+    .select('id, pixel_id, capi_token')
+    .eq('user_id', userId) as any);
+
+  if (error || !data) return [];
+  return (data as UserPixelRow[]).map(r => ({
+    id: r.id,
+    pixelId: r.pixel_id,
+    capiToken: r.capi_token || '',
+  }));
+}
+
 // ---- User Settings ----
 
 export interface UserSettings {
