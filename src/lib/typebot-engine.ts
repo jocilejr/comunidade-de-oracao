@@ -693,15 +693,17 @@ export class TypebotEngine {
           const pb = block as any;
           const pixelId = pb.options?.pixelId;
           const eventType = pb.options?.eventType || 'ViewContent';
-          
+
           if (pixelId && eventType) {
-            if (typeof window !== 'undefined' && (window as any).fbq) {
-              // Garante que o pixel customizado também está inicializado
-              (window as any).fbq('init', pixelId);
-              // Dispara APENAS o evento customizado (ViewContent, etc) usando trackSingle para não cruzar dados
-              (window as any).fbq('trackSingle', pixelId, eventType);
-              console.log(`[Pixel] Disparando evento ${eventType} para o ID ${pixelId}`);
-            }
+            // Fire-and-forget: não bloqueia o fluxo do funil
+            // O fbq stub já está na fila mesmo antes do fbevents.js carregar
+            setTimeout(() => {
+              const fbq = (window as any).fbq;
+              if (typeof fbq === 'function') {
+                fbq('init', pixelId);
+                fbq('trackSingle', pixelId, eventType);
+              }
+            }, 0);
           }
           return 'continue';
         }

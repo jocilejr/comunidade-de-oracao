@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getFunnelBySlug, getPixelsByUserId } from '@/lib/funnel-storage';
 import { StoredFunnel, UserPixel } from '@/lib/typebot-types';
@@ -32,16 +32,63 @@ const ChatSkeleton = () => (
   </div>
 );
 
+/**
+ * Initialises the Meta Pixel SDK once and fires PageView.
+ * Safe to call multiple times — duplicate calls are ignored.
+ * Non-blocking: the fbevents.js is loaded async, independently of page render.
+ */
+function initMetaPixel(pixelIds: string[]): void {
+  if (!pixelIds.length) return;
+
+  const w = window as any;
+
+  // Guard: only run once per page lifetime
+  if (w._fv_pixel_initialized) return;
+  w._fv_pixel_initialized = true;
+
+  // Bootstrap fbq stub synchronously so fbq('init') calls queue immediately
+  if (!w.fbq) {
+    const fbq: any = function () {
+      fbq.callMethod ? fbq.callMethod.apply(fbq, arguments) : fbq.queue.push(arguments);
+    };
+    w.fbq = fbq;
+    w._fbq = fbq;
+    fbq.push = fbq;
+    fbq.loaded = true;
+    fbq.version = '2.0';
+    fbq.queue = [];
+  }
+
+  // Init every pixel ID
+  for (const id of pixelIds) {
+    w.fbq('init', id);
+  }
+
+  // Fire PageView once — non-blocking, before fbevents.js even loads
+  w.fbq('track', 'PageView');
+
+  // Load fbevents.js asynchronously so it NEVER blocks the visible page
+  if (!document.getElementById('fbevents-js')) {
+    const script = document.createElement('script');
+    script.id = 'fbevents-js';
+    script.async = true;
+    script.src = 'https://connect.facebook.net/en_US/fbevents.js';
+    document.head.appendChild(script);
+  }
+}
+
 const Funnel = () => {
   const { slug } = useParams<{ slug: string }>();
   const [funnel, setFunnel] = useState<StoredFunnel | null | undefined>(undefined);
   const [globalPixels, setGlobalPixels] = useState<UserPixel[]>([]);
+  // Track whether we already fired the pixel so state changes don't re-trigger it
+  const pixelFiredRef = useRef(false);
 
+  // ── Load funnel data ───────────────────────────────────────────────────
   useEffect(() => {
     if (!slug) { setFunnel(null); return; }
     getFunnelBySlug(slug).then(f => {
       setFunnel(f ?? null);
-      // Use global_pixels from VPS response, or fetch from Supabase
       if (f?.globalPixels && f.globalPixels.length > 0) {
         setGlobalPixels(f.globalPixels);
       } else if (f?.userId) {
@@ -50,6 +97,7 @@ const Funnel = () => {
     });
   }, [slug]);
 
+  // ── SEO meta tags (runs every time funnel changes, no pixel involvement) ─
   useEffect(() => {
     if (!funnel) return;
     if (funnel.pageTitle) document.title = funnel.pageTitle;
@@ -75,51 +123,30 @@ const Funnel = () => {
     setMeta('meta[name="twitter:description"]', 'content', funnel.pageDescription || '');
     setMeta('meta[name="twitter:image"]', 'content', funnel.previewImage || '');
 
-    // Collect all pixel IDs: global pixels + per-funnel legacy pixel
+    return () => { document.title = 'Typebot Inteligente Origem Viva'; };
+  }, [funnel]);
+
+  // ── Pixel initialisation (fires at most once, even if state changes twice) ─
+  useEffect(() => {
+    if (!funnel || pixelFiredRef.current) return;
+
     const allPixelIds: string[] = [];
-    globalPixels.forEach(p => { if (p.pixelId && !allPixelIds.includes(p.pixelId)) allPixelIds.push(p.pixelId); });
-    if (funnel.metaPixelId && !allPixelIds.includes(funnel.metaPixelId)) allPixelIds.push(funnel.metaPixelId);
-
-    // Inject Meta Pixel base code for all pixels
-    if (allPixelIds.length > 0 && !document.getElementById('meta-pixel-script')) {
-      const initLines = allPixelIds.map(id => `fbq('init', '${id}');`).join('\n        ');
-      const script = document.createElement('script');
-      script.id = 'meta-pixel-script';
-      script.textContent = `
-        !function(f,b,e,v,n,t,s)
-        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-        n.queue=[];t=b.createElement(e);t.async=!0;
-        t.src=v;s=b.getElementsByTagName(e)[0];
-        s.parentNode.insertBefore(t,s)}(window, document,'script',
-        'https://connect.facebook.net/en_US/fbevents.js');
-        ${initLines}
-        if (!window._fv_pageview_init) {
-          window._fv_pageview_init = true;
-          fbq('track', 'PageView');
-        }
-      `;
-      document.head.appendChild(script);
-
-      // noscript fallback for first pixel
-      const noscript = document.createElement('noscript');
-      noscript.id = 'meta-pixel-noscript';
-      noscript.innerHTML = `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${allPixelIds[0]}&ev=PageView&noscript=1" />`;
-      document.head.appendChild(noscript);
+    globalPixels.forEach(p => {
+      if (p.pixelId && !allPixelIds.includes(p.pixelId)) allPixelIds.push(p.pixelId);
+    });
+    if (funnel.metaPixelId && !allPixelIds.includes(funnel.metaPixelId)) {
+      allPixelIds.push(funnel.metaPixelId);
     }
 
-    return () => {
-      document.title = 'Typebot Inteligente Origem Viva';
-      document.getElementById('meta-pixel-script')?.remove();
-      document.getElementById('meta-pixel-noscript')?.remove();
-    };
+    if (allPixelIds.length > 0) {
+      pixelFiredRef.current = true;
+      // Defer to next tick so it never delays the first paint
+      setTimeout(() => initMetaPixel(allPixelIds), 0);
+    }
   }, [funnel, globalPixels]);
 
-  // Loading state — show WhatsApp skeleton instantly
-  if (funnel === undefined) {
-    return <ChatSkeleton />;
-  }
+  // ── Render ─────────────────────────────────────────────────────────────
+  if (funnel === undefined) return <ChatSkeleton />;
 
   if (!funnel) {
     return (
