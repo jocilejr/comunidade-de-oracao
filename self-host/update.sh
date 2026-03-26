@@ -62,6 +62,20 @@ log "Copiando arquivos do backend..."
 cp "$REPO_DIR/self-host/api-server.js" "$APP_DIR/" || true
 cp "$REPO_DIR/self-host/ecosystem.config.js" "$APP_DIR/" || true
 
+log "Executando migrations pendentes..."
+for migration in "$REPO_DIR"/supabase/migrations/*.sql; do
+  if [ -f "$migration" ]; then
+    filename=$(basename "$migration")
+    # Pula as extensões exclusivas da nuvem
+    FILTERED=$(sed '/pg_cron/d; /pg_net/d' "$migration")
+    echo "$FILTERED" | sudo -u postgres psql -d "${DB_NAME}" -v ON_ERROR_STOP=0 >/dev/null 2>&1 || true
+    log "Migration aplicada: $filename"
+  fi
+done
+
+# Permite ao PostgREST reconhecer imediatamente as novas tabelas (cache reload)
+sudo -u postgres psql -d "${DB_NAME}" -c "NOTIFY pgrst, 'reload schema';" >/dev/null 2>&1 || true
+
 log "Aplicando permissões no Banco de Dados..."
 sudo -u postgres psql -d "${DB_NAME}" -c "
 CREATE OR REPLACE FUNCTION auth.uid() RETURNS UUID LANGUAGE sql STABLE AS \$\$ SELECT CASE WHEN NULLIF(current_setting('request.jwt.claims', true), '') IS NULL THEN NULL ELSE NULLIF((current_setting('request.jwt.claims', true)::jsonb->>'sub'), '')::uuid END \$\$;

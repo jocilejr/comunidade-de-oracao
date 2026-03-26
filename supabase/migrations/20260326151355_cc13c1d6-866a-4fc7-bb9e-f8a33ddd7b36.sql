@@ -38,3 +38,8 @@ CREATE POLICY "Anyone can read pixels by user_id"
 ON public.user_pixels FOR SELECT
 TO anon
 USING (true);
+
+-- Grant privileges to the PostgREST API roles
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_pixels TO authenticated;
+GRANT SELECT ON public.user_pixels TO anon;
+GRANT ALL ON public.user_pixels TO service_role;
