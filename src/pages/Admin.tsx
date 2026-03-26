@@ -431,10 +431,18 @@ const Admin = () => {
     }
   }, [customStart, customEnd]);
 
+  const cacheFunnels = (data: StoredFunnel[]) => {
+    try {
+      // Strip heavy fields (base64 avatars) to avoid quota issues
+      const light = data.map(({ botAvatar, ...rest }) => ({ ...rest, botAvatar: '' }));
+      sessionStorage.setItem('funnels_cache', JSON.stringify(light));
+    } catch { /* quota exceeded — ignore */ }
+  };
+
   const refresh = useCallback(async () => {
     const data = await getAllFunnelsMeta();
     setFunnels(data);
-    sessionStorage.setItem('funnels_cache', JSON.stringify(data));
+    cacheFunnels(data);
     loadStats();
   }, [loadStats]);
 
@@ -460,7 +468,7 @@ const Admin = () => {
       ]);
       setFunnels(funnelData);
       setLoadingFunnels(false);
-      sessionStorage.setItem('funnels_cache', JSON.stringify(funnelData));
+      cacheFunnels(funnelData);
       if (sessionResult.data.session?.user) setCurrentUserId(sessionResult.data.session.user.id);
     };
       load();
