@@ -22,14 +22,32 @@ export default defineConfig(({ mode }) => ({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-supabase': ['@supabase/supabase-js'],
-          'vendor-ui': ['@radix-ui/react-dialog', '@radix-ui/react-tabs', '@radix-ui/react-tooltip', '@radix-ui/react-popover', '@radix-ui/react-select', '@radix-ui/react-scroll-area'],
+        manualChunks(id) {
+          // Core React — sempre necessário
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/') || id.includes('node_modules/react-router-dom/')) {
+            return 'vendor-react';
+          }
+          // Supabase — necessário na página pública para buscar o funil
+          if (id.includes('@supabase/')) {
+            return 'vendor-supabase';
+          }
+          // Radix UI (pesado) — apenas dashboard
+          if (id.includes('@radix-ui/')) {
+            return 'vendor-radix';
+          }
+          // Recharts — apenas dashboard
+          if (id.includes('recharts') || id.includes('d3-')) {
+            return 'vendor-charts';
+          }
+          // Páginas de admin — apenas dashboard
+          if (id.includes('/pages/Admin') || id.includes('/pages/Login') || id.includes('/pages/Index')) {
+            return 'admin-pages';
+          }
         },
       },
     },
     target: 'es2020',
     cssMinify: true,
+    cssCodeSplit: true,
   },
 }));
