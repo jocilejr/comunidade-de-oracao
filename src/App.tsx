@@ -11,7 +11,7 @@ const Login = lazy(() => import("./pages/Login.tsx"));
 const Funnel = lazy(() => import("./pages/Funnel.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
-// UI pesada (Radix UI) — lazy para não entrar no bundle público
+// Componentes pesados — lazy so they're excluded from the public bundle
 const Toaster = lazy(() => import("@/components/ui/toaster").then(m => ({ default: m.Toaster })));
 const Sonner = lazy(() => import("@/components/ui/sonner").then(m => ({ default: m.Toaster })));
 const TooltipProvider = lazy(() => import("@/components/ui/tooltip").then(m => ({ default: m.TooltipProvider })));
@@ -47,24 +47,26 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 /**
  * App leve para o domínio PÚBLICO.
- * Sem Toaster/Sonner/Tooltip/AuthProvider/ThemeProvider — não carrega o CSS pesado do Radix UI.
+ * Mantém ThemeProvider (necessário para o tema escuro) mas exclui
+ * Toaster, Sonner, TooltipProvider e AuthProvider (desnecessários).
  */
 const PublicApp = () => (
   <QueryClientProvider client={queryClient}>
-    <BrowserRouter>
-      <Suspense fallback={null}>
-        <Routes>
-          <Route path="/:slug" element={<Funnel />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/:slug" element={<Funnel />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 
 /**
  * App completo para o domínio do DASHBOARD.
- * Carrega todos os providers e componentes UI.
  */
 const DashboardApp = () => (
   <QueryClientProvider client={queryClient}>
