@@ -136,7 +136,7 @@ async function handleShare(req, res, slug, format) {
     if (fallbackImgs.length) previewUrl = fallbackImgs[0].data_url;
   }
 
-const v = Date.now().toString();
+  const v = Date.now().toString();
   // Imagem servida pelo domínio público para crawlers (Com .jpg falso no final para o WhatsApp)
   const imageUrl = previewUrl
     ? `${PUBLIC_ORIGIN}/preview-image?slug=${encodeURIComponent(slug)}&v=${v}&file=banner.jpg`
@@ -151,7 +151,7 @@ const v = Date.now().toString();
     else if (previewUrl.match(/\.webp/i)) ogImageType = "image/webp";
   }
 
-// Forçamos o card gigante removendo a lógica dinâmica e usando tags explícitas
+  // Forçamos o card gigante removendo a lógica dinâmica e usando tags explícitas
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -202,20 +202,19 @@ async function handleShareRobust(req, res, slug) {
     return res.end("index.html not found");
   }
 
+  // Fetch funnel + meta in one query
   const { rows } = await pool.query(
-    `SELECT id, name, slug, page_title, page_description, preview_image, bot_name, bot_avatar
+    `SELECT id, name, slug, page_title, page_description, preview_image, bot_name, bot_avatar,
+            flow, user_id, meta_pixel_id, meta_capi_token, created_at
      FROM funnels WHERE slug = $1 LIMIT 1`,
     [slug]
   );
 
   if (!rows.length) {
-    // Funnel not found — serve plain SPA, React will show "not found"
     res.writeHead(200, {
       ...corsHeaders,
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
-      "X-Funnel-Served-By": "api-server",
-      "X-Funnel-Route": "spa-slug-notfound",
     });
     return res.end(indexHtml);
   }
@@ -225,7 +224,17 @@ async function handleShareRobust(req, res, slug) {
   const description = escapeHtml(funnel.page_description || "Aperte aqui e Receba");
   const canonicalUrl = `${PUBLIC_ORIGIN}/${slug}`;
 
-  // Fallback: se preview_image está vazio, buscar da galeria
+  // Fetch global pixels for this funnel owner
+  let globalPixels = [];
+  try {
+    const { rows: pixelRows } = await pool.query(
+      `SELECT id, pixel_id, capi_token FROM user_pixels WHERE user_id = $1 ORDER BY created_at ASC`,
+      [funnel.user_id]
+    );
+    globalPixels = pixelRows.map(r => ({ id: r.id, pixelId: r.pixel_id, capiToken: r.capi_token || "" }));
+  } catch (_) { /* ignore if table doesn't exist */ }
+
+  // Fallback preview image from gallery if needed
   let previewUrl = funnel.preview_image;
   if (!previewUrl) {
     const { rows: fallbackImgs } = await pool.query(
@@ -248,7 +257,7 @@ async function handleShareRobust(req, res, slug) {
     else if (previewUrl.match(/\.webp/i)) ogImageType = "image/webp";
   }
 
-  // Build OG meta tags to inject
+  // OG meta tags
   const ogTags = `
   <meta property="og:type" content="website" />
   <meta property="og:title" content="${title}" />
@@ -264,12 +273,32 @@ async function handleShareRobust(req, res, slug) {
   <meta name="twitter:description" content="${description}" />
   ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}`;
 
-  // Strip existing OG and Twitter meta tags, then inject dynamic ones
+  // Build prefetched funnel object (same shape as getFunnelBySlug return)
+  const prefetchedFunnel = {
+    id: funnel.id,
+    slug: funnel.slug,
+    name: funnel.name,
+    uploadedAt: funnel.created_at,
+    flow: funnel.flow,
+    botName: funnel.bot_name || "",
+    botAvatar: funnel.bot_avatar || "",
+    previewImage: previewUrl || "",
+    pageTitle: funnel.page_title || "",
+    pageDescription: funnel.page_description || "",
+    userId: funnel.user_id,
+    metaPixelId: funnel.meta_pixel_id || "",
+    metaCapiToken: funnel.meta_capi_token || "",
+    globalPixels,
+  };
+
+  // Inline script — available before any React JS runs
+  const prefetchScript = `<script id="__prefetched_funnel__">window.__PREFETCHED_FUNNEL__=${JSON.stringify(prefetchedFunnel)};</script>`;
+
   let html = indexHtml
-    .replace(/<meta\s+(property="og:|name="twitter:)[^>]*>/gi, '')
+    .replace(/<meta\s+(property="og:|name="twitter:)[^>]*>/gi, "")
     .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
     .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${description}">`)
-    .replace("</head>", `${ogTags}\n</head>`);
+    .replace("</head>", `${ogTags}\n${prefetchScript}\n</head>`);
 
   res.writeHead(200, {
     ...corsHeaders,
@@ -280,6 +309,7 @@ async function handleShareRobust(req, res, slug) {
   });
   res.end(html);
 }
+
 
 
 const previewCache = new Map(); // slug -> { buffer, mime, ts }
@@ -877,7 +907,7 @@ const server = http.createServer(async (req, res) => {
       const distExists = fs.existsSync(DIST_DIR_DIAG);
       const indexExists = distExists && fs.existsSync(nodePath.join(DIST_DIR_DIAG, "index.html"));
       let assetFiles = [];
-      try { assetFiles = fs.readdirSync(nodePath.join(DIST_DIR_DIAG, "assets")).filter(f => f.endsWith(".js")); } catch {}
+      try { assetFiles = fs.readdirSync(nodePath.join(DIST_DIR_DIAG, "assets")).filter(f => f.endsWith(".js")); } catch { }
       res.writeHead(200, {
         "Content-Type": "application/json",
         "X-Funnel-Served-By": "api-server",
