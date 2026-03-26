@@ -362,6 +362,7 @@ export interface StoredFunnel {
   userId?: string;
   metaPixelId?: string;
   metaCapiToken?: string;
+  globalPixels?: UserPixel[];
 }
 
 // User Pixel (global)

@@ -94,6 +94,7 @@ export async function getFunnelBySlug(slug: string): Promise<StoredFunnel | unde
           userId: data.user_id,
           metaPixelId: data.meta_pixel_id || '',
           metaCapiToken: data.meta_capi_token || '',
+          globalPixels: Array.isArray(data.global_pixels) ? data.global_pixels : [],
         };
       }
     } catch {
